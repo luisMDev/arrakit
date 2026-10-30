@@ -310,7 +310,7 @@ i18n: i18next with `en` (bundled) and `es`. Before sign-in the language is the o
 | `/unavailable` | public | `app.titles.unavailable` | UnavailablePage |
 | `/app/**` | `requireUser` | (other specs) | signed-in shell |
 | `/pricing`, `/join/$invitationId`, `/oauth/signin`, `/oauth/consent` | public (other specs) | | |
-| anything else (`*`, including the legacy `/reading`, `/ready`, `/ready/:id`, `/app/booking`, `/app/booked`) | redirect → `/signin` (unknown `/app/*` → `/app`) | | So a signed-in user with an org ends up on `/app`, and a visitor on `/signin`. |
+| anything else (`*`, including the legacy `/reading`, `/ready`, `/ready/:id`, `/app/booking`, `/app/booked`) | not-found page (unknown `/app/*` renders it inside the signed-in shell) | | "Back home" → `/`, which forwards to `/signin` or `/app`. |
 
 ### Data the guards use
 - `session()` = `GET /api/auth/get-session` → `{ email, name } | null`. **A network or 5xx failure is an error, not "signed out".**

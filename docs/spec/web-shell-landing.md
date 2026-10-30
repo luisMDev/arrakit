@@ -106,13 +106,11 @@ The app has **no front page of its own**: the website (landing) is the front pag
 | `/app/plans` | Plans | `requireUser` | billing-plans |
 | `/app/checkout?plan=&cycle=` | Checkout | `requireUser` + `canCheckout` | billing-plans |
 | `/app/welcome[?session_id=]` | Welcome (§8) | `requireUser` + `onPaidPlan` | this |
-| anything else (`**`) | Redirect to `/signin` | – | this |
+| anything else (`**`) | Not found page (404, "Back home" → `/`) | – | this |
 
-Unknown paths under `/app` (e.g. `/app/booking`, `/app/booked`): in saas-base they hit `**` → `/signin` →
-`skipWhenSignedIn` → `/app`. Net effect for a signed-in person with an organization: **lands on `/app` (Home)**.
-Implement as a TanStack `notFoundComponent`/catch-all that redirects to `/signin` (which forwards signed-in people to
-`/app`), or directly to `/app` for paths under `/app`. Test: `/app/booking` and `/app/booked` end on `/app` and show
-Home's h1, not some other page.
+Unknown paths under `/app` (e.g. `/app/booking`, `/app/booked`) render the same not-found page inside the signed-in
+shell (still behind `requireUser`), keeping the URL. Implement as a catch-all route under `/app`. Test:
+`/app/booking` and `/app/booked` keep their URL and show the not-found h1 with the account menu.
 
 Implementation notes for TanStack Start:
 - File routes: `routes/index.tsx` (redirect), `routes/start.tsx`, `routes/new.tsx` (redirects in `beforeLoad`),
@@ -461,7 +459,7 @@ Static site, the product's **front page**. Port content and links; styling with 
 | saas-base spec | Port as | Notes |
 | --- | --- | --- |
 | `app.spec.ts` | RTL: root layout | header + wordmark + outlet; wordmark href per URL (it.each) |
-| `app.routes.spec.ts` | RTL/router tests | no-org → `/profile`; `/` → `/signin`; `/app/booking|booked` → `/app`; connector routes open their pages |
+| `app.routes.spec.ts` | RTL/router tests | no-org → `/profile`; `/` → `/signin`; `/app/booking|booked` → not-found page; connector routes open their pages |
 | `signed-in/shell/shell.spec.ts` | RTL | all 11 cases (menu content, roles, Escape/outside click, navigation, sign out, 401/500/403 routing) |
 | `signed-in/home/home.page.spec.ts` | RTL | add the missing "member sees neither" assertion |
 | `signed-in/welcome/welcome.page.spec.ts` | RTL | plus a fake-timers test for the 15-try polling |
