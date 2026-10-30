@@ -1,18 +1,6 @@
-import { APP_NAME, type Mail, type Mailer } from '@arrakit/emails'
+import type { Mail, Mailer } from '@arrakit/emails'
 
-interface MailerEnv {
-  NODE_ENV?: string
-  RESEND_API_KEY?: string
-  MAILPIT_URL?: string
-  MAIL_FROM?: string
-}
-
-export interface MailerDeps {
-  fetch?: typeof fetch
-  log?: (line: string) => void
-}
-
-const DEFAULT_FROM = `${APP_NAME} <hello@example.com>`
+import type { ApiEnv } from '../env'
 
 interface MailpitAddress {
   Email: string
@@ -26,8 +14,11 @@ export function mailpitAddress(address: string): MailpitAddress {
   return name ? { Email: named[2]!, Name: name } : { Email: named[2]! }
 }
 
-export function createMailer(env: MailerEnv, deps: MailerDeps = {}): Mailer {
-  const from = env.MAIL_FROM || DEFAULT_FROM
+export function createMailer(
+  env: Pick<ApiEnv, 'NODE_ENV' | 'RESEND_API_KEY' | 'MAILPIT_URL' | 'MAIL_FROM'>,
+  deps: { log: (line: string) => void; fetch?: typeof fetch },
+): Mailer {
+  const { MAIL_FROM: from } = env
   const doFetch = deps.fetch ?? fetch
 
   if (env.RESEND_API_KEY) {
@@ -81,11 +72,10 @@ export function createMailer(env: MailerEnv, deps: MailerDeps = {}): Mailer {
     }
   }
 
-  const log = deps.log ?? ((line: string) => console.log(line))
   return {
     async send(mail) {
       const to = [mail.to].flat()
-      log(
+      deps.log(
         `Neither RESEND_API_KEY nor MAILPIT_URL is set, so nothing is sent. From ${from} to ${to.join(', ')}: ${mail.subject}\n${mail.text}`,
       )
     },

@@ -1,8 +1,7 @@
+import { organizationSummarySchema } from '@arrakit/contract'
 import type { OrganizationRow } from '@arrakit/db'
 import { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
-
-import { organizationSummary } from '../organizations/organization-summary'
 
 const MCP_SERVER_NAME = 'arrakit'
 const MCP_SERVER_VERSION = '0.1.0'
@@ -12,7 +11,6 @@ const MCP_INSTRUCTIONS =
 
 /** Who a request acts as: the person and organization its token names, never a tool argument. */
 export interface ConnectorCaller {
-  userId: string
   organization: OrganizationRow
   role: string
   clientId: string
@@ -20,12 +18,7 @@ export interface ConnectorCaller {
 }
 
 const WHOAMI_OUTPUT = z.object({
-  organization: z.object({
-    id: z.string(),
-    name: z.string(),
-    slug: z.string(),
-    plan: z.string(),
-  }),
+  organization: organizationSummarySchema,
   role: z.string().describe("The person's role in it: owner, admin, member or a custom role"),
 })
 
@@ -47,7 +40,7 @@ export function createMcpServer(caller: Pick<ConnectorCaller, 'organization' | '
       const { organization, role } = caller
       return {
         content: [{ type: 'text', text: `${organization.name} (${role})` }],
-        structuredContent: { organization: organizationSummary(organization), role },
+        structuredContent: { organization: organizationSummarySchema.parse(organization), role },
       }
     },
   )

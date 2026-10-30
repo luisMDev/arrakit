@@ -1,4 +1,4 @@
-import { deviceName, isAccountLanguage } from '@arrakit/address'
+import { type AccountLanguage, deviceName } from '@arrakit/address'
 import type { AccountView } from '@arrakit/contract'
 import type { Account } from '@arrakit/db'
 import { PLAN_OFFERS } from '@arrakit/plans'
@@ -6,7 +6,6 @@ import { ORPCError } from '@orpc/server'
 
 import { authed } from '../orpc/base'
 import { grantedTo } from '../orpc/context'
-import { organizationSummary } from '../organizations/organization-summary'
 
 function accountView(account: Account | null): AccountView {
   if (!account) throw new ORPCError('UNAUTHORIZED')
@@ -38,8 +37,8 @@ export const meRouter = {
     return {
       email: user.email,
       name: user.name.trim(),
-      language: isAccountLanguage(user.language) ? user.language : 'en',
-      organization: organization && organizationSummary(organization),
+      language: user.language as AccountLanguage,
+      organization,
       role: membership?.role ?? null,
       permissions: membership
         ? await grantedTo(membership.role, data.forOrganization(membership.organization.id))

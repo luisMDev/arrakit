@@ -1,29 +1,36 @@
 import { mcpResourceURL, oauthIssuer } from '@arrakit/auth'
 import { APP_NAME } from '@arrakit/emails'
-import type { McpHttpHandler } from '@modelcontextprotocol/server'
+import { type McpHttpHandler, createMcpHandler } from '@modelcontextprotocol/server'
 import { Hono } from 'hono'
 
 import type { AppDeps } from '../deps'
-import { bearerToken } from '../mcp/bearer-token'
-import { mcpHandler } from '../mcp/handler'
-import { verifyAccessToken } from '../mcp/verify-access-token'
+import { type ConnectorCaller, createMcpServer } from '../mcp/server'
+import { bearerToken, verifyAccessToken } from '../mcp/verify-access-token'
+import type { Logger } from '../observability/logger'
 
 const PROTECTED_RESOURCE_PATH = '/.well-known/oauth-protected-resource/api/mcp'
 
-const openHandlers = new Set<McpHttpHandler>()
-
-export async function closeMcpHandlers(): Promise<void> {
-  const handlers = [...openHandlers]
-  openHandlers.clear()
-  await Promise.allSettled(handlers.map((handler) => handler.close()))
+/**
+ * Stateless Streamable HTTP: a fresh server per request, built from the verified caller in
+ * `authInfo.extra` only. GET and DELETE (2025 sessions) are answered 405 by the SDK.
+ */
+export function mcpHandler(log: Logger): McpHttpHandler {
+  const mcpLog = log.child({ component: 'mcp' })
+  return createMcpHandler(
+    ({ authInfo }) =>
+      createMcpServer(authInfo!.extra as Pick<ConnectorCaller, 'organization' | 'role'>),
+    {
+      legacy: 'stateless',
+      keepAliveMs: 0,
+      onerror: (err) => mcpLog.warn({ err }, 'MCP request failed'),
+    },
+  )
 }
 
-export function mcpRoutes(deps: AppDeps) {
+export function mcpRoutes(deps: AppDeps, handler: McpHttpHandler) {
   const { baseURL } = deps.authConfig
   const resource = mcpResourceURL(baseURL)
   const metadataURL = new URL(PROTECTED_RESOURCE_PATH, baseURL).toString()
-  const handler = mcpHandler(deps.log.child({ component: 'mcp' }))
-  openHandlers.add(handler)
 
   return new Hono()
     .get(PROTECTED_RESOURCE_PATH, (c) =>
@@ -35,21 +42,21 @@ export function mcpRoutes(deps: AppDeps) {
       }),
     )
     .all('/api/mcp', async (c) => {
-      const authorization = c.req.header('authorization')
-      const caller = await verifyAccessToken(deps, authorization)
-      if (!caller) {
-        const refused = bearerToken(authorization) ? ', error="invalid_token"' : ''
+      const token = bearerToken(c.req.header('authorization'))
+      const caller = token ? await verifyAccessToken(deps, token) : null
+      if (!token || !caller) {
+        const refused = token ? ', error="invalid_token"' : ''
         return c.json({ error: 'invalid_token' }, 401, {
           'www-authenticate': `Bearer resource_metadata="${metadataURL}"${refused}`,
         })
       }
       return handler.fetch(c.req.raw, {
         authInfo: {
-          token: bearerToken(authorization) ?? '',
+          token,
           clientId: caller.clientId,
           scopes: caller.scopes,
           resource: new URL(resource),
-          extra: { userId: caller.userId, organization: caller.organization, role: caller.role },
+          extra: { organization: caller.organization, role: caller.role },
         },
       })
     })

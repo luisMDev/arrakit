@@ -1,30 +1,34 @@
 import { isTrustedOrigin } from '@arrakit/auth'
+import { oauthProviderAuthServerMetadata } from '@better-auth/oauth-provider'
+import type { McpHttpHandler } from '@modelcontextprotocol/server'
 import { ORPCError } from '@orpc/server'
 import { RPCHandler } from '@orpc/server/fetch'
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 
 import type { AppDeps } from './deps'
+import { reportUnexpected } from './observability/error-reporter'
 import { requestLog } from './observability/request-log'
-import { reportUnexpected } from './observability/unexpected-error'
-import { procedureContext } from './orpc/context'
 import { router } from './router'
-import { authRoutes } from './routes/auth'
-import { healthRoutes } from './routes/health'
-import { mcpRoutes } from './routes/mcp'
+import { mcpHandler, mcpRoutes } from './routes/mcp'
 import { stripeWebhookRoutes } from './routes/stripe-webhook'
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
-export function createApp(deps: AppDeps) {
+export function createApp(deps: AppDeps, mcp: McpHttpHandler = mcpHandler(deps.log)) {
   const app = new Hono()
   const rpc = new RPCHandler(router)
+  const authMetadata = oauthProviderAuthServerMetadata(deps.auth)
 
-  app.route('/', healthRoutes(deps))
+  app.get('/health', async (c) => {
+    const report = await deps.data.health()
+    return c.json(report, report.status === 'ok' ? 200 : 503)
+  })
   app.use(requestLog(deps.log))
-  app.route('/', authRoutes(deps))
+  app.on(['GET', 'POST'], '/api/auth/*', (c) => deps.auth.handler(c.req.raw))
+  app.get('/.well-known/oauth-authorization-server/api/auth', (c) => authMetadata(c.req.raw))
   app.route('/', stripeWebhookRoutes(deps))
-  app.route('/', mcpRoutes(deps))
+  app.route('/', mcpRoutes(deps, mcp))
 
   app.use('/api/rpc/*', async (c, next) => {
     const crossSite =
@@ -36,7 +40,7 @@ export function createApp(deps: AppDeps) {
     }
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: '/api/rpc',
-      context: procedureContext(deps, c.req.raw.headers, c.get('log')),
+      context: { deps, headers: c.req.raw.headers, log: c.get('log') },
     })
     if (matched) return c.newResponse(response.body, response)
     await next()

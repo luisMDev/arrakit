@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { loadApiEnv } from '../env'
 import { createMailer, mailpitAddress, recordingMailer } from './mailer'
+
+const mailerFor = (
+  vars: Record<string, string>,
+  deps: Partial<Parameters<typeof createMailer>[1]> = {},
+) => createMailer(loadApiEnv(vars), { log: () => undefined, ...deps })
 
 const mail = {
   to: 'ana@acme.com',
@@ -15,7 +21,7 @@ describe('createMailer with RESEND_API_KEY', () => {
 
   it('posts the email to Resend with the key and the default sender', async () => {
     const fetch = resend()
-    const mailer = createMailer({ RESEND_API_KEY: 're_test' }, { fetch })
+    const mailer = mailerFor({ RESEND_API_KEY: 're_test' }, { fetch })
 
     await mailer.send(mail)
 
@@ -37,7 +43,7 @@ describe('createMailer with RESEND_API_KEY', () => {
 
   it('sends from MAIL_FROM when given', async () => {
     const fetch = resend()
-    const mailer = createMailer(
+    const mailer = mailerFor(
       { RESEND_API_KEY: 're_test', MAIL_FROM: 'Team <team@acme.com>' },
       { fetch },
     )
@@ -49,7 +55,7 @@ describe('createMailer with RESEND_API_KEY', () => {
   })
 
   it('throws when Resend refuses, without the subject or the recipients', async () => {
-    const mailer = createMailer(
+    const mailer = mailerFor(
       { RESEND_API_KEY: 're_test' },
       { fetch: resend(422, '{"message":"invalid from"}') },
     )
@@ -69,7 +75,7 @@ describe('createMailer with MAILPIT_URL', () => {
 
   it('posts the email to Mailpit with the sender', async () => {
     const fetch = mailpit()
-    const mailer = createMailer({ MAILPIT_URL: 'http://localhost:5025' }, { fetch })
+    const mailer = mailerFor({ MAILPIT_URL: 'http://localhost:5025' }, { fetch })
 
     await mailer.send(mail)
 
@@ -87,7 +93,7 @@ describe('createMailer with MAILPIT_URL', () => {
 
   it('prefers Resend when both are set', async () => {
     const fetch = mailpit()
-    const mailer = createMailer(
+    const mailer = mailerFor(
       { RESEND_API_KEY: 're_test', MAILPIT_URL: 'http://localhost:5025' },
       { fetch },
     )
@@ -96,13 +102,13 @@ describe('createMailer with MAILPIT_URL', () => {
   })
 
   it('throws when Mailpit refuses or is not running', async () => {
-    const refused = createMailer(
+    const refused = mailerFor(
       { MAILPIT_URL: 'http://localhost:5025' },
       { fetch: mailpit(400, 'bad') },
     )
     await expect(refused.send(mail)).rejects.toThrow('[mail] Mailpit refused the email: 400 bad')
 
-    const down = createMailer(
+    const down = mailerFor(
       { MAILPIT_URL: 'http://localhost:5025' },
       { fetch: async () => Promise.reject(new TypeError('fetch failed')) },
     )
@@ -113,7 +119,7 @@ describe('createMailer with MAILPIT_URL', () => {
 
   it('refuses to start in production without Resend', () => {
     expect(() =>
-      createMailer({ NODE_ENV: 'production', MAILPIT_URL: 'http://localhost:5025' }),
+      mailerFor({ NODE_ENV: 'production', MAILPIT_URL: 'http://localhost:5025' }),
     ).toThrow('[mail] missing env: RESEND_API_KEY')
   })
 })
@@ -136,7 +142,7 @@ describe('mailpitAddress', () => {
 describe('createMailer without RESEND_API_KEY or MAILPIT_URL', () => {
   it('logs one line per mail with the link', async () => {
     const log = vi.fn()
-    const mailer = createMailer({ RESEND_API_KEY: '' }, { log })
+    const mailer = mailerFor({ RESEND_API_KEY: '' }, { log })
 
     await mailer.send(mail)
 
@@ -147,7 +153,7 @@ describe('createMailer without RESEND_API_KEY or MAILPIT_URL', () => {
   })
 
   it('refuses to start in production', () => {
-    expect(() => createMailer({ NODE_ENV: 'production' })).toThrow(
+    expect(() => mailerFor({ NODE_ENV: 'production' })).toThrow(
       '[mail] missing env: RESEND_API_KEY (production never logs sign-in links)',
     )
   })

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { type TestApp, createTestApp } from './testing/app'
 
@@ -11,9 +11,22 @@ describe('api app', () => {
   afterAll(() => t.close())
 
   it('answers /health with every probe up', async () => {
-    const res = await t.app.request('/health')
+    const res = await t.request('/health')
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ status: 'ok', postgres: 'up', storage: 'up', queue: 'up' })
+  })
+
+  it('answers /health 503 with the same shape when a probe is down', async () => {
+    const down = { status: 'error', postgres: 'up', storage: 'down', queue: 'up' } as const
+    vi.spyOn(t.data, 'health').mockResolvedValueOnce(down)
+    const res = await t.request('/health')
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual(down)
+  })
+
+  it('serves /health as the only route outside /api', async () => {
+    expect((await t.request('/api/health')).status).toBe(404)
+    expect((await t.request('/healthz')).status).toBe(404)
   })
 
   it('returns 404 for unknown routes, and serves no REST or OpenAPI', async () => {

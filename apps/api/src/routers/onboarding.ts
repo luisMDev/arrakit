@@ -1,9 +1,7 @@
 import { organizationNameOnSkip, organizationNameOr } from '@arrakit/address'
-import { ORPCError } from '@orpc/server'
 
 import { authed } from '../orpc/base'
 import type { BaseContext } from '../orpc/context'
-import { organizationSummary } from '../organizations/organization-summary'
 
 /**
  * Creates the organization through Better Auth (the person becomes its owner and it becomes the
@@ -15,9 +13,7 @@ async function createOrganization(context: BaseContext, name: string) {
     body: { name, slug: 'pending' },
   })
   const scope = context.deps.data.forOrganization(created.id)
-  const organization = await scope.organization()
-  if (!organization)
-    throw new ORPCError('NOT_FOUND', { message: 'Not found in your organization.' })
+  const organization = (await scope.organization())!
   return { organization, scope }
 }
 
@@ -29,14 +25,11 @@ export const onboardingRouter = {
     const name = organizationNameOr(input.name, user.email, personName || user.name)
     const { organization, scope } = await createOrganization(context, name)
     await scope.members.acceptTerms(user.id)
-    return organizationSummary(organization)
+    return organization
   }),
   skip: authed.onboarding.skip.handler(async ({ context }) => {
     const { user } = context
-    const { organization } = await createOrganization(
-      context,
-      organizationNameOnSkip(user.email, user.name),
-    )
-    return organizationSummary(organization)
+    const name = organizationNameOnSkip(user.email, user.name)
+    return (await createOrganization(context, name)).organization
   }),
 }

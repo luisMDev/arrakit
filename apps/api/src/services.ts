@@ -1,46 +1,35 @@
-import { type AuthConfig, type AuthDeps, createAuth, loadAuthConfig } from '@arrakit/auth'
+import { type AuthDeps, createAuth, loadAuthConfig } from '@arrakit/auth'
 import { type Data, loadDataConfig, openData } from '@arrakit/db'
-import type { Mailer } from '@arrakit/emails'
 
-import { type StripeGateway, createStripeGateway, guardedStripe } from './billing/stripe-gateway'
+import { createStripeGateway, guardedStripe } from './billing/stripe-gateway'
 import type { AppDeps } from './deps'
-import { type ApiEnv, loadApiEnv } from './env'
+import { loadApiEnv } from './env'
 import { createMailer } from './mail/mailer'
 import { organizationDeps } from './organizations/organization-deps'
-import { type ErrorReporter, createErrorReporter } from './observability/error-reporter'
+import { createErrorReporter } from './observability/error-reporter'
 import type { Logger } from './observability/logger'
 
-interface DepsParts {
-  env: ApiEnv
-  authConfig: AuthConfig
-  data: Data
-  mailer: Mailer
-  stripe: StripeGateway
-  log: Logger
-  errors: ErrorReporter
-  testing?: boolean
-}
+type DepsParts = Omit<AppDeps, 'auth' | 'data'> & { data: Data; testing?: boolean }
 
 export function buildDeps(parts: DepsParts): AppDeps {
   const { authConfig, data, log } = parts
   const stripe = guardedStripe(parts.stripe, log.child({ component: 'stripe' }))
   const auth = createAuth({
     config: authConfig,
-    database: data.authDatabase,
+    data,
     mailer: parts.mailer,
-    invitationFor: (id, email) => data.invitationFor(id, email),
     organizations: organizationDeps(data, stripe, log.child({ component: 'organizations' })),
     testing: parts.testing,
-    logger: betterAuthLogger(parts.log),
+    logger: betterAuthLogger(log),
   })
   return {
     env: parts.env,
-    data: parts.data,
+    data,
     auth,
     authConfig,
     mailer: parts.mailer,
     stripe,
-    log: parts.log,
+    log,
     errors: parts.errors,
   }
 }
@@ -82,7 +71,7 @@ export async function depsFromEnv(
   const authConfig = loadAuthConfig(rawEnv)
   const errors = createErrorReporter(env)
   const mailLog = log.child({ component: 'mail' })
-  const mailer = createMailer(rawEnv, { log: (line) => mailLog.info(line) })
+  const mailer = createMailer(env, { log: (line) => mailLog.info(line) })
   const data = await openData(loadDataConfig(rawEnv), { log: log.child({ component: 'data' }) })
   return buildDeps({
     env,

@@ -45,7 +45,12 @@ describe('onboarding.create / onboarding.skip / me.get', () => {
       personName: 'Ana Ibarra',
       termsAccepted: true,
     })
-    expect(org).toMatchObject({ name: 'Seaya Ventures', slug: 'seaya-ventures', plan: 'free' })
+    expect(org).toEqual({
+      id: expect.any(String),
+      name: 'Seaya Ventures',
+      slug: 'seaya-ventures',
+      plan: 'free',
+    })
     expect(await client.me.get()).toMatchObject({
       name: 'Ana Ibarra',
       organization: { name: 'Seaya Ventures', slug: 'seaya-ventures', plan: 'free' },

@@ -3,8 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 import { pub } from '../orpc/base'
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp } from '../testing/app'
-import { createErrorReporter, noErrorReporter } from './error-reporter'
-import { isUnexpected } from './unexpected-error'
+import { createErrorReporter, isUnexpected, noErrorReporter } from './error-reporter'
 
 describe('request log and unexpected errors', () => {
   let t: TestApp

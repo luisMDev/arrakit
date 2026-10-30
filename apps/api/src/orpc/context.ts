@@ -13,17 +13,13 @@ import { isAPIError } from 'better-auth/api'
 
 import type { AppDeps } from '../deps'
 import type { Logger } from '../observability/logger'
-import { isUnexpected, reportUnexpected } from '../observability/unexpected-error'
+import { isUnexpected, reportUnexpected } from '../observability/error-reporter'
 
 export interface BaseContext {
   deps: AppDeps
   headers: Headers
   /** The app logger bound to this request's id. */
   log: Logger
-}
-
-export function procedureContext(deps: AppDeps, headers: Headers, log: Logger): BaseContext {
-  return { deps, headers, log }
 }
 
 /** oRPC has no default status for PAYMENT_REQUIRED. */
@@ -64,9 +60,6 @@ export const reportErrors = os
       throw error
     }
   })
-
-const notInOrganization = () =>
-  new ORPCError('NOT_FOUND', { message: 'Not found in your organization.' })
 
 type SessionResult = NonNullable<Awaited<ReturnType<Auth['api']['getSession']>>>
 type SessionUser = SessionResult['user']
@@ -111,7 +104,8 @@ export function requireMember(wanted: Permissions = {}) {
   return os.$context<SessionContext>().middleware(async ({ context, next }) => {
     const { data } = context.deps
     const membership = await data.activeMembership(context.user.id, context.session.id)
-    if (!membership) throw notInOrganization()
+    if (!membership)
+      throw new ORPCError('NOT_FOUND', { message: 'Not found in your organization.' })
     const scope = data.forOrganization(membership.organization.id)
     const permissions = await grantedTo(membership.role, scope)
     if (!allows(permissions, wanted)) {

@@ -273,6 +273,10 @@ describe('social sign-in reflected in the account', () => {
   afterAll(() => t.close())
   afterEach(() => vi.restoreAllMocks())
 
+  it('answers authProviders.get with both providers configured', async () => {
+    expect(await t.client().authProviders.get()).toEqual({ google: true, microsoft: true })
+  })
+
   it('shows the name, email and Google after a Google sign-in', async () => {
     const cookie = await socialSignIn('google', {
       sub: 'google-account-1',

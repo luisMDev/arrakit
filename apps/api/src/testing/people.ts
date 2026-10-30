@@ -1,7 +1,7 @@
 import { insertMember } from '@arrakit/db/testing'
 import type { Plan } from '@arrakit/plans'
 
-import { TEST_WEB_ORIGIN, type TestApp } from './app'
+import { type TestApp, withOrigin } from './app'
 
 export interface Person {
   headers: Headers
@@ -34,8 +34,7 @@ export function orgApi(t: TestApp, headers: Headers) {
     const text = await res.text()
     return { status: res.status, body: (text ? JSON.parse(text) : null) as AuthAnswer<T>['body'] }
   }
-  const sent = new Headers(headers)
-  if (!sent.has('origin')) sent.set('origin', TEST_WEB_ORIGIN)
+  const sent = withOrigin(headers)
   return {
     post: <T = Record<string, unknown>>(path: string, body: Record<string, unknown> = {}) => {
       const postHeaders = new Headers(sent)

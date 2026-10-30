@@ -1,19 +1,416 @@
-import { generateKeyPairSync, randomUUID, sign } from 'node:crypto'
+import { createHash, generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto'
 
+import { mcpResourceURL } from '@arrakit/auth'
+import { oauthClientResources, oauthClients } from '@arrakit/db/schema'
 import { insertMember } from '@arrakit/db/testing'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import {
-  TEST_MCP_URL,
-  TEST_WEB_ORIGIN,
-  type TestApp,
-  createTestApp,
-  jwtPayload,
-  rpcResult,
-} from '../testing/app'
+import { TEST_WEB_ORIGIN, type TestApp, createTestApp, sessionCookieOf } from '../testing/app'
 import { orgApi, sqlOf } from '../testing/people'
+import { bearerToken } from './verify-access-token'
 
+const TEST_MCP_URL = mcpResourceURL(TEST_WEB_ORIGIN)
 const ISSUER = `${TEST_WEB_ORIGIN}/api/auth`
+/** Where claude.ai takes the authorization code back. */
+const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback'
+
+interface ConnectorTokens {
+  access_token: string
+  refresh_token: string
+  token_type: string
+  expires_in: number
+  scope: string
+}
+
+/** A PKCE verifier and its S256 challenge (RFC 7636). */
+const pkcePair = () => {
+  const verifier = randomBytes(32).toString('base64url')
+  return { verifier, challenge: createHash('sha256').update(verifier).digest('base64url') }
+}
+
+/** A JWT's payload, read without checking its signature. */
+const jwtPayload = (token: string): Record<string, unknown> =>
+  JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString()) as Record<
+    string,
+    unknown
+  >
+
+/** Claude's side of the MCP connector, one call per step. */
+function connector(t: TestApp) {
+  const steps = {
+    async register() {
+      const res = await t.request('/api/auth/oauth2/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          client_name: 'Claude',
+          redirect_uris: [CLAUDE_CALLBACK],
+          token_endpoint_auth_method: 'none',
+        }),
+      })
+      if (res.status !== 201) throw new Error(`register failed: ${res.status} ${await res.text()}`)
+      return ((await res.json()) as { client_id: string }).client_id
+    },
+    authorize(clientId: string, challenge: string, cookie?: string) {
+      const query = new URLSearchParams({
+        response_type: 'code',
+        client_id: clientId,
+        redirect_uri: CLAUDE_CALLBACK,
+        state: 'claude-state',
+        code_challenge: challenge,
+        code_challenge_method: 'S256',
+        resource: TEST_MCP_URL,
+      })
+      return t.request(`/api/auth/oauth2/authorize?${query}`, {
+        headers: cookie ? { cookie } : {},
+        redirect: 'manual',
+      })
+    },
+    consent(cookie: string, oauthQuery: string, accept: boolean) {
+      return t.request('/api/auth/oauth2/consent', {
+        method: 'POST',
+        headers: { cookie, origin: TEST_WEB_ORIGIN, 'content-type': 'application/json' },
+        body: JSON.stringify({ accept, oauth_query: oauthQuery }),
+      })
+    },
+    token(body: Record<string, string>) {
+      return t.request('/api/auth/oauth2/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(body).toString(),
+      })
+    },
+    /** register, authorize with PKCE, consent, swap the code: what adding the connector does. */
+    async connect(cookie: string) {
+      const clientId = await steps.register()
+      const pkce = pkcePair()
+      const authorized = await steps.authorize(clientId, pkce.challenge, cookie)
+      const consentPage = new URL(authorized.headers.get('location') ?? '')
+      const consented = await steps.consent(cookie, consentPage.search.slice(1), true)
+      const body = (await consented.json()) as { url?: string }
+      const code = body.url ? new URL(body.url).searchParams.get('code') : null
+      if (!code) throw new Error(`no code: ${consented.status} ${JSON.stringify(body)}`)
+      const res = await steps.token({
+        grant_type: 'authorization_code',
+        code,
+        code_verifier: pkce.verifier,
+        redirect_uri: CLAUDE_CALLBACK,
+        client_id: clientId,
+        resource: TEST_MCP_URL,
+      })
+      if (res.status !== 200) throw new Error(`token failed: ${res.status} ${await res.text()}`)
+      return { clientId, tokens: (await res.json()) as ConnectorTokens }
+    },
+    refresh(clientId: string, refreshToken: string) {
+      return steps.token({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: clientId,
+        resource: TEST_MCP_URL,
+      })
+    },
+  }
+  return steps
+}
+
+/** One JSON-RPC call to /api/mcp as Claude's streamable HTTP client sends it. */
+function mcpCall(
+  t: TestApp,
+  token: string | undefined,
+  method: string,
+  params: Record<string, unknown> = {},
+  path = '/api/mcp',
+) {
+  return t.request(path, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json, text/event-stream',
+      'content-type': 'application/json',
+      ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+  })
+}
+
+async function sessionUserId(t: TestApp, cookie: string) {
+  const res = await t.request('/api/auth/get-session', { headers: { cookie } })
+  return ((await res.json()) as { user: { id: string } }).user.id
+}
+
+/** The JSON-RPC message answering a request, from a JSON or SSE body. */
+async function rpcResult(
+  res: Response,
+): Promise<{ result?: Record<string, unknown>; error?: unknown }> {
+  const text = await res.text()
+  if (!(res.headers.get('content-type') ?? '').includes('text/event-stream')) {
+    return JSON.parse(text) as { result?: Record<string, unknown> }
+  }
+  const messages = text
+    .split('\n')
+    .filter((line) => line.startsWith('data: '))
+    .map((line) => JSON.parse(line.slice('data: '.length)) as Record<string, unknown>)
+  return messages.find((message) => 'id' in message) ?? {}
+}
+
+const JWT = 'eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiJ1MSJ9.c2lnbmF0dXJl'
+
+describe('bearerToken', () => {
+  it.each([
+    ['Bearer abc', 'abc'],
+    ['bearer abc', 'abc'],
+    ['BEARER abc', 'abc'],
+    [`Bearer ${JWT}`, JWT],
+    ['Bearer  abc', 'abc'],
+    ['Bearer abc==', 'abc=='],
+  ])('reads %j', (header, token) => {
+    expect(bearerToken(header)).toBe(token)
+  })
+
+  it.each([
+    'Basic abc',
+    'Token abc',
+    'Bearerabc',
+    'Bearer',
+    'Bearer    ',
+    'Bearer a b',
+    'Bearer x, Bearer y',
+    'Bearer a"b',
+    'Bearer a=b',
+    '',
+    undefined,
+    null,
+  ])('refuses %j', (header) => {
+    expect(bearerToken(header)).toBeNull()
+  })
+})
+
+const SIGNED_PARAMS = ['sig', 'exp', 'ba_iat', 'ba_pl', 'ba_param']
+
+describe('the OAuth 2.1 provider for the MCP connector', () => {
+  let t: TestApp
+
+  beforeAll(async () => {
+    t = await createTestApp()
+  })
+  afterAll(() => t.close())
+
+  const owner = async (email: string, name: string) => {
+    const cookie = await t.magicLinkSignIn(email)
+    const organization = await t
+      .client(new Headers({ cookie }))
+      .onboarding.create({ name, termsAccepted: true })
+    return { cookie, organization }
+  }
+
+  it('publishes authorization server metadata with PKCE and without client credentials', async () => {
+    const res = await t.request('/.well-known/oauth-authorization-server/api/auth')
+    expect(res.status).toBe(200)
+    const metadata = (await res.json()) as Record<string, unknown>
+    expect(metadata).toMatchObject({
+      issuer: ISSUER,
+      authorization_endpoint: `${ISSUER}/oauth2/authorize`,
+      token_endpoint: `${ISSUER}/oauth2/token`,
+      registration_endpoint: `${ISSUER}/oauth2/register`,
+    })
+    expect(metadata.code_challenge_methods_supported).toContain('S256')
+    expect(metadata.grant_types_supported).toContain('refresh_token')
+    expect(metadata.grant_types_supported).not.toContain('client_credentials')
+  })
+
+  it('also answers the metadata under the issuer path (RFC 8414 fallback some clients use)', async () => {
+    const res = await t.request('/api/auth/.well-known/oauth-authorization-server')
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { issuer: string }).issuer).toBe(ISSUER)
+  })
+
+  it('registers a public client without a session and links it to the MCP resource', async () => {
+    const res = await t.request('/api/auth/oauth2/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        client_name: 'Claude',
+        redirect_uris: [CLAUDE_CALLBACK],
+        token_endpoint_auth_method: 'none',
+      }),
+    })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { client_id: string; redirect_uris: string[] }
+    expect(body.redirect_uris).toEqual([CLAUDE_CALLBACK])
+
+    const clients = await t.data.db.select().from(oauthClients)
+    const stored = clients.find((client) => client.clientId === body.client_id)
+    expect(stored).toMatchObject({ name: 'Claude', redirectUris: [CLAUDE_CALLBACK] })
+    const links = await t.data.db.select().from(oauthClientResources)
+    expect(links.filter((link) => link.clientId === body.client_id)).toEqual([
+      expect.objectContaining({ resourceId: TEST_MCP_URL }),
+    ])
+  })
+
+  it('closes the session-to-JWT route', async () => {
+    const { headers } = await t.signIn({ email: 'closed@acme.com' })
+    expect((await t.request('/api/auth/token', { headers })).status).toBe(404)
+  })
+
+  it('refuses a magic link asked for without a trusted Origin', async () => {
+    const res = await t.request('/api/auth/sign-in/magic-link', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'no-origin@acme.com', callbackURL: '/' }),
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('sends a signed-out person to the web sign-in page with a signed query', async () => {
+    const clientId = await connector(t).register()
+    const res = await connector(t).authorize(clientId, pkcePair().challenge)
+    expect(res.status).toBe(302)
+    const location = new URL(res.headers.get('location') ?? '')
+    expect(location.origin + location.pathname).toBe(`${TEST_WEB_ORIGIN}/oauth/signin`)
+    expect(location.searchParams.get('client_id')).toBe(clientId)
+    expect(location.searchParams.get('sig')).toBeTruthy()
+  })
+
+  it('issues a JWT for the MCP resource with the organization claim, and refreshes it', async () => {
+    const { cookie, organization } = await owner('lucia@ardent.vc', 'Ardent Ventures')
+    const clientId = await connector(t).register()
+    const pkce = pkcePair()
+
+    const authorized = await connector(t).authorize(clientId, pkce.challenge, cookie)
+    expect(authorized.status).toBe(302)
+    const consentPage = new URL(authorized.headers.get('location') ?? '')
+    expect(consentPage.origin + consentPage.pathname).toBe(`${TEST_WEB_ORIGIN}/oauth/consent`)
+    expect(consentPage.searchParams.get('client_id')).toBe(clientId)
+
+    const consented = await connector(t).consent(cookie, consentPage.search.slice(1), true)
+    const { url } = (await consented.json()) as { url: string }
+    const back = new URL(url)
+    expect(back.origin + back.pathname).toBe(CLAUDE_CALLBACK)
+    expect(back.searchParams.get('state')).toBe('claude-state')
+    const code = back.searchParams.get('code')!
+
+    const exchange = (verifier: string) =>
+      connector(t).token({
+        grant_type: 'authorization_code',
+        code,
+        code_verifier: verifier,
+        redirect_uri: CLAUDE_CALLBACK,
+        client_id: clientId,
+        resource: TEST_MCP_URL,
+      })
+
+    const res = await exchange(pkce.verifier)
+    expect(res.status).toBe(200)
+    const tokens = (await res.json()) as Record<string, string>
+    expect(tokens).toMatchObject({ token_type: expect.stringMatching(/bearer/i) })
+    expect(tokens.refresh_token).toBeTruthy()
+    expect(tokens.expires_in).toBeTruthy()
+    const claims = jwtPayload(tokens.access_token!)
+    expect(claims).toMatchObject({
+      sub: await sessionUserId(t, cookie),
+      organization_id: organization.id,
+      iss: ISSUER,
+    })
+    expect([claims.aud].flat()).toContain(TEST_MCP_URL)
+
+    const refreshed = await connector(t).refresh(clientId, tokens.refresh_token!)
+    expect(refreshed.status).toBe(200)
+    const next = (await refreshed.json()) as Record<string, string>
+    expect(next.access_token).not.toBe(tokens.access_token)
+    expect(jwtPayload(next.access_token!).organization_id).toBe(organization.id)
+  })
+
+  it('issues no token for a wrong PKCE verifier', async () => {
+    const { cookie } = await owner('pkce@ardent.vc', 'Pkce Ventures')
+    const clientId = await connector(t).register()
+    const pkce = pkcePair()
+    const authorized = await connector(t).authorize(clientId, pkce.challenge, cookie)
+    const query = new URL(authorized.headers.get('location') ?? '').search.slice(1)
+    const { url } = (await (await connector(t).consent(cookie, query, true)).json()) as {
+      url: string
+    }
+    const res = await connector(t).token({
+      grant_type: 'authorization_code',
+      code: new URL(url).searchParams.get('code')!,
+      code_verifier: pkcePair().verifier,
+      redirect_uri: CLAUDE_CALLBACK,
+      client_id: clientId,
+      resource: TEST_MCP_URL,
+    })
+    expect(res.ok).toBe(false)
+    expect(await res.json()).not.toHaveProperty('access_token')
+  })
+
+  it('refuses consent to a person with no organization; a denial goes back with access_denied', async () => {
+    const cookie = await t.magicLinkSignIn('loner@ardent.vc')
+    const clientId = await connector(t).register()
+
+    const authorized = await connector(t).authorize(clientId, pkcePair().challenge, cookie)
+    expect(authorized.status).toBe(302)
+    const consentPage = new URL(authorized.headers.get('location') ?? '')
+    expect(consentPage.pathname).toBe('/oauth/consent')
+    const query = consentPage.search.slice(1)
+
+    const accepted = (await (await connector(t).consent(cookie, query, true)).json()) as Record<
+      string,
+      unknown
+    >
+    expect(accepted.url).toBeUndefined()
+    expect(accepted.error).toBe('access_denied')
+
+    const denied = (await (await connector(t).consent(cookie, query, false)).json()) as {
+      url: string
+    }
+    const back = new URL(denied.url)
+    expect(back.origin + back.pathname).toBe(CLAUDE_CALLBACK)
+    expect(back.searchParams.get('error')).toBe('access_denied')
+    expect(back.searchParams.get('code')).toBeNull()
+  })
+
+  it('resumes the authorization after a magic link sign-in', async () => {
+    const email = 'resume@ardent.vc'
+    await owner(email, 'Resume Ventures')
+    const clientId = await connector(t).register()
+    const signinPage = new URL(
+      (await connector(t).authorize(clientId, pkcePair().challenge)).headers.get('location') ?? '',
+    )
+    const resumeQuery = new URLSearchParams(signinPage.search)
+    for (const name of SIGNED_PARAMS) resumeQuery.delete(name)
+    const callbackURL = `${TEST_WEB_ORIGIN}/api/auth/oauth2/authorize?${resumeQuery}`
+
+    const asked = await t.request('/api/auth/sign-in/magic-link', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: TEST_WEB_ORIGIN },
+      body: JSON.stringify({ email, callbackURL, errorCallbackURL: `${TEST_WEB_ORIGIN}/signup` }),
+    })
+    expect(asked.status).toBe(200)
+    const link = new URL(t.linkFor(email))
+    const opened = await t.request(link.pathname + link.search, { redirect: 'manual' })
+    expect(opened.status).toBe(302)
+    expect(opened.headers.get('location')).toBe(callbackURL)
+    const cookie = sessionCookieOf(opened)!
+
+    const resumed = new URL(callbackURL)
+    const again = await t.request(resumed.pathname + resumed.search, {
+      headers: { cookie },
+      redirect: 'manual',
+    })
+    expect(again.status).toBe(302)
+    const consent = new URL(again.headers.get('location') ?? '')
+    expect(consent.pathname).toBe('/oauth/consent')
+    expect(consent.searchParams.get('client_id')).toBe(clientId)
+  })
+
+  it('serves its signing keys with one key row after first use', async () => {
+    const res = await t.request('/api/auth/jwks')
+    expect(res.status).toBe(200)
+    const { keys } = (await res.json()) as { keys: { kid: string }[] }
+    const { jwks } = await import('@arrakit/db/schema')
+    const rows = await t.data.db.select().from(jwks)
+    expect(rows).toHaveLength(1)
+    expect(keys.map((key) => key.kid)).toEqual(rows.map((row) => row.id))
+  })
+})
+
 const METADATA_PATH = '/.well-known/oauth-protected-resource/api/mcp'
 const CHALLENGE = `Bearer resource_metadata="${TEST_WEB_ORIGIN}${METADATA_PATH}"`
 
@@ -40,30 +437,25 @@ describe('the MCP endpoint', () => {
   })
   afterAll(() => t.close())
 
-  const sessionUserId = async (cookie: string) => {
-    const res = await t.request('/api/auth/get-session', { headers: { cookie } })
-    return ((await res.json()) as { user: { id: string } }).user.id
-  }
-
   const connectedOrganization = async (email: string, organizationName: string) => {
     const cookie = await t.magicLinkSignIn(email)
-    const userId = await sessionUserId(cookie)
+    const userId = await sessionUserId(t, cookie)
     const organization = await t
       .client(new Headers({ cookie }))
       .onboarding.create({ name: organizationName, termsAccepted: true })
-    const { clientId, tokens } = await t.connector.connect(cookie)
+    const { clientId, tokens } = await connector(t).connect(cookie)
     return { cookie, userId, organization, clientId, tokens }
   }
 
   const initialize = (token: string | undefined) =>
-    t.mcp(token, 'initialize', {
+    mcpCall(t, token, 'initialize', {
       protocolVersion: '2025-06-18',
       capabilities: {},
       clientInfo: { name: 'claude-ai', version: '1.0' },
     })
 
   const whoami = async (token: string) => {
-    const res = await t.mcp(token, 'tools/call', { name: 'whoami', arguments: {} })
+    const res = await mcpCall(t, token, 'tools/call', { name: 'whoami', arguments: {} })
     expect(res.status).toBe(200)
     return (await rpcResult(res)).result
   }
@@ -89,7 +481,7 @@ describe('the MCP endpoint', () => {
     const { tokens } = await connectedOrganization('lucia@ardent.vc', 'Ardent Ventures')
 
     expect((await initialize(tokens.access_token)).status).toBe(200)
-    const res = await t.mcp(tokens.access_token, 'tools/list')
+    const res = await mcpCall(t, tokens.access_token, 'tools/list')
     expect(res.status).toBe(200)
     const tools = (await rpcResult(res)).result?.tools as { name: string; title: string }[]
     expect(tools.map((tool) => tool.name)).toEqual(['whoami'])
@@ -117,7 +509,8 @@ describe('the MCP endpoint', () => {
 
   it('challenges a token in the URL instead of the header', async () => {
     const { tokens } = await connectedOrganization('query@ardent.vc', 'Query Ventures')
-    const res = await t.mcp(
+    const res = await mcpCall(
+      t,
       undefined,
       'tools/list',
       {},
@@ -156,19 +549,19 @@ describe('the MCP endpoint', () => {
         async () => signedHere({ organization_id: randomUUID() }),
       ],
     ])('challenges %s', async (_label, token) => {
-      const res = await t.mcp(await token(), 'tools/list')
+      const res = await mcpCall(t, await token(), 'tools/list')
       expect(res.status).toBe(401)
       expect(res.headers.get('www-authenticate')).toBe(`${CHALLENGE}, error="invalid_token"`)
     })
 
     it('challenges a token once it has expired', async () => {
       const { tokens } = await connectedOrganization('expiring@ardent.vc', 'Expiring Org')
-      expect((await t.mcp(tokens.access_token, 'tools/list')).status).toBe(200)
+      expect((await mcpCall(t, tokens.access_token, 'tools/list')).status).toBe(200)
 
       vi.useFakeTimers({ toFake: ['Date'] })
       vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000)
 
-      expect((await t.mcp(tokens.access_token, 'tools/list')).status).toBe(401)
+      expect((await mcpCall(t, tokens.access_token, 'tools/list')).status).toBe(401)
     })
   })
 
@@ -176,10 +569,10 @@ describe('the MCP endpoint', () => {
     const owner = await connectedOrganization('owner@elm.vc', 'Elm Capital')
     const other = await connectedOrganization('owner@yew.vc', 'Yew Capital')
     const memberCookie = await t.magicLinkSignIn('member@elm.vc')
-    const memberId = await sessionUserId(memberCookie)
+    const memberId = await sessionUserId(t, memberCookie)
     await insertMember(t.data, owner.organization.id, memberId, 'member')
-    const { clientId, tokens } = await t.connector.connect(memberCookie)
-    const refreshed = await t.connector.refresh(clientId, tokens.refresh_token)
+    const { clientId, tokens } = await connector(t).connect(memberCookie)
+    const refreshed = await connector(t).refresh(clientId, tokens.refresh_token)
     expect(refreshed.status).toBe(200)
     const refreshedTokens = (await refreshed.json()) as typeof tokens
     expect((await whoami(tokens.access_token))?.structuredContent).toMatchObject({ role: 'member' })
@@ -188,13 +581,17 @@ describe('the MCP endpoint', () => {
     await t.data.revokeGrants(owner.organization.id, memberId)
 
     for (const token of [tokens.access_token, refreshedTokens.access_token]) {
-      const res = await t.mcp(token, 'tools/call', { name: 'whoami', arguments: {} })
+      const res = await mcpCall(t, token, 'tools/call', { name: 'whoami', arguments: {} })
       expect(res.status).toBe(401)
     }
     expect((await whoami(owner.tokens.access_token))?.isError).toBeFalsy()
-    expect((await t.connector.refresh(clientId, refreshedTokens.refresh_token)).status).toBe(400)
-    expect((await t.connector.refresh(owner.clientId, owner.tokens.refresh_token)).status).toBe(200)
-    expect((await t.connector.refresh(other.clientId, other.tokens.refresh_token)).status).toBe(200)
+    expect((await connector(t).refresh(clientId, refreshedTokens.refresh_token)).status).toBe(400)
+    expect((await connector(t).refresh(owner.clientId, owner.tokens.refresh_token)).status).toBe(
+      200,
+    )
+    expect((await connector(t).refresh(other.clientId, other.tokens.refresh_token)).status).toBe(
+      200,
+    )
   })
 
   it('revokes the grants of a deleted organization: its refresh token mints nothing', async () => {
@@ -206,16 +603,20 @@ describe('the MCP endpoint', () => {
     })
     expect(deleted.status).toBe(200)
 
-    expect((await t.mcp(owner.tokens.access_token, 'tools/list')).status).toBe(401)
-    expect((await t.connector.refresh(owner.clientId, owner.tokens.refresh_token)).status).toBe(400)
-    expect((await t.connector.refresh(other.clientId, other.tokens.refresh_token)).status).toBe(200)
+    expect((await mcpCall(t, owner.tokens.access_token, 'tools/list')).status).toBe(401)
+    expect((await connector(t).refresh(owner.clientId, owner.tokens.refresh_token)).status).toBe(
+      400,
+    )
+    expect((await connector(t).refresh(other.clientId, other.tokens.refresh_token)).status).toBe(
+      200,
+    )
   })
 
   it('binds a grant to the organization active at consent, and keeps it there after a switch', async () => {
     const first = await connectedOrganization('two@orgs.vc', 'First Orgs')
     const api = t.client(new Headers({ cookie: first.cookie }))
     const second = await api.onboarding.create({ name: 'Second Orgs', termsAccepted: true })
-    const { tokens } = await t.connector.connect(first.cookie)
+    const { tokens } = await connector(t).connect(first.cookie)
     expect((await whoami(tokens.access_token))?.structuredContent).toMatchObject({
       organization: { id: second.id },
     })
@@ -234,15 +635,15 @@ describe('the MCP endpoint', () => {
   it('stops a token once its person leaves that organization through Better Auth', async () => {
     const owner = await connectedOrganization('owner@leave.vc', 'Leave Capital')
     const cookie = await t.magicLinkSignIn('leaver@leave.vc')
-    await insertMember(t.data, owner.organization.id, await sessionUserId(cookie), 'member')
-    const { tokens } = await t.connector.connect(cookie)
+    await insertMember(t.data, owner.organization.id, await sessionUserId(t, cookie), 'member')
+    const { tokens } = await connector(t).connect(cookie)
     expect((await whoami(tokens.access_token))?.isError).toBeFalsy()
 
     const left = await orgApi(t, new Headers({ cookie })).post('leave', {
       organizationId: owner.organization.id,
     })
     expect(left.status).toBe(200)
-    expect((await t.mcp(tokens.access_token, 'tools/list')).status).toBe(401)
+    expect((await mcpCall(t, tokens.access_token, 'tools/list')).status).toBe(401)
     expect((await whoami(owner.tokens.access_token))?.isError).toBeFalsy()
   })
 
@@ -264,7 +665,7 @@ describe('the MCP endpoint', () => {
     vi.setSystemTime(Date.now() + 24 * 60 * 60 * 1000)
     vi.spyOn(t.deps.auth.api, 'getJwks').mockRejectedValueOnce(new Error('connection terminated'))
 
-    const res = await t.mcp(tokens.access_token, 'tools/list')
+    const res = await mcpCall(t, tokens.access_token, 'tools/list')
 
     expect(res.status).toBe(500)
     expect(res.headers.get('www-authenticate')).toBeNull()
