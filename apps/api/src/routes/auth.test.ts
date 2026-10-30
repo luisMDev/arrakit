@@ -25,7 +25,7 @@ describe('Better Auth routes on Hono', () => {
     return headers.get('cookie')!
   }
 
-  it('serves the magic link flow through /api/auth and the outbox mailer', async () => {
+  it('serves the magic link flow through /api/auth and the mailer', async () => {
     const res = await t.app.request('/api/auth/sign-in/magic-link', {
       method: 'POST',
       headers: { origin: WEB, 'content-type': 'application/json' },

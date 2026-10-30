@@ -5,14 +5,13 @@ import type { Mailer } from '@arrakit/emails'
 import { type StripeGateway, createStripeGateway } from './billing/stripe-gateway'
 import type { AppDeps } from './deps'
 import { type ApiEnv, loadApiEnv } from './env'
-import { type Outbox, createMailer } from './mail/mailer'
+import { createMailer } from './mail/mailer'
 
 export interface DepsParts {
   env: ApiEnv
   rawEnv: Record<string, string | undefined>
   data: Data
   mailer: Mailer
-  outbox?: Outbox
   stripe: StripeGateway | null
   testing?: boolean
 }
@@ -33,7 +32,6 @@ export function buildDeps(parts: DepsParts): AppDeps {
     auth,
     authConfig,
     mailer: parts.mailer,
-    outbox: parts.outbox,
     stripe: parts.stripe,
   }
 }
@@ -42,15 +40,13 @@ export function buildDeps(parts: DepsParts): AppDeps {
 export async function depsFromEnv(rawEnv: Record<string, string | undefined>): Promise<AppDeps> {
   const env = loadApiEnv(rawEnv)
   loadAuthConfig(rawEnv) // fail the boot, not the first sign-in
-  const { mailer, outbox } = createMailer(rawEnv)
+  const mailer = createMailer(rawEnv)
   const data = await openData(loadDataConfig(rawEnv))
   return buildDeps({
     env,
     rawEnv,
     data,
     mailer,
-    // The outbox keeps sign-in links in memory; only keep it when the dev outbox route is on.
-    outbox: env.DEV_OUTBOX === '1' ? outbox : undefined,
     stripe: createStripeGateway(env),
   })
 }

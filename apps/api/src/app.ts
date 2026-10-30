@@ -5,8 +5,8 @@ import type { AppDeps } from './deps'
 import type { BaseContext } from './orpc/context'
 import { router } from './router'
 import { authRoutes } from './routes/auth'
-import { devOutboxRoutes } from './routes/dev-outbox'
 import { healthRoutes } from './routes/health'
+import { localFilesRoutes } from './routes/local-files'
 import { mcpRoutes } from './routes/mcp'
 import { generateOpenApiDocument } from './routes/openapi'
 import { stripeWebhookRoutes } from './routes/stripe-webhook'
@@ -22,7 +22,7 @@ export { generateOpenApiDocument as openApiDocument } from './routes/openapi'
  * - /api/rpc/*                      oRPC (@arrakit/contract)
  * - POST /api/webhooks/stripe       Stripe webhook
  * - /api/mcp, /.well-known/oauth-protected-resource/api/mcp   MCP
- * - GET /api/dev/outbox             dev/e2e only
+ * - GET/PUT /api/files/local/*     local storage fallback only
  */
 export function createApp(deps: AppDeps) {
   const app = new Hono()
@@ -33,7 +33,7 @@ export function createApp(deps: AppDeps) {
   app.route('/', authRoutes(deps))
   app.route('/', stripeWebhookRoutes(deps))
   app.route('/', mcpRoutes(deps))
-  app.route('/', devOutboxRoutes(deps))
+  app.route('/', localFilesRoutes(deps))
 
   app.use('/api/rpc/*', async (c, next) => {
     const context: BaseContext = { deps, data: deps.data, headers: c.req.raw.headers }

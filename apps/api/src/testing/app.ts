@@ -13,12 +13,12 @@ import { type App, createApp } from '../app'
 import type { StripeGateway } from '../billing/stripe-gateway'
 import type { AppDeps } from '../deps'
 import { loadApiEnv } from '../env'
-import { createOutbox, recordingMailer } from '../mail/mailer'
+import { recordingMailer } from '../mail/mailer'
 import { buildDeps } from '../services'
 
 type HeadersLike = ConstructorParameters<typeof Headers>[0]
 
-export const TEST_WEB_ORIGIN = 'http://localhost:4200'
+export const TEST_WEB_ORIGIN = 'http://localhost:5200'
 export const TEST_MCP_URL = mcpResourceURL(TEST_WEB_ORIGIN)
 /** Where claude.ai takes the authorization code back. */
 export const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback'
@@ -112,25 +112,12 @@ export async function createTestApp(
     ...options.env,
   }
   const data = await openTestData(options.storage ? { storage: options.storage } : {})
-  const recording = recordingMailer()
-  const sent = recording.sent
-  const outbox = createOutbox()
-  const mailer = {
-    async send(mail: Mail) {
-      await recording.mailer.send(mail)
-      outbox.entries.push({
-        ...mail,
-        from: mail.from ?? 'Arrakit <hello@example.com>',
-        at: new Date().toISOString(),
-      })
-    },
-  }
+  const { mailer, sent } = recordingMailer()
   const deps = buildDeps({
     env: loadApiEnv(rawEnv),
     rawEnv,
     data,
     mailer,
-    outbox,
     stripe: options.stripe ?? null,
     testing: true,
   })

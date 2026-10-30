@@ -1,37 +1,9 @@
 import type { Mail, Mailer } from '@arrakit/emails'
 
-export interface OutboxEntry extends Mail {
-  from: string
-  at: string
-}
-
-export interface Outbox {
-  entries: OutboxEntry[]
-  /** Newest first, optionally only mail to `to`. */
-  list(to?: string): OutboxEntry[]
-  clear(): void
-}
-
-export function createOutbox(): Outbox {
-  const entries: OutboxEntry[] = []
-  return {
-    entries,
-    list: (to) =>
-      [...entries].reverse().filter(
-        (mail) =>
-          !to ||
-          [mail.to]
-            .flat()
-            .map((a) => a.toLowerCase())
-            .includes(to.toLowerCase()),
-      ),
-    clear: () => void entries.splice(0),
-  }
-}
-
 interface MailerEnv {
   NODE_ENV?: string
   RESEND_API_KEY?: string
+  MAILPIT_URL?: string
   MAIL_FROM?: string
 }
 
@@ -42,37 +14,25 @@ export interface MailerDeps {
 
 const DEFAULT_FROM = 'Arrakit <hello@example.com>'
 
-export function createMailer(
-  env: MailerEnv,
-  deps: MailerDeps = {},
-): { mailer: Mailer; outbox?: Outbox } {
-  const from = (mail: Mail) => mail.from ?? (env.MAIL_FROM || DEFAULT_FROM)
-  if (!env.RESEND_API_KEY) {
-    if (env.NODE_ENV === 'production') {
-      throw new Error('[mail] missing env: RESEND_API_KEY (production never logs sign-in links)')
-    }
-    const outbox = createOutbox()
-    const log = deps.log ?? ((line: string) => console.log(line))
-    return {
-      outbox,
-      mailer: {
-        async send(mail) {
-          const to = [mail.to].flat()
-          const cc = mail.cc?.length ? `, Cc ${mail.cc.join(', ')}` : ''
-          const replyTo = mail.replyTo ? `, Reply-To ${mail.replyTo}` : ''
-          log(
-            `RESEND_API_KEY is not set, so nothing is sent. From ${from(mail)} to ${to.join(', ')}${cc}${replyTo}: ${mail.subject}\n${mail.text}`,
-          )
-          outbox.entries.push({ ...mail, from: from(mail), at: new Date().toISOString() })
-          if (outbox.entries.length > 200) outbox.entries.shift()
-        },
-      },
-    }
-  }
+interface MailpitAddress {
+  Email: string
+  Name?: string
+}
 
+/** `Name <email>` or a bare `email`, as Mailpit's send API wants it. */
+export function mailpitAddress(address: string): MailpitAddress {
+  const named = address.match(/^\s*(.*?)\s*<([^>]+)>\s*$/)
+  if (!named) return { Email: address.trim() }
+  const name = named[1]!.replace(/^"(.*)"$/, '$1')
+  return name ? { Email: named[2]!, Name: name } : { Email: named[2]! }
+}
+
+export function createMailer(env: MailerEnv, deps: MailerDeps = {}): Mailer {
+  const from = (mail: Mail) => mail.from ?? (env.MAIL_FROM || DEFAULT_FROM)
   const doFetch = deps.fetch ?? fetch
-  return {
-    mailer: {
+
+  if (env.RESEND_API_KEY) {
+    return {
       async send(mail) {
         const res = await doFetch('https://api.resend.com/emails', {
           method: 'POST',
@@ -94,6 +54,47 @@ export function createMailer(
         if (!res.ok)
           throw new Error(`[mail] Resend refused the email: ${res.status} ${await res.text()}`)
       },
+    }
+  }
+
+  if (env.NODE_ENV === 'production') {
+    throw new Error('[mail] missing env: RESEND_API_KEY (production never logs sign-in links)')
+  }
+
+  if (env.MAILPIT_URL) {
+    const endpoint = new URL('/api/v1/send', env.MAILPIT_URL).href
+    return {
+      async send(mail) {
+        const res = await doFetch(endpoint, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            From: mailpitAddress(from(mail)),
+            To: [mail.to].flat().map(mailpitAddress),
+            ...(mail.cc?.length ? { Cc: mail.cc.map(mailpitAddress) } : {}),
+            ...(mail.replyTo ? { ReplyTo: [mailpitAddress(mail.replyTo)] } : {}),
+            Subject: mail.subject,
+            HTML: mail.html,
+            Text: mail.text,
+          }),
+        }).catch((error: unknown) => {
+          throw new Error(`[mail] Mailpit is not reachable at ${env.MAILPIT_URL}`, { cause: error })
+        })
+        if (!res.ok)
+          throw new Error(`[mail] Mailpit refused the email: ${res.status} ${await res.text()}`)
+      },
+    }
+  }
+
+  const log = deps.log ?? ((line: string) => console.log(line))
+  return {
+    async send(mail) {
+      const to = [mail.to].flat()
+      const cc = mail.cc?.length ? `, Cc ${mail.cc.join(', ')}` : ''
+      const replyTo = mail.replyTo ? `, Reply-To ${mail.replyTo}` : ''
+      log(
+        `Neither RESEND_API_KEY nor MAILPIT_URL is set, so nothing is sent. From ${from(mail)} to ${to.join(', ')}${cc}${replyTo}: ${mail.subject}\n${mail.text}`,
+      )
     },
   }
 }

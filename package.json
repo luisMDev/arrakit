@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Arrakit: a SaaS base on pnpm + Turborepo, React + TanStack Start, Hono + oRPC, Drizzle and Better Auth.",
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "turbo run dev //#mailpit",
+    "mailpit": "scripts/mailpit.sh --listen localhost:5025 --smtp localhost:5026",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",

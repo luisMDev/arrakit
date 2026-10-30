@@ -10,6 +10,7 @@
     "BETTER_AUTH_*",
     "RESEND_API_KEY",
     "MAIL_FROM",
+    "MAILPIT_URL",
     "R2_*",
     "S3_*",
     "STORAGE_DIR",
@@ -43,6 +44,10 @@
       "dependsOn": ["^build"]
     },
     "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "//#mailpit": {
       "cache": false,
       "persistent": true
     }
