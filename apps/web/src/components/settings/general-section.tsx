@@ -8,11 +8,12 @@ import { z } from 'zod'
 import { Card, CardContent } from '#/components/ui/card'
 import { Field, FieldDescription, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
-import { reportError } from '#/lib/api-errors'
+import { noRefusal, reportError } from '#/lib/api-errors'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
-import { client, orpc } from '#/lib/orpc'
+import { orpc } from '#/lib/orpc'
+import { useApiMutation } from '#/lib/use-api-mutation'
 
 import { SettingsSectionLayout } from './settings-ui'
 
@@ -46,26 +47,36 @@ export function GeneralSection() {
     void loadOnOpen.current()
   }, [])
 
+  const rename = useApiMutation(
+    {
+      ...orpc.organizations.update.mutationOptions(),
+      onSuccess: (saved) => {
+        me.patch((current) =>
+          current.organization
+            ? { ...current, organization: { ...current.organization, name: saved.name } }
+            : current,
+        )
+        form.reset({ name: saved.name })
+      },
+      onError: async () => {
+        form.reset()
+        await load(t(`${K}.notSaved`))
+      },
+    },
+    {
+      context: '[general] renaming the organization failed',
+      failure: t(`${K}.notSaved`),
+      refusal: noRefusal,
+    },
+  )
+
   async function saveName({ name: trimmed }: z.output<typeof nameSchema>) {
     if (!organization || !me.isAdmin) return
     if (trimmed === organization.name) {
       form.reset()
       return
     }
-    try {
-      const saved = await client.organizations.update({ name: trimmed })
-      me.patch((current) =>
-        current.organization
-          ? { ...current, organization: { ...current.organization, name: saved.name } }
-          : current,
-      )
-      form.reset({ name: saved.name })
-    } catch (err) {
-      reportError('[general] renaming the organization failed', err)
-      notify.error(t(`${K}.notSaved`))
-      form.reset()
-      await load(t(`${K}.notSaved`))
-    }
+    await rename.run({ name: trimmed })
   }
 
   const nameField = registerClearing(form, 'name')

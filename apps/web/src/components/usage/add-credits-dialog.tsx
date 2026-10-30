@@ -1,6 +1,5 @@
 import { CURRENCY, METRIC_KEYS, TOP_UP, isTopUpAmount, metricAmounts } from '@arrakit/plans'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
@@ -16,9 +15,8 @@ import {
 } from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
-import { tr } from '#/i18n'
-import { apiCall } from '#/lib/api-errors'
 import { client } from '#/lib/orpc'
+import { useApiMutation } from '#/lib/use-api-mutation'
 import { cn } from '#/lib/utils'
 
 import { amountsLine, money } from './usage-copy'
@@ -53,19 +51,17 @@ export function AddCreditsDialog({
     resolver: zodResolver(topUpForm),
     defaultValues: { amount: DEFAULT_DOLLARS },
   })
-  const [busy, setBusy] = useState(false)
+  const topUp = useApiMutation(
+    { mutationFn: (cents: number) => startTopUp(cents), onSuccess: ({ url }) => redirect(url) },
+    { context: '[usage] top-up failed', failure: t(`${KEY}.topUpNotOpened`) },
+  )
+  const busy = topUp.isPending || topUp.isSuccess
   const cents = topUpCents.safeParse(useWatch({ control: form.control, name: 'amount' }))
   const valid = cents.success
   const amounts = metricAmounts(cents.data ?? 0)
   const preview = amountsLine(METRIC_KEYS.map((metric) => ({ metric, amount: amounts[metric] })))
 
-  async function submit({ amount }: z.output<typeof topUpForm>) {
-    setBusy(true)
-    const result = await apiCall(() => startTopUp(amount), tr(`${KEY}.topUpNotOpened`), {
-      failed: () => setBusy(false),
-    })
-    if (result) redirect(result.url)
-  }
+  const submit = ({ amount }: z.output<typeof topUpForm>) => topUp.run(amount)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

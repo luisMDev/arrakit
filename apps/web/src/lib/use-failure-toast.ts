@@ -1,8 +1,6 @@
 import { useEffect } from 'react'
 
-import { apiFailed } from './api-errors'
-
-const screenTextOnly = () => null
+import { apiFailed, noRefusal } from './api-errors'
 
 /**
  * Reports a failed load and toasts `failure`, or the API's own message when `refusal` finds one.
@@ -12,7 +10,7 @@ export function useFailureToast(
   error: unknown,
   context: string,
   failure: string,
-  refusal: (err: unknown) => string | null = screenTextOnly,
+  refusal: (err: unknown) => string | null = noRefusal,
 ): void {
   useEffect(() => {
     if (error) apiFailed(context, error, failure, refusal)

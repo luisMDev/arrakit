@@ -207,8 +207,10 @@ Run from the repo root.
 - **Toasts**: only through `notify.success/info/warning/error` from `#/lib/notify` (same text never
   stacks; errors and warnings stay 6 s). Importing `sonner` anywhere else in the web is a lint error.
   The API's own error text comes from `apiMessage()` / `refusalMessage()` / `paymentRefusal()` in `#/lib/api-errors`.
-  A failed call goes through `apiFailed()` (or `apiCall()`); a failed load through
-  `useFailureToast(error, context, failure)` from `#/lib/use-failure-toast`.
+  A screen calls the API through `useApiMutation(options, { context, failure, refusal })` from
+  `#/lib/use-api-mutation` (`orpc.<ns>.<proc>.mutationOptions()` or a `mutationFn`; `run()` guards
+  against a double submit); a failed load goes through `useFailureToast(error, context, failure)`
+  from `#/lib/use-failure-toast`.
 - Errors from procedures use oRPC errors (`ORPCError`) with HTTP-meaningful codes (400/401/403/404/409/402).
 - **Logging (api)**: never `console.*`. Procedures log through `context.log`, Hono routes through
   `c.get('log')` (both carry the request id), the rest through `deps.log` or an injected `Logger`;

@@ -1,6 +1,6 @@
 import type { ChangePreview, PaidChoice, PlanOfferView } from '@arrakit/contract'
 import type { BillingCycle, Plan } from '@arrakit/plans'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -16,9 +16,10 @@ import {
   DialogTitle,
 } from '#/components/ui/dialog'
 import { Skeleton } from '#/components/ui/skeleton'
-import { apiFailed, paymentRefusal, refusalMessage } from '#/lib/api-errors'
+import { paymentRefusal, refusalMessage } from '#/lib/api-errors'
 import { useCurrentUser } from '#/lib/current-user'
 import { orpc } from '#/lib/orpc'
+import { useApiMutation } from '#/lib/use-api-mutation'
 import { useFailureToast } from '#/lib/use-failure-toast'
 
 import { BillingCycleSwitch } from './billing-cycle-switch'
@@ -71,22 +72,25 @@ export function PlansPage() {
     refusalMessage,
   )
 
-  const preview = useMutation({
-    ...orpc.billing.previewChange.mutationOptions(),
-    onSuccess: (result, choice) => setPending({ choice, preview: result }),
-    onError: (err) => apiFailed('[plans] preview failed', err, t('plans.priceFailed')),
-  })
-  const change = useMutation({
-    ...orpc.billing.change.mutationOptions(),
-    onSuccess: async (next) => {
-      queryClient.setQueryData(billingQuery.queryKey, next)
-      setPending(null)
-      await reload()
-      await navigate({ to: '/app/billing' })
+  const preview = useApiMutation(
+    {
+      ...orpc.billing.previewChange.mutationOptions(),
+      onSuccess: (result, choice) => setPending({ choice, preview: result }),
     },
-    onError: (err) =>
-      apiFailed('[plans] switch failed', err, t('plans.switchFailed'), paymentRefusal),
-  })
+    { context: '[plans] preview failed', failure: t('plans.priceFailed') },
+  )
+  const change = useApiMutation(
+    {
+      ...orpc.billing.change.mutationOptions(),
+      onSuccess: async (next) => {
+        queryClient.setQueryData(billingQuery.queryKey, next)
+        setPending(null)
+        await reload()
+        await navigate({ to: '/app/billing' })
+      },
+    },
+    { context: '[plans] switch failed', failure: t('plans.switchFailed'), refusal: paymentRefusal },
+  )
 
   const goToCheckout = (choice: PaidChoice) =>
     navigate({ to: '/app/checkout', search: { plan: choice.plan, cycle: choice.cycle } })
@@ -126,7 +130,7 @@ export function PlansPage() {
           className="w-full"
           variant="outline"
           disabled={busy}
-          onClick={() => preview.mutate({ plan: paid.plan, cycle })}
+          onClick={() => void preview.run({ plan: paid.plan, cycle })}
         >
           {t('plans.switchTo', { plan: planLabel(offer.plan) })}
         </Button>
@@ -240,7 +244,7 @@ export function PlansPage() {
                 <Button variant="outline" onClick={() => setPending(null)}>
                   {t('plans.notNow')}
                 </Button>
-                <Button disabled={change.isPending} onClick={() => change.mutate(pending.choice)}>
+                <Button disabled={change.isPending} onClick={() => void change.run(pending.choice)}>
                   {t('plans.switchTo', { plan: planLabel(pending.choice.plan) })}
                 </Button>
               </DialogFooter>

@@ -4,7 +4,6 @@ import { type InvitationView, assignableRoleSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
-import { useRef, useState } from 'react'
 import { Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
@@ -22,11 +21,12 @@ import {
   SelectValue,
 } from '#/components/ui/select'
 import { Separator } from '#/components/ui/separator'
-import { apiFailed, apiMessage } from '#/lib/api-errors'
+import { apiMessage } from '#/lib/api-errors'
 import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import { client, orpc } from '#/lib/orpc'
+import { useApiMutation } from '#/lib/use-api-mutation'
 import { useFailureToast } from '#/lib/use-failure-toast'
 import { cn } from '#/lib/utils'
 
@@ -92,44 +92,18 @@ export function MembersSection({ open }: SectionProps) {
     defaultValues: { email: '', role: 'member' as const },
   })
   const emailError = form.formState.errors.email?.message
-  const [busy, setBusy] = useState(false)
-  const busyRef = useRef(false)
-
   const loadError = members.error ?? invites.error
   useFailureToast(loadError, '[members] loading members failed', t(`${K}.notLoaded`))
-
-  if (!me.isAdmin || !me.user) return <></>
 
   const setMembers = (fn: (list: Member[]) => Member[]) =>
     queryClient.setQueryData<Member[]>(membersQuery.queryKey, (list) => fn(list ?? []))
   const setInvites = (fn: (list: InvitationView[]) => InvitationView[]) =>
     queryClient.setQueryData<InvitationView[]>(invitesQuery.queryKey, (list) => fn(list ?? []))
 
-  async function once(work: () => Promise<void>) {
-    if (busyRef.current) return
-    busyRef.current = true
-    setBusy(true)
-    try {
-      await work()
-    } finally {
-      busyRef.current = false
-      setBusy(false)
-    }
-  }
-
-  const failed = (context: string, err: unknown, fallback: string) =>
-    apiFailed(`[members] ${context}`, err, fallback, apiMessage)
-
-  const manages = (member: Member) =>
-    me.isAdmin &&
-    member.email !== myEmail &&
-    member.role !== 'owner' &&
-    (member.role !== 'admin' || me.isOwner)
-
-  const invite = ({ email: address, role }: z.output<ReturnType<typeof inviteForm>>) =>
-    once(async () => {
-      try {
-        const sent = await client.invitations.invite({ email: address, role })
+  const invite = useApiMutation(
+    {
+      ...orpc.invitations.invite.mutationOptions(),
+      onSuccess: (sent) => {
         setInvites((list) =>
           list.some((i) => i.id === sent.id)
             ? list.map((i) => (i.id === sent.id ? sent : i))
@@ -141,56 +115,84 @@ export function MembersSection({ open }: SectionProps) {
           notify.warning(t(`${K}.emailNotSent`), {
             description: t(`${K}.inviteSavedNotSent`, { email: sent.email }),
           })
-      } catch (err) {
-        failed('inviting failed', err, t(`${K}.notInvited`, { email: address }))
-      }
-    })
+      },
+    },
+    {
+      context: '[members] inviting failed',
+      failure: ({ email }) => t(`${K}.notInvited`, { email }),
+      refusal: apiMessage,
+    },
+  )
 
-  async function changeRole(member: Member, next: AssignableRole) {
-    const name = displayName(member)
-    try {
-      const changed = await client.members.changeRole({ email: member.email, role: next })
-      setMembers((list) => list.map((m) => (m.email === member.email ? changed : m)))
-      notify.success(t(changed.role === 'admin' ? `${K}.nowAdmin` : `${K}.nowMember`, { name }))
-    } catch (err) {
-      failed('changing a role failed', err, t(`${K}.roleNotChanged`, { name }))
-      setMembers((list) => [...list])
-    }
-  }
+  const changeRole = useApiMutation(
+    {
+      mutationFn: ({ member, role }: { member: Member; role: AssignableRole }) =>
+        client.members.changeRole({ email: member.email, role }),
+      onSuccess: (changed, { member }) => {
+        setMembers((list) => list.map((m) => (m.email === member.email ? changed : m)))
+        const key = changed.role === 'admin' ? `${K}.nowAdmin` : `${K}.nowMember`
+        notify.success(t(key, { name: displayName(member) }))
+      },
+      onError: () => setMembers((list) => [...list]),
+    },
+    {
+      context: '[members] changing a role failed',
+      failure: ({ member }) => t(`${K}.roleNotChanged`, { name: displayName(member) }),
+      refusal: apiMessage,
+    },
+  )
 
-  const remove = (member: Member) =>
-    once(async () => {
-      const name = displayName(member)
-      try {
-        await client.members.remove({ email: member.email })
+  const remove = useApiMutation(
+    {
+      mutationFn: (member: Member) => client.members.remove({ email: member.email }),
+      onSuccess: (_, member) => {
         setMembers((list) => list.filter((m) => m.email !== member.email))
-        notify.success(t(`${K}.removed`, { name, organization: me.user?.organization?.name ?? '' }))
-      } catch (err) {
-        failed('removing failed', err, t(`${K}.notRemoved`, { name }))
-      }
-    })
+        const organization = me.user?.organization?.name ?? ''
+        notify.success(t(`${K}.removed`, { name: displayName(member), organization }))
+      },
+    },
+    {
+      context: '[members] removing failed',
+      failure: (member) => t(`${K}.notRemoved`, { name: displayName(member) }),
+      refusal: apiMessage,
+    },
+  )
 
-  const resend = (invitation: InvitationView) =>
-    once(async () => {
-      try {
-        const sent = await client.invitations.resend({ id: invitation.id })
+  const resend = useApiMutation(
+    {
+      ...orpc.invitations.resend.mutationOptions(),
+      onSuccess: (sent) => {
         setInvites((list) => list.map((i) => (i.id === sent.id ? sent : i)))
         notify.success(t(`${K}.inviteResent`, { email: sent.email }))
-      } catch (err) {
-        failed('resending failed', err, t(`${K}.notResent`))
-      }
-    })
+      },
+    },
+    { context: '[members] resending failed', failure: t(`${K}.notResent`), refusal: apiMessage },
+  )
 
-  const cancel = (invitation: InvitationView) =>
-    once(async () => {
-      try {
-        await client.invitations.cancel({ id: invitation.id })
+  const cancel = useApiMutation(
+    {
+      mutationFn: (invitation: InvitationView) => client.invitations.cancel({ id: invitation.id }),
+      onSuccess: (_, invitation) => {
         setInvites((list) => list.filter((i) => i.id !== invitation.id))
         notify.success(t(`${K}.inviteCancelled`, { email: invitation.email }))
-      } catch (err) {
-        failed('cancelling failed', err, t(`${K}.notCancelled`))
-      }
-    })
+      },
+    },
+    {
+      context: '[members] cancelling failed',
+      failure: t(`${K}.notCancelled`),
+      refusal: apiMessage,
+    },
+  )
+
+  const busy = invite.isPending || remove.isPending || resend.isPending || cancel.isPending
+
+  if (!me.isAdmin || !me.user) return <></>
+
+  const manages = (member: Member) =>
+    me.isAdmin &&
+    member.email !== myEmail &&
+    member.role !== 'owner' &&
+    (member.role !== 'admin' || me.isOwner)
 
   const invitedLine = (invitation: InvitationView) => {
     const days = daysSince(invitation.invitedOn)
@@ -226,7 +228,7 @@ export function MembersSection({ open }: SectionProps) {
         <CardContent>
           <form
             noValidate
-            onSubmit={(event) => void form.handleSubmit(invite)(event)}
+            onSubmit={(event) => void form.handleSubmit((values) => invite.run(values))(event)}
             className="flex flex-col gap-2"
           >
             <Field data-invalid={emailError ? true : undefined}>
@@ -289,7 +291,9 @@ export function MembersSection({ open }: SectionProps) {
                     {manages(member) && me.isOwner ? (
                       <Select
                         value={member.role}
-                        onValueChange={(value) => void changeRole(member, value as AssignableRole)}
+                        onValueChange={(value) =>
+                          void changeRole.run({ member, role: value as AssignableRole })
+                        }
                       >
                         <SelectTrigger aria-label={t(`${K}.roleOf`, { name })} className="w-32">
                           <SelectValue />
@@ -309,7 +313,7 @@ export function MembersSection({ open }: SectionProps) {
                         variant="ghost"
                         size="sm"
                         disabled={busy}
-                        onClick={() => void remove(member)}
+                        onClick={() => void remove.run(member)}
                       >
                         {t(`${K}.remove`)}
                       </Button>
@@ -342,7 +346,7 @@ export function MembersSection({ open }: SectionProps) {
                     variant="ghost"
                     size="sm"
                     disabled={busy}
-                    onClick={() => void resend(invitation)}
+                    onClick={() => void resend.run({ id: invitation.id })}
                   >
                     {t(`${K}.resend`)}
                   </Button>
@@ -350,7 +354,7 @@ export function MembersSection({ open }: SectionProps) {
                     variant="ghost"
                     size="sm"
                     disabled={busy}
-                    onClick={() => void cancel(invitation)}
+                    onClick={() => void cancel.run(invitation)}
                   >
                     {t(`${K}.cancel`)}
                   </Button>

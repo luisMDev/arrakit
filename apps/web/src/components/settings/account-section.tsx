@@ -20,12 +20,19 @@ import {
 } from '#/components/ui/select'
 import { Switch } from '#/components/ui/switch'
 import { type Language, isLanguage, loadLanguage } from '#/i18n'
-import { apiMessage, reportError, type SaveOnChange, saveOnChange } from '#/lib/api-errors'
+import {
+  conflictRefusal,
+  noRefusal,
+  reportError,
+  type SaveOnChange,
+  saveOnChange,
+} from '#/lib/api-errors'
 import { authClient } from '#/lib/auth-client'
 import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import { client, orpc } from '#/lib/orpc'
+import { useApiMutation } from '#/lib/use-api-mutation'
 import { useFailureToast } from '#/lib/use-failure-toast'
 
 import { ConfirmDeleteDialog } from './confirm-delete-dialog'
@@ -106,11 +113,7 @@ export function AccountSection({ open }: SectionProps) {
     values: { name: account ? displayName(account) : '' },
   })
   const nameError = form.formState.errors.name !== undefined
-  const [signingOut, setSigningOut] = useState(false)
-  const signingOutRef = useRef(false)
   const [confirming, setConfirming] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const deletingRef = useRef(false)
   const zoneFilled = useRef(false)
 
   useFailureToast(
@@ -194,44 +197,41 @@ export function AccountSection({ open }: SectionProps) {
 
   const nameField = registerClearing(form, 'name')
 
-  async function signOutEverywhere() {
-    if (signingOutRef.current) return
-    signingOutRef.current = true
-    setSigningOut(true)
-    try {
-      const result = await authClient.revokeOtherSessions()
-      if (result?.error) throw result.error
-      notify.success(t(`${K}.signedOut`))
-      void load(t(`${K}.devicesNotLoaded`))
-    } catch (err) {
-      reportError('[account] signing out everywhere failed', err)
-      notify.error(t(`${K}.notSignedOut`))
-    } finally {
-      signingOutRef.current = false
-      setSigningOut(false)
-    }
-  }
+  const signOutEverywhere = useApiMutation(
+    {
+      mutationFn: async () => {
+        const result = await authClient.revokeOtherSessions()
+        if (result?.error) throw result.error
+      },
+      onSuccess: () => {
+        notify.success(t(`${K}.signedOut`))
+        void load(t(`${K}.devicesNotLoaded`))
+      },
+    },
+    {
+      context: '[account] signing out everywhere failed',
+      failure: t(`${K}.notSignedOut`),
+      refusal: noRefusal,
+    },
+  )
 
-  async function deleteAccount() {
-    if (deletingRef.current) return
-    deletingRef.current = true
-    setDeleting(true)
-    try {
-      await client.me.delete()
-    } catch (err) {
-      deletingRef.current = false
-      setDeleting(false)
-      const message = apiMessage(err, (status) => status === 409)
-      if (!message) reportError('[account] deleting the account failed', err)
-      notify.error(message ?? t(`${K}.notDeleted`))
-      return
-    }
-    await authClient.signOut().catch(() => undefined)
-    setConfirming(false)
-    notify.success(t(`${K}.deleted`))
-    me.signedOut()
-    void navigate({ to: '/signin' })
-  }
+  const deleteAccount = useApiMutation(
+    {
+      ...orpc.me.delete.mutationOptions(),
+      onSuccess: async () => {
+        await authClient.signOut().catch(() => undefined)
+        setConfirming(false)
+        notify.success(t(`${K}.deleted`))
+        me.signedOut()
+        void navigate({ to: '/signin' })
+      },
+    },
+    {
+      context: '[account] deleting the account failed',
+      failure: t(`${K}.notDeleted`),
+      refusal: conflictRefusal,
+    },
+  )
 
   const zones =
     account?.timeZone && !TIME_ZONES.some((z) => z.zone === account.timeZone)
@@ -283,8 +283,8 @@ export function AccountSection({ open }: SectionProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={signingOut}
-                    onClick={() => void signOutEverywhere()}
+                    disabled={signOutEverywhere.isPending}
+                    onClick={() => void signOutEverywhere.run()}
                   >
                     {t(`${K}.signOutEverywhere`)}
                   </Button>
@@ -386,8 +386,8 @@ export function AccountSection({ open }: SectionProps) {
             onOpenChange={setConfirming}
             title={t(`${K}.confirmTitle`)}
             confirmLabel={t(`${K}.deleteAccount`)}
-            pending={deleting}
-            onConfirm={() => void deleteAccount()}
+            pending={deleteAccount.isPending}
+            onConfirm={() => void deleteAccount.run()}
           />
         </>
       ) : null}

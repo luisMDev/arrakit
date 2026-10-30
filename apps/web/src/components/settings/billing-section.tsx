@@ -1,5 +1,5 @@
 import type { BillingView } from '@arrakit/contract'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Receipt } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -32,8 +32,9 @@ import { Skeleton } from '#/components/ui/skeleton'
 import type { SectionProps } from '#/components/settings/settings-page'
 import { BillingUsage, TopUpsList } from '#/components/usage/billing-usage'
 import { useUsage } from '#/components/usage/use-usage'
-import { apiFailed, refusalMessage } from '#/lib/api-errors'
+import { refusalMessage } from '#/lib/api-errors'
 import { client, orpc } from '#/lib/orpc'
+import { useApiMutation } from '#/lib/use-api-mutation'
 import { useFailureToast } from '#/lib/use-failure-toast'
 
 const KEY = 'settings.billingSettings'
@@ -71,36 +72,34 @@ export function BillingSection({
   const { data: billing, error } = useQuery({ ...billingQuery, retry: false })
   const usage = useUsage()
   const [cancelling, setCancelling] = useState(false)
-  const [portalBusy, setPortalBusy] = useState(false)
 
   useFailureToast(error, '[billing] billing.get failed', t(`${KEY}.notLoaded`), refusalMessage)
 
   const replace = (next: BillingView) => queryClient.setQueryData(billingQuery.queryKey, next)
 
-  const cancel = useMutation({
-    ...orpc.billing.cancel.mutationOptions(),
-    onSuccess: (next) => {
-      replace(next)
-      setCancelling(false)
+  const cancel = useApiMutation(
+    {
+      ...orpc.billing.cancel.mutationOptions(),
+      onSuccess: (next) => {
+        replace(next)
+        setCancelling(false)
+      },
     },
-    onError: (err) => apiFailed('[billing] cancel failed', err, t(`${KEY}.notCancelled`)),
-  })
-  const resume = useMutation({
-    ...orpc.billing.resume.mutationOptions(),
-    onSuccess: replace,
-    onError: (err) => apiFailed('[billing] resume failed', err, t(`${KEY}.notKept`)),
-  })
+    { context: '[billing] cancel failed', failure: t(`${KEY}.notCancelled`) },
+  )
+  const resume = useApiMutation(
+    { ...orpc.billing.resume.mutationOptions(), onSuccess: replace },
+    { context: '[billing] resume failed', failure: t(`${KEY}.notKept`) },
+  )
 
-  async function portal(to: 'payment' | 'details') {
-    setPortalBusy(true)
-    try {
-      const { url } = await openPortal(to)
-      redirect(url)
-    } catch (err) {
-      apiFailed('[billing] portal failed', err, t(`${KEY}.portalNotOpened`))
-      setPortalBusy(false)
-    }
-  }
+  const portal = useApiMutation(
+    {
+      mutationFn: (to: 'payment' | 'details') => openPortal(to),
+      onSuccess: ({ url }) => redirect(url),
+    },
+    { context: '[billing] portal failed', failure: t(`${KEY}.portalNotOpened`) },
+  )
+  const portalBusy = portal.isPending || portal.isSuccess
 
   const billed =
     !!billing &&
@@ -111,7 +110,7 @@ export function BillingSection({
 
   const edit = (to: 'payment' | 'details') =>
     billed ? (
-      <Button size="sm" variant="outline" disabled={portalBusy} onClick={() => void portal(to)}>
+      <Button size="sm" variant="outline" disabled={portalBusy} onClick={() => void portal.run(to)}>
         {t(`${KEY}.edit`)}
       </Button>
     ) : undefined
@@ -131,7 +130,7 @@ export function BillingSection({
                   <Link to="/app/plans">{t(`${KEY}.switchPlan`)}</Link>
                 </Button>
                 {billing.endsOn ? (
-                  <Button size="sm" disabled={resume.isPending} onClick={() => resume.mutate({})}>
+                  <Button size="sm" disabled={resume.isPending} onClick={() => void resume.run({})}>
                     {t(`${KEY}.keepMyPlan`)}
                   </Button>
                 ) : (
@@ -241,7 +240,7 @@ export function BillingSection({
             <Button
               variant="destructive"
               disabled={cancel.isPending}
-              onClick={() => cancel.mutate({})}
+              onClick={() => void cancel.run({})}
             >
               {t(`${KEY}.cancelPlan`)}
             </Button>
