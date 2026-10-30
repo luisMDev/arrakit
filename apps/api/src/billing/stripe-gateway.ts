@@ -1,18 +1,15 @@
-import type { BillingCycle, PaidPlan } from '@arrakit/plans'
-
 import type { ApiEnv } from '../env'
 import { fakeStripe } from '../testing/fake-stripe'
+import { realStripeGateway } from './real-stripe'
+import type { PaidSubscription } from './subscription-plan'
+
+export type { PaidSubscription } from './subscription-plan'
 
 export interface Money {
   /** Minor unit. */
   amount: number
   /** Lowercase ISO 4217. */
   currency: string
-}
-
-export interface PaidSubscription {
-  plan: PaidPlan
-  cycle: BillingCycle
 }
 
 export interface CheckoutRequest extends PaidSubscription {
@@ -50,7 +47,7 @@ export interface SubscriptionSnapshot {
   periodEnd: number
   cancelAtPeriodEnd: boolean
   amount: Money | null
-  scheduled: { lookupKey: string; at: number; amount: Money | null } | null
+  scheduled: { lookupKey: string | null; at: number; amount: Money | null } | null
 }
 
 export interface BillingSnapshot {
@@ -97,6 +94,10 @@ export type BillingEvent =
       pdfUrl: string | null
     }
 
+export type SubscriptionEvent = Extract<BillingEvent, { kind: 'subscription' }>
+
+export type PortalTarget = 'payment' | 'details'
+
 export interface StripeGateway {
   readonly publishableKey: string
   checkout(req: CheckoutRequest): Promise<{ clientSecret: string }>
@@ -119,12 +120,16 @@ export interface StripeGateway {
   markReceipted(subscriptionId: string, planKey: string): Promise<void>
   cancelAtPeriodEnd(subscriptionId: string, cancel: boolean): Promise<void>
   endNow(subscriptionId: string): Promise<void>
-  portal(customerId: string, returnUrl: string, to: 'payment' | 'details'): Promise<string>
+  portal(customerId: string, returnUrl: string, to: PortalTarget): Promise<string>
 }
 
 export function createStripeGateway(env: ApiEnv): StripeGateway | null {
   if (env.STRIPE_FAKE === '1') return fakeStripe()
-  if (!env.STRIPE_SECRET_KEY || !env.STRIPE_PUBLISHABLE_KEY || !env.STRIPE_WEBHOOK_SECRET)
-    return null
-  return null
+  const { STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET } = env
+  if (!STRIPE_SECRET_KEY || !STRIPE_PUBLISHABLE_KEY || !STRIPE_WEBHOOK_SECRET) return null
+  return realStripeGateway({
+    secretKey: STRIPE_SECRET_KEY,
+    publishableKey: STRIPE_PUBLISHABLE_KEY,
+    webhookSecret: STRIPE_WEBHOOK_SECRET,
+  })
 }

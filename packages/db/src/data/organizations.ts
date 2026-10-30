@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm'
 
 import type { Database } from '../connection'
 import type { DataContext } from '../context'
-import { NotImplementedError } from '../errors'
+import { toOrganizationId } from '../organization-id'
 import {
   oauthAccessTokens,
   oauthConsents,
@@ -29,8 +29,16 @@ export async function revokeGrants(
 export function organizationsData(ctx: DataContext) {
   return {
     /** Revokes grants and deletes the row (cascades every org table). True when a row was deleted. */
-    async deleteOrganization(_id: string): Promise<boolean> {
-      throw new NotImplementedError('deleteOrganization')
+    async deleteOrganization(rawId: string): Promise<boolean> {
+      const organizationId = toOrganizationId(rawId)
+      return ctx.db.transaction(async (tx) => {
+        await revokeGrants(tx as unknown as Database, organizationId)
+        const removed = await tx
+          .delete(organizations)
+          .where(eq(organizations.id, organizationId))
+          .returning({ id: organizations.id })
+        return removed.length > 0
+      })
     },
     async organizationBySlug(slug: string): Promise<string | undefined> {
       const [row] = await ctx.db

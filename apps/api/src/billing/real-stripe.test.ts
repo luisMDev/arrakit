@@ -1,0 +1,455 @@
+import type Stripe from 'stripe'
+import { beforeEach, describe, expect, it } from 'vitest'
+
+import { loadApiEnv } from '../env'
+import { mapStripeEvent, planKeyOf, realStripeGateway } from './real-stripe'
+import { createStripeGateway } from './stripe-gateway'
+
+const ENV = {
+  STRIPE_SECRET_KEY: 'sk_test_x',
+  STRIPE_PUBLISHABLE_KEY: 'pk_test_x',
+  STRIPE_WEBHOOK_SECRET: 'whsec_x',
+}
+
+function heldSubscription() {
+  return {
+    id: 'sub_1',
+    customer: 'cus_1',
+    status: 'active',
+    schedule: 'sub_sched_old',
+    cancel_at_period_end: false,
+    billing_cycle_anchor: 1_760_054_400,
+    cancellation_details: { reason: null as string | null },
+    metadata: { organizationId: 'organization_1' } as Record<string, string>,
+    items: {
+      data: [
+        {
+          id: 'si_1',
+          quantity: 1,
+          price: { id: 'price_pro_monthly', lookup_key: 'arrakit_pro_monthly', metadata: {} },
+          current_period_end: 2_000,
+        },
+      ],
+    },
+  }
+}
+
+function stripeClient() {
+  const sent: { call: string; params: unknown }[] = []
+  const held = heldSubscription()
+  const record =
+    (call: string) =>
+    async (...args: unknown[]) => {
+      sent.push({ call, params: args.length > 1 ? args[1] : args[0] })
+      return {}
+    }
+  const client = {
+    prices: {
+      list: async () => ({
+        data: [{ id: 'price_new', product: 'prod_credits', unit_amount: 19_200, currency: 'usd' }],
+      }),
+    },
+    checkout: {
+      sessions: {
+        create: async (params: unknown) => {
+          sent.push({ call: 'checkout.sessions.create', params })
+          return { client_secret: 'cs_secret', url: 'https://checkout.stripe.test/c/pay/cs_1' }
+        },
+      },
+    },
+    paymentIntents: {
+      retrieve: async (id: string) => ({
+        id,
+        amount: 2_420,
+        metadata:
+          id === 'pi_top_up'
+            ? { kind: 'top_up', organizationId: 'organization_1', cents: '2000' }
+            : {},
+      }),
+    },
+    subscriptions: {
+      retrieve: async () => held,
+      update: async (_id: string, params: unknown) => {
+        sent.push({ call: 'subscriptions.update', params })
+        return held
+      },
+      cancel: record('subscriptions.cancel'),
+    },
+    subscriptionSchedules: {
+      release: record('subscriptionSchedules.release'),
+      create: async () => ({
+        id: 'sub_sched_new',
+        phases: [{ start_date: 1_000, end_date: 2_000, discounts: [{ discount: 'di_1' }] }],
+      }),
+      update: async (_id: string, params: unknown) => {
+        sent.push({ call: 'subscriptionSchedules.update', params })
+        return {}
+      },
+    },
+  }
+  return { client: client as unknown as Stripe, sent, held }
+}
+
+const event = (type: string, object: object, extra: object = {}) =>
+  ({ type, data: { object, ...extra } }) as unknown as Stripe.Event
+
+describe('createStripeGateway', () => {
+  it.each(Object.keys(ENV))('is null without %s: payments are not set up', (missing) => {
+    expect(createStripeGateway(loadApiEnv({ ...ENV, [missing]: undefined }))).toBeNull()
+    expect(createStripeGateway(loadApiEnv({ ...ENV, [missing]: '' }))).toBeNull()
+  })
+
+  it('carries the publishable key once all three are set', () => {
+    expect(createStripeGateway(loadApiEnv(ENV))?.publishableKey).toBe('pk_test_x')
+  })
+
+  it('is the in-memory fake with STRIPE_FAKE=1', () => {
+    expect(createStripeGateway(loadApiEnv({ STRIPE_FAKE: '1' }))?.publishableKey).toBe(
+      'pk_test_fake',
+    )
+  })
+})
+
+describe('the real gateway', () => {
+  let stripe: ReturnType<typeof stripeClient>
+  let gateway: ReturnType<typeof realStripeGateway>
+
+  beforeEach(() => {
+    stripe = stripeClient()
+    gateway = realStripeGateway(
+      { secretKey: 'sk', publishableKey: 'pk', webhookSecret: 'whsec' },
+      stripe.client,
+    )
+  })
+
+  const params = (call: string) => stripe.sent.filter((s) => s.call === call).map((s) => s.params)
+
+  it("opens Embedded Checkout with the paying admin's email as requestedBy", async () => {
+    await gateway.checkout({
+      organizationId: 'organization_1',
+      plan: 'pro',
+      cycle: 'yearly',
+      customerId: null,
+      email: 'ana@acme.com',
+      returnUrl: 'https://app.test/app/welcome?session_id={CHECKOUT_SESSION_ID}',
+    })
+    expect(params('checkout.sessions.create')[0]).toMatchObject({
+      ui_mode: 'embedded_page',
+      mode: 'subscription',
+      line_items: [{ price: 'price_new', quantity: 1 }],
+      client_reference_id: 'organization_1',
+      subscription_data: {
+        metadata: { organizationId: 'organization_1', requestedBy: 'ana@acme.com' },
+      },
+      customer_email: 'ana@acme.com',
+      tax_id_collection: { enabled: true },
+    })
+  })
+
+  it('reuses a returning customer, letting Stripe update its name and address', async () => {
+    await gateway.checkout({
+      organizationId: 'organization_1',
+      plan: 'pro',
+      cycle: 'yearly',
+      customerId: 'cus_9',
+      email: 'ana@acme.com',
+      returnUrl: 'https://app.test',
+    })
+    expect(params('checkout.sessions.create')[0]).toMatchObject({
+      customer: 'cus_9',
+      customer_update: { name: 'auto', address: 'auto' },
+    })
+  })
+
+  it('changes now with requestedBy, prorating and refusing an incomplete payment', async () => {
+    await gateway.changeNow('sub_1', { plan: 'team', cycle: 'yearly' }, 'ana@acme.com')
+    expect(params('subscriptionSchedules.release')).toEqual(['sub_sched_old'])
+    expect(params('subscriptions.update')[0]).toEqual({
+      items: [{ id: 'si_1', price: 'price_new' }],
+      proration_behavior: 'always_invoice',
+      payment_behavior: 'error_if_incomplete',
+      cancel_at_period_end: false,
+      metadata: { requestedBy: 'ana@acme.com' },
+    })
+  })
+
+  it('schedules a change at renewal keeping requestedBy and the discounts in both phases', async () => {
+    await gateway.changeAtRenewal('sub_1', { plan: 'pro', cycle: 'yearly' }, 'ana@acme.com')
+    const metadata = { organizationId: 'organization_1', requestedBy: 'ana@acme.com' }
+    expect(params('subscriptions.update')[0]).toEqual({ cancel_at_period_end: false, metadata })
+    expect(params('subscriptionSchedules.update')[0]).toEqual({
+      end_behavior: 'release',
+      phases: [
+        {
+          items: [{ price: 'price_pro_monthly', quantity: 1 }],
+          start_date: 1_000,
+          end_date: 2_000,
+          discounts: [{ discount: 'di_1' }],
+          metadata,
+        },
+        {
+          items: [{ price: 'price_new', quantity: 1 }],
+          duration: { interval: 'year' },
+          billing_cycle_anchor: 'phase_start',
+          proration_behavior: 'none',
+          discounts: [{ discount: 'di_1' }],
+          metadata,
+        },
+      ],
+    })
+  })
+
+  it('keeps a coupon or promotion code of the current phase and drops empty discounts', async () => {
+    const schedules = (
+      stripe.client as unknown as {
+        subscriptionSchedules: { create: () => Promise<unknown> }
+      }
+    ).subscriptionSchedules
+    schedules.create = async () => ({
+      id: 'sub_sched_new',
+      phases: [
+        {
+          start_date: 1_000,
+          end_date: 2_000,
+          discounts: [
+            { discount: null, coupon: 'co_1', promotion_code: null },
+            { discount: null, coupon: null, promotion_code: { id: 'promo_1' } },
+            { discount: null, coupon: null, promotion_code: null },
+          ],
+        },
+      ],
+    })
+    await gateway.changeAtRenewal('sub_1', { plan: 'pro', cycle: 'monthly' }, 'ana@acme.com')
+    const { phases } = params('subscriptionSchedules.update')[0] as {
+      phases: { discounts: unknown }[]
+    }
+    const expected = [{ coupon: 'co_1' }, { promotion_code: 'promo_1' }]
+    expect(phases.map((phase) => phase.discounts)).toEqual([expected, expected])
+  })
+
+  it('reads requestedBy, the receipt marker, the anchor and the cancellation reason', async () => {
+    stripe.held.metadata = {
+      organizationId: 'organization_1',
+      requestedBy: 'ana@acme.com',
+      receiptFor: 'pro_monthly',
+    }
+    stripe.held.cancellation_details = { reason: 'payment_failed' }
+    await expect(gateway.subscription('sub_1')).resolves.toEqual({
+      id: 'sub_1',
+      customerId: 'cus_1',
+      organizationId: 'organization_1',
+      requestedBy: 'ana@acme.com',
+      receiptFor: 'pro_monthly',
+      cancellationReason: 'payment_failed',
+      status: 'active',
+      lookupKey: 'pro_monthly',
+      anchor: new Date(1_760_054_400 * 1000),
+    })
+  })
+
+  it('marks a receipt in the metadata', async () => {
+    await gateway.markReceipted('sub_1', 'pro_yearly')
+    expect(params('subscriptions.update')).toEqual([{ metadata: { receiptFor: 'pro_yearly' } }])
+  })
+
+  it('opens a hosted top-up Checkout under the Credits product', async () => {
+    const { url } = await gateway.topUpCheckout({
+      organizationId: 'organization_1',
+      cents: 2_000,
+      customerId: null,
+      email: 'ana@acme.com',
+      successUrl: 'https://app.test/app/billing?top_up=paid',
+      cancelUrl: 'https://app.test/app/billing',
+    })
+    expect(url).toBe('https://checkout.stripe.test/c/pay/cs_1')
+    expect(params('checkout.sessions.create')[0]).toMatchObject({
+      mode: 'payment',
+      line_items: [
+        {
+          price_data: { currency: 'usd', product: 'prod_credits', unit_amount: 2_000 },
+          quantity: 1,
+        },
+      ],
+      metadata: { kind: 'top_up', organizationId: 'organization_1', requestedBy: 'ana@acme.com' },
+      payment_intent_data: {
+        metadata: { kind: 'top_up', organizationId: 'organization_1', cents: '2000' },
+      },
+      invoice_creation: { enabled: true, invoice_data: { metadata: { kind: 'top_up' } } },
+      customer_email: 'ana@acme.com',
+      customer_creation: 'always',
+    })
+  })
+
+  it('reads a top-up payment, and nothing from another payment', async () => {
+    await expect(gateway.topUpPayment('pi_top_up')).resolves.toEqual({
+      organizationId: 'organization_1',
+      cents: 2_000,
+      total: 2_420,
+    })
+    await expect(gateway.topUpPayment('pi_other')).resolves.toBeNull()
+  })
+
+  it('ends a live subscription now, and leaves a cancelled one alone', async () => {
+    await gateway.endNow('sub_1')
+    stripe.held.status = 'canceled'
+    await gateway.endNow('sub_1')
+    expect(params('subscriptions.cancel')).toEqual(['sub_1'])
+  })
+})
+
+describe('planKeyOf', () => {
+  it('reads the plan from the metadata, which never moves', () => {
+    expect(
+      planKeyOf({ lookup_key: 'arrakit_team_yearly', metadata: { plan: 'pro', cycle: 'monthly' } }),
+    ).toBe('pro_monthly')
+  })
+
+  it('falls back to the lookup key without its prefix', () => {
+    expect(planKeyOf({ lookup_key: 'arrakit_pro_yearly', metadata: {} })).toBe('pro_yearly')
+    expect(planKeyOf({ lookup_key: null, metadata: {} })).toBeNull()
+  })
+})
+
+describe('mapStripeEvent', () => {
+  const price = (key: string) => ({ lookup_key: `arrakit_${key}`, metadata: {} })
+  const subscription = (key: string) => ({
+    id: 'sub_1',
+    metadata: { organizationId: 'organization_1' },
+    items: { data: [{ price: price(key) }] },
+  })
+  const invoice = (fields: object) => ({
+    id: 'in_1',
+    amount_due: 19_200,
+    amount_paid: 19_200,
+    currency: 'usd',
+    invoice_pdf: 'https://pay.stripe.test/in_1.pdf',
+    next_payment_attempt: 1_800_000_000,
+    parent: { subscription_details: { subscription: 'sub_1' } },
+    ...fields,
+  })
+
+  it('reads a subscription Checkout completed as a subscription event', () => {
+    expect(
+      mapStripeEvent(
+        event('checkout.session.completed', {
+          mode: 'subscription',
+          subscription: 'sub_1',
+          client_reference_id: 'organization_1',
+        }),
+      ),
+    ).toEqual({ kind: 'subscription', subscriptionId: 'sub_1', organizationId: 'organization_1' })
+    expect(
+      mapStripeEvent(event('checkout.session.async_payment_succeeded', { mode: 'subscription' })),
+    ).toBeNull()
+  })
+
+  it.each(['checkout.session.completed', 'checkout.session.async_payment_succeeded'])(
+    'reads a top-up from %s',
+    (type) => {
+      expect(
+        mapStripeEvent(
+          event(type, {
+            id: 'cs_1',
+            mode: 'payment',
+            metadata: { kind: 'top_up', organizationId: 'organization_1' },
+            client_reference_id: 'organization_1',
+            customer: 'cus_1',
+            amount_subtotal: 2_000,
+            payment_status: 'paid',
+          }),
+        ),
+      ).toEqual({
+        kind: 'top-up',
+        sessionId: 'cs_1',
+        organizationId: 'organization_1',
+        customerId: 'cus_1',
+        cents: 2_000,
+        paid: true,
+      })
+    },
+  )
+
+  it('ignores a payment Checkout that is no top-up', () => {
+    expect(
+      mapStripeEvent(event('checkout.session.completed', { mode: 'payment', metadata: {} })),
+    ).toBeNull()
+  })
+
+  it.each(['refund.created', 'charge.dispute.created'])('reads %s as money back', (type) => {
+    expect(
+      mapStripeEvent(event(type, { id: 're_1', payment_intent: 'pi_1', amount: 1_210 })),
+    ).toEqual({
+      kind: 'payment-reversed',
+      reversalId: 're_1',
+      paymentIntentId: 'pi_1',
+      amount: 1_210,
+    })
+    expect(mapStripeEvent(event(type, { id: 're_2', payment_intent: null, amount: 1 }))).toBeNull()
+  })
+
+  it('names the previous price only when the update moved it', () => {
+    expect(
+      mapStripeEvent(
+        event('customer.subscription.updated', subscription('team_yearly'), {
+          previous_attributes: { items: { data: [{ price: price('pro_yearly') }] } },
+        }),
+      ),
+    ).toEqual({
+      kind: 'subscription',
+      subscriptionId: 'sub_1',
+      organizationId: 'organization_1',
+      previousLookupKey: 'pro_yearly',
+    })
+    expect(
+      mapStripeEvent(
+        event('customer.subscription.updated', subscription('pro_yearly'), {
+          previous_attributes: { items: { data: [{ price: price('pro_yearly') }] } },
+        }),
+      ),
+    ).toMatchObject({ previousLookupKey: null })
+  })
+
+  it('reads the invoice events of a subscription', () => {
+    expect(mapStripeEvent(event('invoice.upcoming', invoice({})))).toEqual({
+      kind: 'invoice-upcoming',
+      subscriptionId: 'sub_1',
+      amount: { amount: 19_200, currency: 'usd' },
+    })
+    expect(mapStripeEvent(event('invoice.payment_failed', invoice({})))).toMatchObject({
+      kind: 'invoice-failed',
+      nextAttempt: 1_800_000_000,
+    })
+    expect(
+      mapStripeEvent(event('invoice.payment_failed', invoice({ next_payment_attempt: null }))),
+    ).toMatchObject({ nextAttempt: null })
+    expect(
+      mapStripeEvent(
+        event(
+          'invoice.paid',
+          invoice({
+            billing_reason: 'subscription_cycle',
+            parent: { subscription_details: { subscription: { id: 'sub_1' } } },
+          }),
+        ),
+      ),
+    ).toEqual({
+      kind: 'invoice-paid',
+      subscriptionId: 'sub_1',
+      invoiceId: 'in_1',
+      amount: { amount: 19_200, currency: 'usd' },
+      pdfUrl: 'https://pay.stripe.test/in_1.pdf',
+    })
+  })
+
+  it.each(['subscription_create', 'manual', 'subscription_threshold', 'upcoming'])(
+    'ignores a paid invoice for %s',
+    (billing_reason) => {
+      expect(mapStripeEvent(event('invoice.paid', invoice({ billing_reason })))).toBeNull()
+    },
+  )
+
+  it('ignores invoices without a subscription and unknown events', () => {
+    expect(mapStripeEvent(event('invoice.upcoming', invoice({ parent: null })))).toBeNull()
+    expect(mapStripeEvent(event('customer.created', {}))).toBeNull()
+  })
+})

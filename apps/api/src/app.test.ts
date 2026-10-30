@@ -47,11 +47,6 @@ describe('api app', () => {
     await expect(t.client(headers).members.list()).rejects.toMatchObject({ status: 404 })
   })
 
-  it('stubs unimplemented procedures with 501', async () => {
-    const { headers } = await t.signIn({ email: 'bo@birch.vc' })
-    await expect(t.client(headers).organizations.skip()).rejects.toMatchObject({ status: 501 })
-  })
-
   it('mounts Better Auth, the MCP challenge and the Stripe webhook', async () => {
     expect((await t.app.request('/api/auth/get-session')).status).toBe(200)
     const mcp = await t.app.request('/api/mcp', { method: 'POST' })

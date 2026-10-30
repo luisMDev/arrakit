@@ -24,6 +24,7 @@
   "welcome": {
     "titleLead": "Welcome",
     "titleRest": "to {{plan}}.",
+    "body": "Your organization is all set. Everyone in it has the new plan now.",
     "receiptSent": "Receipt sent to your email. Manage your plan anytime in",
     "settings": "Settings",
     "receiptEnd": ".",

@@ -70,7 +70,6 @@ export function loadAuthConfig(env: Env): AuthConfig {
 export const mcpResourceURL = (baseURL: string) => new URL(MCP_PATH, baseURL).toString()
 export const oauthIssuer = (baseURL: string) => new URL(AUTH_BASE_PATH, baseURL).toString()
 
-/** Exact match against the trusted origins (no Origin, `null`, lookalikes are refused). */
 export const isTrustedOrigin = (origin: string | null | undefined, trusted: readonly string[]) =>
   typeof origin === 'string' && trusted.includes(origin)
 

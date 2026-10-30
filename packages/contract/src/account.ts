@@ -1,3 +1,4 @@
+import { isTimeZone } from '@arrakit/address'
 import { z } from 'zod'
 
 import { base, languageSchema, organizationSummarySchema, planSchema, roleSchema } from './common'
@@ -33,7 +34,7 @@ export const accountUpdateSchema = z.object({
     .regex(/^[^\p{Cc}\u2028\u2029]*$/u, 'Keep your name on one line.')
     .optional(),
   language: languageSchema.optional(),
-  timeZone: z.string().optional(),
+  timeZone: z.string().refine(isTimeZone, 'Pick a time zone from the list.').optional(),
   emails: z.object({ productNews: z.boolean() }).partial().optional(),
 })
 

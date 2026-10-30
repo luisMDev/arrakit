@@ -24,6 +24,7 @@
   "welcome": {
     "titleLead": "Te damos la bienvenida",
     "titleRest": "a {{plan}}.",
+    "body": "Tu organización está lista. Todos sus miembros tienen ya el nuevo plan.",
     "receiptSent": "Te hemos enviado el recibo por email. Gestiona tu plan cuando quieras en",
     "settings": "Ajustes",
     "receiptEnd": ".",

@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server'
 
 import { createApp } from './app'
+import { closeMcpHandlers } from './routes/mcp'
 import { depsFromEnv } from './services'
 import { registerWorkers } from './workers/index'
 
@@ -16,15 +17,19 @@ async function main() {
   const shutdown = () => {
     if (stopping) return
     stopping = true
-    server.close(() => {
-      void deps.data.close().finally(() => process.exit(0))
-    })
+    const stopped = new Promise<void>((resolve) => server.close(() => resolve()))
+    // Streams still open on the MCP handlers would keep server.close() waiting.
+    void closeMcpHandlers()
+      .then(() => stopped)
+      .then(() => deps.data.close())
+      .catch((err: unknown) => console.error('[api] shutdown failed', err))
+      .finally(() => process.exit(0))
   }
   process.on('SIGTERM', shutdown)
   process.on('SIGINT', shutdown)
 }
 
-main().catch((err) => {
+main().catch((err: unknown) => {
   console.error('[api] failed to start', err)
   process.exit(1)
 })

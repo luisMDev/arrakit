@@ -43,6 +43,7 @@ export const changePreviewSchema = z.object({
   dueToday: moneySchema,
   nextInvoice: moneySchema,
 })
+export type ChangePreview = z.infer<typeof changePreviewSchema>
 
 export const billingContract = {
   checkout: base

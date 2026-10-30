@@ -9,5 +9,8 @@ export const Route = createFileRoute('/profile')({
   validateSearch: choiceSearch,
   beforeLoad: requireAccount,
   head: titled('yourOrganization'),
-  component: ProfilePage,
+  component: function Profile() {
+    const navigate = Route.useNavigate()
+    return <ProfilePage search={Route.useSearch()} onDone={(target) => void navigate(target)} />
+  },
 })

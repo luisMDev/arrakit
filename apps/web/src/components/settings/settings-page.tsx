@@ -1,3 +1,5 @@
+import { Link } from '@tanstack/react-router'
+import { ArrowLeft } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -12,7 +14,15 @@ import { useCurrentUser } from '#/lib/current-user'
 
 export type SettingsSection = 'account' | 'general' | 'usage' | 'members' | 'billing' | 'security'
 
-const NAV: { group: string; items: { id: SettingsSection; adminOnly?: boolean }[] }[] = [
+export interface SectionProps {
+  /** Opens another settings section in place. */
+  open: (section: SettingsSection) => void
+}
+
+export const SETTINGS_NAV: {
+  group: string
+  items: { id: SettingsSection; adminOnly?: boolean }[]
+}[] = [
   { group: 'settings.mySettings', items: [{ id: 'account' }] },
   {
     group: 'settings.organizationSettings',
@@ -26,7 +36,7 @@ const NAV: { group: string; items: { id: SettingsSection; adminOnly?: boolean }[
   },
 ]
 
-const SECTIONS: Record<SettingsSection, () => React.JSX.Element> = {
+const SECTIONS: Record<SettingsSection, (props: SectionProps) => React.JSX.Element> = {
   account: AccountSection,
   general: GeneralSection,
   usage: UsageSection,
@@ -35,43 +45,60 @@ const SECTIONS: Record<SettingsSection, () => React.JSX.Element> = {
   security: SecuritySection,
 }
 
+const ADMIN_ONLY = new Set(
+  SETTINGS_NAV.flatMap((group) => group.items)
+    .filter((item) => item.adminOnly)
+    .map((item) => item.id),
+)
+
 export function SettingsPage({ section }: { section: SettingsSection }) {
   const { t } = useTranslation()
   const { isAdmin } = useCurrentUser()
-  const visible = (id: SettingsSection) =>
-    !NAV.flatMap((g) => g.items).find((i) => i.id === id)?.adminOnly || isAdmin
-  const [current, setCurrent] = useState<SettingsSection>(visible(section) ? section : 'account')
+  const visible = (id: SettingsSection) => isAdmin || !ADMIN_ONLY.has(id)
+  const [chosen, setChosen] = useState<SettingsSection>(section)
+  const current = visible(chosen) ? chosen : 'account'
+  const open = (id: SettingsSection) => {
+    if (visible(id)) setChosen(id)
+  }
   const Section = SECTIONS[current]
 
   return (
-    <main className="mx-auto grid w-full max-w-5xl gap-6 p-6 md:grid-cols-[14rem_1fr]">
-      <nav aria-label={t('settings.title')} className="flex flex-col gap-4">
+    <main className="mx-auto grid w-full max-w-5xl gap-8 p-6 md:grid-cols-[14rem_1fr]">
+      <div className="flex flex-col gap-4">
+        <Button asChild variant="ghost" className="self-start">
+          <Link to="/app">
+            <ArrowLeft />
+            {t('settings.back')}
+          </Link>
+        </Button>
         <h1 className="sr-only">{t('settings.title')}</h1>
-        {NAV.map((group) => (
-          <div
-            key={group.group}
-            role="group"
-            aria-label={t(group.group)}
-            className="flex flex-col gap-1"
-          >
-            <p className="text-muted-foreground text-sm">{t(group.group)}</p>
-            {group.items
-              .filter((item) => visible(item.id))
-              .map((item) => (
-                <Button
-                  key={item.id}
-                  variant={current === item.id ? 'secondary' : 'ghost'}
-                  className="justify-start"
-                  aria-current={current === item.id ? 'true' : undefined}
-                  onClick={() => setCurrent(item.id)}
-                >
-                  {t(`settings.${item.id}`)}
-                </Button>
-              ))}
-          </div>
-        ))}
-      </nav>
-      <Section />
+        <nav aria-label={t('settings.title')} className="flex flex-col gap-4">
+          {SETTINGS_NAV.map((group) => (
+            <div
+              key={group.group}
+              role="group"
+              aria-label={t(group.group)}
+              className="flex flex-col gap-1"
+            >
+              <p className="text-muted-foreground px-3 text-xs font-medium">{t(group.group)}</p>
+              {group.items
+                .filter((item) => visible(item.id))
+                .map((item) => (
+                  <Button
+                    key={item.id}
+                    variant={current === item.id ? 'secondary' : 'ghost'}
+                    className="justify-start"
+                    aria-current={current === item.id ? 'true' : undefined}
+                    onClick={() => open(item.id)}
+                  >
+                    {t(`settings.${item.id}`)}
+                  </Button>
+                ))}
+            </div>
+          ))}
+        </nav>
+      </div>
+      <Section open={open} />
     </main>
   )
 }

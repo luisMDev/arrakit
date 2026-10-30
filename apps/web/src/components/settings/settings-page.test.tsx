@@ -1,48 +1,79 @@
 import type { Me } from '@arrakit/contract'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import '#/i18n'
-import { orpc } from '#/lib/orpc'
+import { SettingsPage, type SettingsSection } from './settings-page'
+import { answer, api, meAs, renderScreen } from './testing'
 
-import { SettingsPage } from './settings-page'
-
-function renderAs(role: Me['role'], section: 'account' | 'members' = 'account') {
-  const queryClient = new QueryClient()
-  queryClient.setQueryData(orpc.me.get.queryOptions().queryKey, {
-    email: 'ana@acme.com',
-    name: 'Ana',
+beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
+beforeEach(() => {
+  answer('me/account/get', {
+    name: 'Lucía Gómez',
+    email: 'lucia@acme.com',
+    signInWith: 'email',
+    devices: ['Mac'],
     language: 'en',
-    organization: {
-      id: '0f8fad5b-d9cb-469f-a165-70867728950e',
-      name: 'Acme',
-      slug: 'acme',
-      plan: 'free',
-    },
-    role,
-    plan: 'free',
-    seats: 1,
-  } satisfies Me)
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <SettingsPage section={section} />
-    </QueryClientProvider>,
-  )
-}
+    timeZone: 'Europe/Madrid',
+    emails: { productNews: false },
+  })
+  answer('members/list', [])
+  answer('invitations/list', [])
+})
+afterEach(() => api.resetHandlers())
+afterAll(() => api.close())
 
-describe('SettingsPage shell', () => {
-  it('hides admin-only sections from members and opens Account instead', () => {
-    renderAs('member', 'members')
-    expect(screen.queryByRole('button', { name: 'Members' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Account' })).toHaveAttribute('aria-current', 'true')
+const renderAs = (role: Me['role'], section: SettingsSection = 'account') =>
+  renderScreen(<SettingsPage section={section} />, { me: meAs({ role }) })
+
+const nav = () => screen.getByRole('navigation', { name: 'Settings' })
+
+describe('SettingsPage', () => {
+  it('groups the sections and marks the current one', async () => {
+    renderAs('owner')
+    await screen.findByRole('heading', { level: 2, name: 'Account' })
+    const mine = within(nav()).getByRole('group', { name: 'My settings' })
+    expect(
+      within(mine)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['Account'])
+    const organization = within(nav()).getByRole('group', { name: 'Organization settings' })
+    expect(
+      within(organization)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['General', 'Usage', 'Members', 'Billing', 'Security and data'])
+    expect(within(nav()).getByRole('button', { name: 'Account' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
   })
 
-  it('switches sections in page for admins', async () => {
+  it('switches sections in page', async () => {
     renderAs('admin', 'members')
-    expect(screen.getByRole('button', { name: 'Members' })).toHaveAttribute('aria-current', 'true')
-    await userEvent.click(screen.getByRole('button', { name: 'General' }))
-    expect(screen.getByRole('button', { name: 'General' })).toHaveAttribute('aria-current', 'true')
+    expect(await screen.findByRole('heading', { level: 2, name: 'Members' })).toBeInTheDocument()
+    await userEvent.click(within(nav()).getByRole('button', { name: 'General' }))
+    expect(screen.getByRole('heading', { level: 2, name: 'General' })).toBeInTheDocument()
+    expect(within(nav()).getByRole('button', { name: 'General' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+  })
+
+  it.each<SettingsSection>(['members', 'billing'])(
+    'hides Members and Billing from a member, who gets Account at /app/%s',
+    async (section) => {
+      renderAs('member', section)
+      expect(await screen.findByRole('heading', { level: 2, name: 'Account' })).toBeInTheDocument()
+      expect(within(nav()).queryByRole('button', { name: 'Members' })).toBeNull()
+      expect(within(nav()).queryByRole('button', { name: 'Billing' })).toBeNull()
+    },
+  )
+
+  it('goes back to the app', async () => {
+    const { location } = renderAs('owner')
+    await userEvent.click(await screen.findByRole('link', { name: 'Back' }))
+    await waitFor(() => expect(location()).toBe('/app'))
   })
 })

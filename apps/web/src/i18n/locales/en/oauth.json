@@ -2,15 +2,15 @@
   "oauth": {
     "oauthSignin": {
       "incompleteTitle": "This link is incomplete.",
-      "startAgain": "Start again from the app you were connecting Arrakit to.",
+      "startAgain": "Start again from the app you were connecting {{appName}} to.",
       "titleStart": "Sign in to",
-      "titleEnd": "connect Arrakit",
+      "titleEnd": "connect {{appName}}",
       "useOrganizationAccount": "Use your organization's account. You'll see what is shared before anything is."
     },
     "oauthConsent": {
       "loading": "Loading…",
       "incompleteTitle": "This link is incomplete.",
-      "startAgain": "Start again from the app you were connecting Arrakit to.",
+      "startAgain": "Start again from the app you were connecting {{appName}} to.",
       "unavailableTitle": "Couldn't open this request.",
       "connect": "Connect",
       "willSee": "{{client}} will act as you in {{organization}}.",

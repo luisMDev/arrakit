@@ -13,7 +13,6 @@ export const onboardingContract = {
     .route({ method: 'POST', path: '/organizations', tags: ['organizations'], successStatus: 201 })
     .input(createOrganizationSchema)
     .output(organizationSummarySchema),
-  /** Any body is ignored: the name comes only from the session. */
   skip: base
     .route({
       method: 'POST',

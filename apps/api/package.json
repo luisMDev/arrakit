@@ -9,7 +9,10 @@
     "start": "node --env-file-if-exists=.env dist/main.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "stripe:prices": "node --env-file-if-exists=.env --import tsx scripts/stripe-prices.ts",
+    "stripe:credits": "node --env-file-if-exists=.env --import tsx scripts/stripe-credits.ts",
+    "openapi:export": "tsx scripts/openapi-export.ts"
   },
   "dependencies": {
     "@arrakit/address": "workspace:*",

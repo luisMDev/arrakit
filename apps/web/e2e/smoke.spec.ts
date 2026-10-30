@@ -7,7 +7,7 @@ test('the web app renders and reaches the API through the /api proxy', async ({
   // "/" has no page of its own: it redirects to /signin (a visitor stays there).
   await page.goto('/')
   await expect(page).toHaveURL(/\/signin$/)
-  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Where should we write to you?' })).toBeVisible()
   await expect(page).toHaveTitle('Arrakit · Sign in')
 
   const openapi = await request.get('/api/openapi.json')

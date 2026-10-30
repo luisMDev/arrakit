@@ -10,7 +10,7 @@
     "build": "vite build",
     "preview": "vite preview --port 4200",
     "start": "node .output/server/index.mjs",
-    "typecheck": "tsr generate && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",

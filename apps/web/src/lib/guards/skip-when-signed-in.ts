@@ -11,9 +11,11 @@ import { session } from '#/lib/session'
 export async function skipWhenSignedIn({
   context,
   search,
+  cause,
 }: {
   context: { queryClient: QueryClient }
   search: ChoiceSearch
+  cause?: 'preload' | 'enter' | 'stay'
 }) {
   let hasOrganization: boolean
   try {
@@ -24,6 +26,7 @@ export async function skipWhenSignedIn({
     const status = statusOf(err)
     if (status === 401) return
     console.error('[skipWhenSignedIn] the guard failed', err)
+    if (cause === 'preload') return
     toast.error(tr(status === 0 || status >= 500 ? 'onboarding.unreachable' : 'onboarding.failed'))
     return
   }

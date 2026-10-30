@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { checkoutChoice } from './checkout-choice'
+import { checkoutChoice, profileLanding } from './checkout-choice'
 
 describe('checkoutChoice', () => {
   it('keeps a paid plan with a known cycle', () => {
@@ -19,5 +19,14 @@ describe('checkoutChoice', () => {
     {},
   ])('drops %j', (search) => {
     expect(checkoutChoice(search)).toBeNull()
+  })
+})
+
+describe('profileLanding', () => {
+  it('lands on Profile, carrying a valid choice', () => {
+    expect(profileLanding(null)).toBe('/profile')
+    expect(profileLanding({ plan: 'team', cycle: 'monthly' })).toBe(
+      '/profile?plan=team&cycle=monthly',
+    )
   })
 })

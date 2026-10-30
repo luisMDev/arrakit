@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 
 import type { DataContext } from '../context'
-import { NotImplementedError } from '../errors'
+import { OrganizationNameUnusableError } from '../errors'
 import type { OrganizationId } from '../organization-id'
 import { organizations } from '../schema/index'
 
@@ -18,8 +18,15 @@ export function organizationScope(ctx: DataContext, organizationId: Organization
       return row
     },
     /** Renames (trimmed); slug unchanged. Undefined when the organization is gone. */
-    async rename(_name: string): Promise<OrganizationRow | undefined> {
-      throw new NotImplementedError('forOrganization().rename')
+    async rename(rawName: string): Promise<OrganizationRow | undefined> {
+      const name = rawName.trim()
+      if (name === '') throw new OrganizationNameUnusableError()
+      const [row] = await ctx.db
+        .update(organizations)
+        .set({ name })
+        .where(eq(organizations.id, organizationId))
+        .returning()
+      return row
     },
   }
 }

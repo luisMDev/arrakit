@@ -1,11 +1,26 @@
+import { isWorkEmail, normalizeEmail } from '@arrakit/address'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 
-import type { AuthConfig } from './config'
+import { type AuthConfig, isTrustedOrigin } from './config'
 
-export function beforeHook(_config: AuthConfig) {
+const SIGN_IN_PATHS = new Set(['/sign-in/social', '/sign-in/magic-link'])
+
+export const SIGN_IN_FROM_APP = 'Sign in from the app.'
+export const WORK_EMAIL_REQUIRED = 'Enter a work email, like name@company.com.'
+
+export function beforeHook(config: AuthConfig) {
   return createAuthMiddleware(async (ctx) => {
-    // Every organization plugin route is closed over HTTP: organizations, members and invitations
-    // go through our own oRPC procedures.
     if (ctx.path.startsWith('/organization/')) throw new APIError('NOT_FOUND')
+    if (!SIGN_IN_PATHS.has(ctx.path)) return
+
+    if (!isTrustedOrigin(ctx.headers?.get('origin'), config.trustedOrigins)) {
+      throw new APIError('FORBIDDEN', { message: SIGN_IN_FROM_APP })
+    }
+    if (ctx.path !== '/sign-in/magic-link') return
+
+    const body = (ctx.body ?? {}) as Record<string, unknown>
+    const email = typeof body.email === 'string' ? normalizeEmail(body.email) : ''
+    if (!isWorkEmail(email)) throw new APIError('BAD_REQUEST', { message: WORK_EMAIL_REQUIRED })
+    return { context: { body: { ...body, email } } }
   })
 }

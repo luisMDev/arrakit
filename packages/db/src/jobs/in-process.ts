@@ -38,6 +38,7 @@ export function inProcessJobs(options: { now?: () => number } = {}): JobsRuntime
   const crons = new Map<string, Cron>()
   const running = new Set<Promise<void>>()
   let stopped = false
+  let stopping: Promise<void> | undefined
 
   const queueOf = (name: string) => queues.get(name) ?? { policy: DEFAULT_POLICY, exclusive: false }
 
@@ -147,12 +148,14 @@ export function inProcessJobs(options: { now?: () => number } = {}): JobsRuntime
     async probe() {
       assertRunning()
     },
-    async stop() {
-      if (stopped) return
-      stopped = true
-      for (const timer of timers) clearInterval(timer)
-      for (const cron of crons.values()) cron.stop()
-      await Promise.allSettled([...running])
+    stop() {
+      stopping ??= (async () => {
+        stopped = true
+        for (const timer of timers) clearInterval(timer)
+        for (const cron of crons.values()) cron.stop()
+        await Promise.allSettled([...running])
+      })()
+      return stopping
     },
   }
 }

@@ -1,23 +1,42 @@
+import type { Me } from '@arrakit/contract'
 import type { QueryClient } from '@tanstack/react-query'
-import { type ParsedLocation, redirect } from '@tanstack/react-router'
+import { redirect } from '@tanstack/react-router'
 
 import { i18n, isLanguage, loadLanguage } from '#/i18n'
 import { reportError, statusOf } from '#/lib/api-errors'
 import { orpc } from '#/lib/orpc'
 
+async function signedInPerson(queryClient: QueryClient): Promise<Me> {
+  const options = orpc.me.get.queryOptions()
+  const cached = queryClient.getQueryData<Me>(options.queryKey)
+  if (cached?.organization) return cached
+  return queryClient.fetchQuery({ ...options, staleTime: 0 })
+}
+
+/**
+ * Loads the signed-in person once before any /app screen renders. No organization goes to
+ * /profile, no session to /signin, a 403 to the forbidden screen and any other failure to
+ * /unavailable with `next` = the requested URL. The account language is applied first.
+ */
 export async function requireUser({
   context,
   location,
 }: {
   context: { queryClient: QueryClient }
-  location: ParsedLocation
+  location: { href: string }
 }) {
   let outcome: 'ok' | 'profile' | 'signin' | 'forbidden' | 'unavailable'
   try {
-    const me = await context.queryClient.ensureQueryData(orpc.me.get.queryOptions())
-    if (!me.organization) outcome = 'profile'
+    const me = await signedInPerson(context.queryClient)
+    if (!me.organization || !me.role || !me.plan) outcome = 'profile'
     else {
-      if (isLanguage(me.language) && me.language !== i18n.language) await loadLanguage(me.language)
+      if (isLanguage(me.language) && me.language !== i18n.language) {
+        // A language file that will not load (a stale chunk, offline) keeps the current
+        // language rather than hiding the app behind the Unavailable screen.
+        await loadLanguage(me.language).catch((err: unknown) =>
+          reportError('[requireUser] loading the account language failed', err),
+        )
+      }
       outcome = 'ok'
     }
   } catch (err) {

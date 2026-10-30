@@ -1,22 +1,24 @@
-import { composeEmail } from '../compose'
+import { type EmailOrganization, actions, composeEmail, paragraph } from '../compose'
+import { fullDay } from '../copy'
+import type { RenderedEmail } from '../mail'
 
 export interface CanceledEmailInput {
+  organization?: EmailOrganization
   plan: string
-  /** YYYY-MM-DD */
+  /** YYYY-MM-DD, the last day of the paid plan. */
   endsOn: string
   links: { billing: string }
 }
 
-export function canceledEmail(input: CanceledEmailInput) {
+export function canceledEmail(input: CanceledEmailInput): RenderedEmail {
+  const endsOn = fullDay(input.endsOn)
   return composeEmail({
-    subject: `${input.plan} ends on ${input.endsOn}`,
-    heading: { lead: `${input.plan} ends`, tail: `on ${input.endsOn}.` },
+    ...(input.organization ? { organization: input.organization } : {}),
+    subject: `${input.plan} ends on ${endsOn}`,
+    heading: { lead: `${input.plan} ends`, tail: `on ${endsOn}.` },
     blocks: [
-      {
-        kind: 'paragraph',
-        text: 'Until then, nothing changes. After that you move to Free. Your data stays.',
-      },
-      { kind: 'actions', primary: { label: `Keep ${input.plan}`, href: input.links.billing } },
+      paragraph('Until then, nothing changes. After that you move to Free. Your data stays.'),
+      actions({ label: `Keep ${input.plan}`, href: input.links.billing }),
     ],
     footer: 'Sent to organization admins.',
   })

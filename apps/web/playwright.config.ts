@@ -1,11 +1,10 @@
 import { defineConfig, devices } from '@playwright/test'
 
+import { API_ORIGIN as apiOrigin, API_PORT, WEB_ORIGIN as webOrigin, WEB_PORT } from './e2e/origins'
+
 // End-to-end tests boot the API (Hono, PGlite in a throwaway dir, fake Stripe,
-// console/outbox mailer) and the web dev server, then drive Chromium.
-const API_PORT = 3100
-const WEB_PORT = 4200
-const apiOrigin = `http://localhost:${API_PORT}`
-const webOrigin = `http://localhost:${WEB_PORT}`
+// console/outbox mailer) and the web dev server, then drive Chromium. Set E2E_API_PORT and
+// E2E_WEB_PORT to run a second suite next to another one; each pair gets its own database.
 
 export default defineConfig({
   testDir: './e2e',
@@ -28,7 +27,7 @@ export default defineConfig({
       env: {
         NODE_ENV: 'test',
         PORT: String(API_PORT),
-        PGLITE_DIR: '.data/e2e-pglite',
+        PGLITE_DIR: `.data/e2e-pglite-${API_PORT}`,
         PGLITE_RESET: '1',
         STRIPE_FAKE: '1',
         BETTER_AUTH_SECRET: 'e2e-secret-e2e-secret-e2e-secret-0000',

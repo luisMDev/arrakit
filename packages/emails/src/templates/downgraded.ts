@@ -1,21 +1,23 @@
-import { composeEmail } from '../compose'
+import { actions, composeEmail, paragraph } from '../compose'
+import type { RenderedEmail } from '../mail'
 
 export interface DowngradedEmailInput {
+  /** The paid plan that ended. */
   plan: string
   organization: string
   links: { billing: string }
 }
 
-export function downgradedEmail(input: DowngradedEmailInput) {
+export function downgradedEmail(input: DowngradedEmailInput): RenderedEmail {
   return composeEmail({
+    organization: { name: input.organization },
     subject: `${input.organization} is back on Free`,
     heading: { lead: `${input.plan} ended.`, tail: `${input.organization} is on Free.` },
     blocks: [
-      {
-        kind: 'paragraph',
-        text: `We couldn't charge your card after a week of tries, so ${input.plan} has ended. Your data stays.`,
-      },
-      { kind: 'actions', primary: { label: 'Choose a plan', href: input.links.billing } },
+      paragraph(
+        `We couldn't charge your card after a week of tries, so ${input.plan} has ended. Your data stays.`,
+      ),
+      actions({ label: 'Choose a plan', href: input.links.billing }),
     ],
     footer: 'Sent to the billing email and organization admins.',
   })

@@ -25,3 +25,7 @@ export const choiceSearch = (search: Record<string, unknown>): ChoiceSearch => (
   ...(typeof search.plan === 'string' ? { plan: search.plan } : {}),
   ...(typeof search.cycle === 'string' ? { cycle: search.cycle } : {}),
 })
+
+export function profileLanding(choice: CheckoutChoice | null): string {
+  return choice ? `/profile?${new URLSearchParams({ ...choice })}` : '/profile'
+}

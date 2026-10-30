@@ -29,6 +29,7 @@ export interface MemoryJobs extends JobsRuntime {
 }
 
 export function memoryJobs(): MemoryJobs {
+  let stopped = false
   const fake: MemoryJobs = {
     kind: 'memory',
     queues: new Map(),
@@ -89,8 +90,12 @@ export function memoryJobs(): MemoryJobs {
         job.state = 'completed'
       }
     },
-    async probe() {},
-    async stop() {},
+    async probe() {
+      if (stopped) throw new Error('[data] the job runner is stopped')
+    },
+    async stop() {
+      stopped = true
+    },
   }
   return fake
 }

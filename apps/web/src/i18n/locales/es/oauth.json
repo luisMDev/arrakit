@@ -2,21 +2,21 @@
   "oauth": {
     "oauthSignin": {
       "incompleteTitle": "Este enlace está incompleto.",
-      "startAgain": "Vuelve a empezar desde la app a la que estabas conectando Arrakit.",
+      "startAgain": "Vuelve a empezar desde la app a la que estabas conectando {{appName}}.",
       "titleStart": "Inicia sesión para",
-      "titleEnd": "conectar Arrakit",
+      "titleEnd": "conectar {{appName}}",
       "useOrganizationAccount": "Usa la cuenta de tu organización. Verás qué se comparte antes de que se comparta nada."
     },
     "oauthConsent": {
       "loading": "Cargando…",
       "incompleteTitle": "Este enlace está incompleto.",
-      "startAgain": "Vuelve a empezar desde la app a la que estabas conectando Arrakit.",
+      "startAgain": "Vuelve a empezar desde la app a la que estabas conectando {{appName}}.",
       "unavailableTitle": "No se ha podido abrir esta solicitud.",
       "connect": "Conectar",
       "willSee": "{{client}} actuará como tú en {{organization}}.",
       "allow": "Permitir",
       "deny": "Denegar",
-      "noOrganizationTitle": "Aún no estás en ningún organización.",
+      "noOrganizationTitle": "Aún no estás en ninguna organización.",
       "noOrganizationBody": "{{client}} actúa dentro de una organización. Únete a la tuya, o crea una, y vuelve a conectar.",
       "backTo": "Volver a {{client}}",
       "failed": "No se ha podido completar la conexión. Inténtalo de nuevo."

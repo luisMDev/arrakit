@@ -12,6 +12,7 @@ export interface MemberEmailInput {
 
 export function memberEmail({ organization, inviter, expiresInDays, links }: MemberEmailInput) {
   return composeEmail({
+    organization,
     subject: `${firstName(inviter)} invited you to ${organization.name} on ${APP_NAME}`,
     heading: { lead: `Join ${organization.name}`, tail: `on ${APP_NAME}.` },
     blocks: [

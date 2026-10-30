@@ -1,19 +1,19 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { SignupPage } from '#/components/auth/signup-page'
-import { type ChoiceSearch, choiceSearch } from '#/lib/checkout-choice'
+import { refusalSearch } from '#/components/auth/sign-in-options'
+import { type SignupSearch, SignupPage } from '#/components/auth/signup-page'
+import { choiceSearch } from '#/lib/checkout-choice'
 import { skipWhenSignedIn } from '#/lib/guards/skip-when-signed-in'
 import { titled } from '#/lib/page-title'
 
 export const Route = createFileRoute('/signin')({
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): ChoiceSearch & { error?: string; via?: string } => ({
+  validateSearch: (search: Record<string, unknown>): SignupSearch => ({
     ...choiceSearch(search),
-    ...(typeof search.error === 'string' ? { error: search.error } : {}),
-    ...(typeof search.via === 'string' ? { via: search.via } : {}),
+    ...refusalSearch(search),
   }),
   beforeLoad: skipWhenSignedIn,
   head: titled('signIn'),
-  component: () => <SignupPage mode="returning" />,
+  component: function SignIn() {
+    return <SignupPage mode="returning" search={Route.useSearch()} />
+  },
 })

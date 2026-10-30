@@ -14,14 +14,20 @@ import { mcpRoutes } from './routes/mcp'
 import { stripeWebhookRoutes } from './routes/stripe-webhook'
 
 /** The OpenAPI document generated from the contract alone (no DB, no env). */
-export function openApiDocument() {
-  return new OpenAPIGenerator({ schemaConverters: [new ZodToJsonSchemaConverter()] }).generate(
-    contract,
-    {
-      info: { title: 'Arrakit API', version: '1.0.0' },
-      servers: [{ url: '/api' }],
-    },
-  )
+export async function openApiDocument() {
+  const document = await new OpenAPIGenerator({
+    schemaConverters: [new ZodToJsonSchemaConverter()],
+  }).generate(contract, {
+    info: { title: 'Arrakit API', version: '1.0.0' },
+    servers: [{ url: '/api' }],
+  })
+  // /health answers 503 with the same body as 200 when a probe is down; the contract cannot say so.
+  const health = document.paths?.['/health']?.get
+  const ok = health?.responses?.['200']
+  if (health?.responses && ok) {
+    health.responses['503'] = { ...ok, description: 'A dependency is down' }
+  }
+  return document
 }
 
 /**

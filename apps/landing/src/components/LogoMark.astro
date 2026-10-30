@@ -1,0 +1,19 @@
+---
+import { APP_NAME } from '../lib/config'
+
+interface Props {
+  class?: string
+}
+
+const { class: className = 'size-20' } = Astro.props
+---
+
+<span
+  aria-hidden="true"
+  class:list={[
+    'flex items-center justify-center rounded-full bg-neutral-900 text-3xl font-semibold text-white',
+    className,
+  ]}
+>
+  {APP_NAME.charAt(0).toUpperCase()}
+</span>
