@@ -1,5 +1,5 @@
 import type { BillingView } from '@arrakit/contract'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Receipt } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -32,7 +32,7 @@ import { Skeleton } from '#/components/ui/skeleton'
 import type { SectionProps } from '#/components/settings/settings-page'
 import { BillingUsage, TopUpsList } from '#/components/usage/billing-usage'
 import { useUsage } from '#/components/usage/use-usage'
-import { apiFailed, refusalMessage } from '#/lib/api-errors'
+import { refusalMessage } from '#/lib/api-errors'
 import { client, orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
 import { useFailureToast } from '#/lib/use-failure-toast'
@@ -77,19 +77,20 @@ export function BillingSection({
 
   const replace = (next: BillingView) => queryClient.setQueryData(billingQuery.queryKey, next)
 
-  const cancel = useMutation({
-    ...orpc.billing.cancel.mutationOptions(),
-    onSuccess: (next) => {
-      replace(next)
-      setCancelling(false)
+  const cancel = useApiMutation(
+    {
+      ...orpc.billing.cancel.mutationOptions(),
+      onSuccess: (next) => {
+        replace(next)
+        setCancelling(false)
+      },
     },
-    onError: (err) => apiFailed('[billing] cancel failed', err, t(`${KEY}.notCancelled`)),
-  })
-  const resume = useMutation({
-    ...orpc.billing.resume.mutationOptions(),
-    onSuccess: replace,
-    onError: (err) => apiFailed('[billing] resume failed', err, t(`${KEY}.notKept`)),
-  })
+    { context: '[billing] cancel failed', failure: t(`${KEY}.notCancelled`) },
+  )
+  const resume = useApiMutation(
+    { ...orpc.billing.resume.mutationOptions(), onSuccess: replace },
+    { context: '[billing] resume failed', failure: t(`${KEY}.notKept`) },
+  )
 
   const portal = useApiMutation(
     {
@@ -129,7 +130,7 @@ export function BillingSection({
                   <Link to="/app/plans">{t(`${KEY}.switchPlan`)}</Link>
                 </Button>
                 {billing.endsOn ? (
-                  <Button size="sm" disabled={resume.isPending} onClick={() => resume.mutate({})}>
+                  <Button size="sm" disabled={resume.isPending} onClick={() => void resume.run({})}>
                     {t(`${KEY}.keepMyPlan`)}
                   </Button>
                 ) : (
@@ -239,7 +240,7 @@ export function BillingSection({
             <Button
               variant="destructive"
               disabled={cancel.isPending}
-              onClick={() => cancel.mutate({})}
+              onClick={() => void cancel.run({})}
             >
               {t(`${KEY}.cancelPlan`)}
             </Button>

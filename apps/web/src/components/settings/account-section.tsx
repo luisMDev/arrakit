@@ -20,7 +20,13 @@ import {
 } from '#/components/ui/select'
 import { Switch } from '#/components/ui/switch'
 import { type Language, isLanguage, loadLanguage } from '#/i18n'
-import { apiMessage, reportError, type SaveOnChange, saveOnChange } from '#/lib/api-errors'
+import {
+  conflictRefusal,
+  noRefusal,
+  reportError,
+  type SaveOnChange,
+  saveOnChange,
+} from '#/lib/api-errors'
 import { authClient } from '#/lib/auth-client'
 import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing, useClearingForm } from '#/lib/form'
@@ -107,8 +113,6 @@ export function AccountSection({ open }: SectionProps) {
     values: { name: account ? displayName(account) : '' },
   })
   const nameError = form.formState.errors.name !== undefined
-  const [signingOut, setSigningOut] = useState(false)
-  const signingOutRef = useRef(false)
   const [confirming, setConfirming] = useState(false)
   const zoneFilled = useRef(false)
 
@@ -193,23 +197,23 @@ export function AccountSection({ open }: SectionProps) {
 
   const nameField = registerClearing(form, 'name')
 
-  async function signOutEverywhere() {
-    if (signingOutRef.current) return
-    signingOutRef.current = true
-    setSigningOut(true)
-    try {
-      const result = await authClient.revokeOtherSessions()
-      if (result?.error) throw result.error
-      notify.success(t(`${K}.signedOut`))
-      void load(t(`${K}.devicesNotLoaded`))
-    } catch (err) {
-      reportError('[account] signing out everywhere failed', err)
-      notify.error(t(`${K}.notSignedOut`))
-    } finally {
-      signingOutRef.current = false
-      setSigningOut(false)
-    }
-  }
+  const signOutEverywhere = useApiMutation(
+    {
+      mutationFn: async () => {
+        const result = await authClient.revokeOtherSessions()
+        if (result?.error) throw result.error
+      },
+      onSuccess: () => {
+        notify.success(t(`${K}.signedOut`))
+        void load(t(`${K}.devicesNotLoaded`))
+      },
+    },
+    {
+      context: '[account] signing out everywhere failed',
+      failure: t(`${K}.notSignedOut`),
+      refusal: noRefusal,
+    },
+  )
 
   const deleteAccount = useApiMutation(
     {
@@ -225,7 +229,7 @@ export function AccountSection({ open }: SectionProps) {
     {
       context: '[account] deleting the account failed',
       failure: t(`${K}.notDeleted`),
-      refusal: (err) => apiMessage(err, (status) => status === 409),
+      refusal: conflictRefusal,
     },
   )
 
@@ -279,8 +283,8 @@ export function AccountSection({ open }: SectionProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={signingOut}
-                    onClick={() => void signOutEverywhere()}
+                    disabled={signOutEverywhere.isPending}
+                    onClick={() => void signOutEverywhere.run()}
                   >
                     {t(`${K}.signOutEverywhere`)}
                   </Button>
