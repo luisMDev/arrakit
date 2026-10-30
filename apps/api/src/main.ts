@@ -1,16 +1,20 @@
 import { serve } from '@hono/node-server'
 
 import { createApp } from './app'
+import { loadLogEnv } from './env'
+import { createLogger } from './observability/logger'
 import { closeMcpHandlers } from './routes/mcp'
 import { depsFromEnv } from './services'
 import { registerWorkers } from './workers/index'
 
+const log = createLogger(loadLogEnv(process.env))
+
 async function main() {
-  const deps = await depsFromEnv(process.env)
-  await registerWorkers(deps.data)
+  const deps = await depsFromEnv(process.env, log)
+  await registerWorkers(deps)
   const app = createApp(deps)
   const server = serve({ fetch: app.fetch, port: deps.env.PORT }, (info) => {
-    console.log(`[api] listening on http://localhost:${info.port} (${deps.data.driver})`)
+    log.info({ port: info.port, driver: deps.data.driver }, 'listening')
   })
 
   let stopping = false
@@ -19,17 +23,17 @@ async function main() {
     stopping = true
     const stopped = new Promise<void>((resolve) => server.close(() => resolve()))
     // Streams still open on the MCP handlers would keep server.close() waiting.
-    void closeMcpHandlers()
+    const closed = closeMcpHandlers()
       .then(() => stopped)
       .then(() => deps.data.close())
-      .catch((err: unknown) => console.error('[api] shutdown failed', err))
-      .finally(() => process.exit(0))
+      .catch((err: unknown) => log.error({ err }, 'shutdown failed'))
+    void Promise.allSettled([closed, deps.errors.flush()]).finally(() => process.exit(0))
   }
   process.on('SIGTERM', shutdown)
   process.on('SIGINT', shutdown)
 }
 
 main().catch((err: unknown) => {
-  console.error('[api] failed to start', err)
+  log.fatal({ err }, 'failed to start')
   process.exit(1)
 })

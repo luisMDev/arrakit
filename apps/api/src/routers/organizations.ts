@@ -23,8 +23,9 @@ export const organizationsRouter = {
       try {
         await stripe.endNow(subscriptionId)
       } catch (err) {
-        console.error(
-          `ending subscription ${subscriptionId} of organization ${organization.id} failed: ${err instanceof Error ? err.message : String(err)}`,
+        context.log.error(
+          { err, organizationId: organization.id, subscriptionId },
+          'ending the subscription failed',
         )
         throw new ORPCError('BAD_GATEWAY', { message: STRIPE_FAILED })
       }
@@ -32,6 +33,10 @@ export const organizationsRouter = {
     if (!(await context.data.deleteOrganization(organization.id))) {
       throw new ORPCError('NOT_FOUND', { message: 'Not found in your organization.' })
     }
-    await queueStoragePurge(context.data.jobs, { organizationId: organization.id, folder: '' })
+    await queueStoragePurge(
+      context.data.jobs,
+      { organizationId: organization.id, folder: '' },
+      context.log,
+    )
   }),
 }

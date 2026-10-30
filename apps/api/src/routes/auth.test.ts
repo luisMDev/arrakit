@@ -108,7 +108,7 @@ describe('Better Auth routes on Hono', () => {
 
     const run = (level: 'member' | 'admin' | 'owner', headers?: Headers) =>
       call(procedure(level), undefined, {
-        context: { deps: t.deps, data: t.data, headers: headers ?? new Headers() },
+        context: t.context(headers),
       })
 
     async function withRole(email: string, role: 'owner' | 'admin' | 'member') {
@@ -179,7 +179,7 @@ describe('Better Auth routes on Hono', () => {
         .handler(() => 'ok')
       const err = await errorOf(
         call(ownerOnly, undefined, {
-          context: { deps: t.deps, data: t.data, headers: admin.headers },
+          context: t.context(admin.headers),
         }),
       )
       expect(err.status).toBe(403)

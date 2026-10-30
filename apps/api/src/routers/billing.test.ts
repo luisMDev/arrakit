@@ -77,7 +77,7 @@ describe('billing procedures', () => {
 
     it("answers 502 in its own words when Stripe fails, never Stripe's", async () => {
       const ana = await owner(t, 'ana@cypress.vc')
-      const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const logged = t.errorLog()
       stripe.failNext('checkout', new Error('No such price: arrakit_pro_yearly'))
       await expect(
         t.client(ana.headers).billing.checkout({ plan: 'pro', cycle: 'yearly' }),
@@ -85,9 +85,12 @@ describe('billing procedures', () => {
         status: 502,
         message: "Couldn't open the payment form. Try again in a minute.",
       })
-      expect(logged.mock.calls[0]?.[0]).toContain(
-        `checkout for organization ${ana.organizationId} failed: No such price`,
-      )
+      expect(logged()[0]).toMatchObject({
+        msg: 'Stripe call failed',
+        organizationId: ana.organizationId,
+        operation: 'checkout',
+        err: { message: expect.stringContaining('No such price') },
+      })
     })
 
     it('refuses a member with 403 and a visitor with 401', async () => {
@@ -241,7 +244,6 @@ describe('billing procedures', () => {
 
     it("answers 502 in its own words when Stripe fails, never Stripe's", async () => {
       const eva = await paying(t, stripe, 'eva@fir.vc')
-      vi.spyOn(console, 'error').mockImplementation(() => undefined)
       stripe.failNext('billing', Object.assign(new Error('No such customer'), { statusCode: 404 }))
       await expect(t.client(eva.headers).billing.get()).rejects.toMatchObject({
         status: 502,
@@ -348,7 +350,6 @@ describe('billing procedures', () => {
 
     it('answers 402 in its own words when the card is declined, plan unchanged', async () => {
       const ana = await paying(t, stripe, 'owner@teak.vc')
-      vi.spyOn(console, 'error').mockImplementation(() => undefined)
       stripe.failNext('changeNow', declined())
       await expect(
         t.client(ana.headers).billing.change({ plan: 'team', cycle: 'yearly' }),
@@ -494,7 +495,7 @@ describe('billing.cancel: the cancellation email', () => {
   it('still cancels when the email cannot be sent, logging no address or body', async () => {
     const ana = await paying(t, stripe, 'owner@rowan.vc')
     const from = t.sent.length
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const logged = t.errorLog()
     vi.spyOn(t.deps.mailer, 'send').mockRejectedValue(new Error('[mail] Resend refused: 500'))
     const billing = await t.client(ana.headers).billing.cancel()
     expect(billing.plan).toBe('pro')
@@ -503,10 +504,13 @@ describe('billing.cancel: the cancellation email', () => {
       cancel: true,
     })
     expect(t.sent.slice(from)).toEqual([])
-    const lines = logged.mock.calls.map((call) => call.join('\n'))
-    expect(lines).toHaveLength(1)
-    expect(lines[0]).toContain(`organization ${ana.organizationId}: cancellation email not sent`)
-    expect(lines[0]).not.toContain('owner@rowan.vc')
-    expect(lines[0]).not.toContain('<html')
+    expect(logged()).toEqual([
+      expect.objectContaining({
+        msg: 'cancellation email not sent',
+        organizationId: ana.organizationId,
+      }),
+    ])
+    expect(JSON.stringify(logged())).not.toContain('owner@rowan.vc')
+    expect(JSON.stringify(logged())).not.toContain('<html')
   })
 })

@@ -4,13 +4,39 @@ import type { OrganizationRow, OrganizationScope, ScopedData } from '@arrakit/db
 import { ORPCError, os } from '@orpc/server'
 
 import type { AppDeps } from '../deps'
+import type { Logger } from '../observability/logger'
+import { isUnexpected, reportUnexpected } from '../observability/unexpected-error'
 
 /** What every procedure receives (built per request in app.ts). */
 export interface BaseContext {
   deps: AppDeps
   data: ScopedData
   headers: Headers
+  /** The app logger bound to this request's id. */
+  log: Logger
 }
+
+/** The context every procedure starts from. */
+export function procedureContext(deps: AppDeps, headers: Headers, log: Logger): BaseContext {
+  return { deps, data: deps.data, headers, log }
+}
+
+/**
+ * oRPC answers a thrown error itself, before Hono's onError, so unexpected ones are logged and
+ * reported here (for every transport), then rethrown for oRPC to answer 500.
+ */
+export const reportErrors = os
+  .$context<BaseContext>()
+  .middleware(async ({ context, path, next }) => {
+    try {
+      return await next()
+    } catch (error) {
+      if (isUnexpected(error)) {
+        reportUnexpected(context.log, context.deps.errors, error, { procedure: path.join('.') })
+      }
+      throw error
+    }
+  })
 
 type SessionResult = NonNullable<Awaited<ReturnType<Auth['api']['getSession']>>>
 export type SessionUser = SessionResult['user']

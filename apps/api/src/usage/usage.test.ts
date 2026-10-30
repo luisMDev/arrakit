@@ -136,7 +136,7 @@ describe('usage', () => {
 
   it('guards a procedure with requiresUsage and spends only what the handler consumes', async () => {
     const { headers, organizationId: id } = await organizationWithOwner('Reports')
-    const context = { deps: t.deps, data: t.data, headers }
+    const context = t.context(headers)
     await expect(call(report, { id: 'a' }, { context })).resolves.toEqual({ left: 60 })
     await expect(call(report, { id: 'a' }, { context })).resolves.toEqual({ left: 60 })
     await expect(call(report, { id: 'b' }, { context })).resolves.toEqual({ left: 20 })
@@ -173,8 +173,8 @@ describe('usage', () => {
       .$context<BaseContext>()
       .use(requiresUsage('credits') as never)
       .handler(() => 'ok')
-    await expect(
-      call(bare, undefined, { context: { deps: t.deps, data: t.data, headers: owner } }),
-    ).rejects.toThrow('requiresUsage runs after the organization role middleware')
+    await expect(call(bare, undefined, { context: t.context(owner) })).rejects.toThrow(
+      'requiresUsage runs after the organization role middleware',
+    )
   })
 })

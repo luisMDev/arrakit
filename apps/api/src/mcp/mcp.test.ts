@@ -235,7 +235,6 @@ describe('the MCP endpoint', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(Date.now() + 24 * 60 * 60 * 1000)
     vi.spyOn(t.deps.auth.api, 'getJwks').mockRejectedValueOnce(new Error('connection terminated'))
-    vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const res = await t.mcp(tokens.access_token, 'tools/list')
 

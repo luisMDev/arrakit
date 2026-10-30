@@ -18,9 +18,9 @@ function deliver(t: TestApp, body: object, signature: string | null = FAKE_STRIP
 }
 
 function failingMail(t: TestApp) {
-  const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  const logged = t.errorLog()
   vi.spyOn(t.deps.mailer, 'send').mockRejectedValue(new Error('[mail] Resend refused: 500'))
-  return () => logged.mock.calls.map((call) => call.join('\n'))
+  return logged
 }
 
 describe('POST /api/webhooks/stripe', () => {
@@ -46,7 +46,6 @@ describe('POST /api/webhooks/stripe', () => {
     headers = lucia.headers
     organizationId = lucia.organizationId
     stripe.subscribe(subscription('active'))
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
   })
   afterAll(async () => {
     vi.restoreAllMocks()
@@ -109,7 +108,6 @@ describe('POST /api/webhooks/stripe', () => {
   })
 
   it('answers 500 when Stripe cannot be read, so Stripe delivers again', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
     stripe.failNext('subscription', new Error('Stripe is down'))
     expect((await deliver(t, event())).status).toBe(500)
   })
@@ -329,10 +327,13 @@ describe('POST /api/webhooks/stripe: emails', () => {
       const lines = failingMail(t)
       expect((await deliver(t, organization.event())).status).toBe(204)
       expect(lines()).toHaveLength(2)
-      for (const line of lines()) {
-        expect(line).toContain(
-          `organization ${organization.organizationId}: receipt email not sent`,
-        )
+      for (const entry of lines()) {
+        expect(entry).toMatchObject({
+          msg: 'billing email not sent',
+          organizationId: organization.organizationId,
+          mail: 'receipt',
+        })
+        const line = JSON.stringify(entry)
         expect(line).not.toContain('ivy.vc')
         expect(line).not.toContain('<html')
       }
@@ -401,10 +402,13 @@ describe('POST /api/webhooks/stripe: emails', () => {
         204,
       )
       expect(lines()).toHaveLength(3)
-      for (const line of lines()) {
-        expect(line).toContain(
-          `organization ${organization.organizationId}: failed payment email not sent`,
-        )
+      for (const entry of lines()) {
+        expect(entry).toMatchObject({
+          msg: 'billing email not sent',
+          organizationId: organization.organizationId,
+          mail: 'failed payment',
+        })
+        const line = JSON.stringify(entry)
         expect(line).not.toContain('pine.vc')
       }
     })
@@ -459,10 +463,13 @@ describe('POST /api/webhooks/stripe: emails', () => {
       const lines = failingMail(t)
       expect((await deliver(t, organization.event())).status).toBe(204)
       expect(lines()).toHaveLength(3)
-      for (const line of lines()) {
-        expect(line).toContain(
-          `organization ${organization.organizationId}: downgraded email not sent`,
-        )
+      for (const entry of lines()) {
+        expect(entry).toMatchObject({
+          msg: 'billing email not sent',
+          organizationId: organization.organizationId,
+          mail: 'downgraded',
+        })
+        const line = JSON.stringify(entry)
         expect(line).not.toContain('cypress.vc')
       }
       vi.restoreAllMocks()
@@ -508,10 +515,12 @@ describe('POST /api/webhooks/stripe: emails', () => {
       const lines = failingMail(t)
       expect((await deliver(t, upcoming(organization.subscriptionId))).status).toBe(204)
       expect(lines()).toHaveLength(1)
-      expect(lines()[0]).toContain(
-        `organization ${organization.organizationId}: renewal email not sent`,
-      )
-      expect(lines()[0]).not.toContain('rowan.vc')
+      expect(lines()[0]).toMatchObject({
+        msg: 'billing email not sent',
+        organizationId: organization.organizationId,
+        mail: 'renewal',
+      })
+      expect(JSON.stringify(lines()[0])).not.toContain('rowan.vc')
     })
   })
 
@@ -593,7 +602,6 @@ describe('POST /api/webhooks/stripe without Stripe set up', () => {
   afterAll(() => t.close())
 
   it('refuses every delivery with 401', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     expect((await deliver(t, { subscriptionId: 'sub_1', organizationId: null })).status).toBe(401)
     vi.restoreAllMocks()
   })

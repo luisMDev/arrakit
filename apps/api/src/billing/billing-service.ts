@@ -4,6 +4,7 @@ import type { Mailer } from '@arrakit/emails'
 import { PLAN_LABELS } from '@arrakit/plans'
 import { ORPCError } from '@orpc/server'
 
+import type { Logger } from '../observability/logger'
 import { adminsOf, canceledMails, recipients } from './billing-mail'
 import { billingView, dayOf } from './billing-view'
 import type { BillingSnapshot, StripeGateway } from './stripe-gateway'
@@ -18,25 +19,6 @@ export const CHANGE_REFUSAL = "Couldn't reach Stripe, so nothing changed. Try ag
 export const CHECKOUT_REFUSAL = "Couldn't open the payment form. Try again in a minute."
 export const CARD_DECLINED = 'Your card was declined. Update it under Payment, then try again.'
 export const NOT_SET_UP = 'Payments are not set up yet.'
-
-export async function callStripe<T>(
-  organization: Pick<OrganizationRow, 'id'>,
-  what: string,
-  run: () => Promise<T>,
-  refusal = LOAD_REFUSAL,
-): Promise<T> {
-  try {
-    return await run()
-  } catch (err) {
-    if (err instanceof ORPCError) throw err
-    const reason = err instanceof Error ? err.message : String(err)
-    console.error(`[billing] ${what} for organization ${organization.id} failed: ${reason}`)
-    if ((err as { type?: string } | null)?.type === 'StripeCardError') {
-      throw new ORPCError('PAYMENT_REQUIRED', { status: 402, message: CARD_DECLINED })
-    }
-    throw new ORPCError('BAD_GATEWAY', { message: refusal })
-  }
-}
 
 export function requireGateway(stripe: StripeGateway | null): StripeGateway {
   if (!stripe) throw new ORPCError('SERVICE_UNAVAILABLE', { message: NOT_SET_UP })
@@ -63,9 +45,31 @@ export interface BillingDeps {
   stripe: StripeGateway | null
   mailer: Mailer
   webUrl: string
+  log: Logger
 }
 
 export function billingService(deps: BillingDeps) {
+  async function callStripe<T>(
+    organization: Pick<OrganizationRow, 'id'>,
+    what: string,
+    run: () => Promise<T>,
+    refusal = LOAD_REFUSAL,
+  ): Promise<T> {
+    try {
+      return await run()
+    } catch (err) {
+      if (err instanceof ORPCError) throw err
+      deps.log.error(
+        { err, organizationId: organization.id, operation: what },
+        'Stripe call failed',
+      )
+      if ((err as { type?: string } | null)?.type === 'StripeCardError') {
+        throw new ORPCError('PAYMENT_REQUIRED', { status: 402, message: CARD_DECLINED })
+      }
+      throw new ORPCError('BAD_GATEWAY', { message: refusal })
+    }
+  }
+
   async function snapshot(organization: OrganizationRow): Promise<BillingSnapshot | null> {
     const customerId = organization.stripeCustomerId
     if (!customerId) return null
@@ -93,8 +97,9 @@ export function billingService(deps: BillingDeps) {
     )
     const current = subscriptionOfLookupKey(loaded.subscription?.lookupKey ?? null)
     if (!loaded.subscription || !current) {
-      console.error(
-        `[billing] organization ${organization.id}: subscription ${subscriptionId} bills no known price`,
+      deps.log.error(
+        { organizationId: organization.id, subscriptionId },
+        'subscription bills no known price',
       )
       throw new ORPCError('BAD_GATEWAY', { message: LOAD_REFUSAL })
     }
@@ -117,8 +122,9 @@ export function billingService(deps: BillingDeps) {
     loaded: BillingSnapshot | null,
   ): Promise<void> {
     if (!loaded?.subscription) {
-      console.error(
-        `[billing] organization ${organization.id}: cancellation email not sent, Stripe shows no subscription`,
+      deps.log.error(
+        { organizationId: organization.id, reason: 'Stripe shows no subscription' },
+        'cancellation email not sent',
       )
       return
     }
@@ -133,12 +139,9 @@ export function billingService(deps: BillingDeps) {
       })
       for (const mail of mails) await deps.mailer.send(mail)
     } catch (err) {
-      console.error(
-        `[billing] organization ${organization.id}: cancellation email not sent`,
-        err instanceof Error ? err.stack : String(err),
-      )
+      deps.log.error({ err, organizationId: organization.id }, 'cancellation email not sent')
     }
   }
 
-  return { snapshot, view, paidOrganization, applies, sendCancellation }
+  return { callStripe, snapshot, view, paidOrganization, applies, sendCancellation }
 }

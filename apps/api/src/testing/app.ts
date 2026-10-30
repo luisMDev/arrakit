@@ -14,6 +14,9 @@ import type { StripeGateway } from '../billing/stripe-gateway'
 import type { AppDeps } from '../deps'
 import { loadApiEnv } from '../env'
 import { recordingMailer } from '../mail/mailer'
+import { type CapturedError, recordingErrorReporter } from '../observability/error-reporter'
+import { type LogEntry, recordingLogger } from '../observability/logger'
+import { type BaseContext, procedureContext } from '../orpc/context'
 import { buildDeps } from '../services'
 
 type HeadersLike = ConstructorParameters<typeof Headers>[0]
@@ -56,6 +59,14 @@ export interface TestApp {
   deps: AppDeps
   data: TestData
   sent: Mail[]
+  /** Every log entry the app wrote, parsed (newest last). */
+  logs: LogEntry[]
+  /** From now on: each error-level entry logged. */
+  errorLog(): () => LogEntry[]
+  /** Every error sent to the error tracker. */
+  captured: CapturedError[]
+  /** A procedure context for `call(procedure, input, { context })`, as app.ts builds it. */
+  context(headers?: HeadersLike): BaseContext
   /** Calls the app in-process at `TEST_WEB_ORIGIN + path`. */
   request(path: string, init?: RequestInit): Promise<Response>
   /** oRPC client calling the app in-process; pass Better Auth headers to act as someone. */
@@ -111,14 +122,18 @@ export async function createTestApp(
     WEB_URL: TEST_WEB_ORIGIN,
     ...options.env,
   }
-  const data = await openTestData(options.storage ? { storage: options.storage } : {})
+  const { log, logs } = recordingLogger()
+  const data = await openTestData({ log, ...(options.storage ? { storage: options.storage } : {}) })
   const { mailer, sent } = recordingMailer()
+  const { errors, captured } = recordingErrorReporter()
   const deps = buildDeps({
     env: loadApiEnv(rawEnv),
     rawEnv,
     data,
     mailer,
     stripe: options.stripe ?? null,
+    log,
+    errors,
     testing: true,
   })
   const app = createApp(deps)
@@ -219,6 +234,13 @@ export async function createTestApp(
     deps,
     data,
     sent,
+    logs,
+    errorLog: () => {
+      const from = logs.length
+      return () => logs.slice(from).filter((entry) => entry.level === 'error')
+    },
+    captured,
+    context: (headers) => procedureContext(deps, new Headers(headers), log),
     request,
     client,
     linkFor,

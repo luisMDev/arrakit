@@ -110,16 +110,21 @@ describe('organizations', () => {
     it('ends the Stripe subscription first; a Stripe failure answers 502 and deletes nothing', async () => {
       const owner = await ownerOf(t, 'owner@fir.vc')
       await subscribe(owner.organization.id, 'sub_fir')
-      const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const errors = t.errorLog()
       stripe.failNext(new Error('stripe down'))
       await expect(t.client(owner.headers).organizations.delete()).rejects.toMatchObject({
         status: 502,
         message:
           "Couldn't cancel your plan with Stripe, so nothing was deleted. Try again in a minute.",
       })
-      expect(String(errors.mock.calls[0]?.[0])).toBe(
-        `ending subscription sub_fir of organization ${owner.organization.id} failed: stripe down`,
-      )
+      expect(errors()).toEqual([
+        expect.objectContaining({
+          msg: 'ending the subscription failed',
+          organizationId: owner.organization.id,
+          subscriptionId: 'sub_fir',
+          err: expect.objectContaining({ message: 'stripe down' }),
+        }),
+      ])
       expect((await t.client(owner.headers).me.get()).organization).not.toBeNull()
 
       stripe.failNext(null as unknown as Error)
@@ -129,10 +134,10 @@ describe('organizations', () => {
 
     it('still answers 204 when the purge cannot be queued', async () => {
       const owner = await ownerOf(t, 'owner@hazel.vc')
-      const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const errors = t.errorLog()
       vi.spyOn(t.data.jobs as Data['jobs'], 'send').mockRejectedValueOnce(new Error('queue down'))
       await expect(t.client(owner.headers).organizations.delete()).resolves.toBeUndefined()
-      expect(String(errors.mock.calls[0]?.[0])).toContain(`organization ${owner.organization.id}`)
+      expect(errors()[0]).toMatchObject({ organizationId: owner.organization.id })
     })
   })
 

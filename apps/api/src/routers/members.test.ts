@@ -167,13 +167,15 @@ describe('members and invitations', () => {
   it('keeps an invite whose email failed: 201 unsent; a failed resend answers 503', async () => {
     const owner = await ownerOf(t, 'owner@juniper.vc')
     const api = t.client(owner.headers)
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const errors = t.errorLog()
     const send = vi.spyOn(t.deps.mailer, 'send').mockRejectedValueOnce(new Error('resend down'))
     const invite = await api.invitations.invite({ email: 'kim@juniper.vc', role: 'member' })
     expect(invite.emailSent).toBe(false)
-    expect(String(errors.mock.calls[0]?.[0])).toContain(
-      `organization ${owner.organization.id} invitation ${invite.id}`,
-    )
+    expect(errors()[0]).toMatchObject({
+      msg: 'invite email not sent',
+      organizationId: owner.organization.id,
+      invitationId: invite.id,
+    })
     expect((await api.invitations.list())[0]?.emailSent).toBe(false)
 
     send.mockRejectedValueOnce(new Error('resend down'))
@@ -191,7 +193,6 @@ describe('members and invitations', () => {
   it('answers emailSent true when the invite was canceled while its email went out', async () => {
     const owner = await ownerOf(t, 'owner@kale.vc')
     const api = t.client(owner.headers)
-    vi.spyOn(console, 'error').mockImplementation(() => {})
     const real = t.deps.mailer.send.bind(t.deps.mailer)
     vi.spyOn(t.deps.mailer, 'send').mockImplementationOnce(async (mail) => {
       const [invite] = await api.invitations.list()
@@ -268,7 +269,6 @@ describe('members and invitations', () => {
     const api = t.client(owner.headers)
     const invite = await api.invitations.invite({ email: 'lu@poplar.vc', role: 'member' })
     expect(invite.emailSent).toBe(true)
-    vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(t.deps.mailer, 'send').mockRejectedValueOnce(new Error('resend down'))
     await expect(api.invitations.resend({ id: invite.id })).rejects.toMatchObject({ status: 503 })
     expect((await api.invitations.list())[0]).toMatchObject({ id: invite.id, emailSent: true })
@@ -278,7 +278,7 @@ describe('members and invitations', () => {
     const owner = await ownerOf(t, 'owner@rowan.vc')
     const api = t.client(owner.headers)
     const invite = await api.invitations.invite({ email: 'sol@rowan.vc', role: 'member' })
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const errors = t.errorLog()
     const real = t.data.forOrganization.bind(t.data)
     vi.spyOn(t.data, 'forOrganization').mockImplementation((id) => {
       const scope = real(id)
@@ -292,15 +292,18 @@ describe('members and invitations', () => {
       emailSent: true,
     })
     expect(t.sent.length).toBe(sent + 1)
-    expect(errors.mock.calls.map((call) => String(call[0]))).toContain(
-      `organization ${owner.organization.id} invitation ${invite.id}: sent, but not marked sent`,
+    expect(errors()).toContainEqual(
+      expect.objectContaining({
+        msg: 'invite email sent, but not marked sent',
+        organizationId: owner.organization.id,
+        invitationId: invite.id,
+      }),
     )
   })
 
   it('answers the invite when its email went out but marking it sent failed', async () => {
     const owner = await ownerOf(t, 'owner@sorrel.vc')
     const api = t.client(owner.headers)
-    vi.spyOn(console, 'error').mockImplementation(() => {})
     const real = t.data.forOrganization.bind(t.data)
     vi.spyOn(t.data, 'forOrganization').mockImplementation((id) => {
       const scope = real(id)
