@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { APP_NAME, escapeHtml } from './index'
+import { escapeHtml } from './escape'
+import { APP_NAME, signinEmail, toMail } from './index'
 
 describe('emails package', () => {
   it('has the product name in one place', () => {
@@ -15,12 +16,27 @@ describe('emails package', () => {
 })
 
 describe('templates', () => {
-  it('render the sign-in email with the exact link', async () => {
-    const { signinEmail } = await import('./index')
+  it('render the sign-in email with the exact link', () => {
     const mail = signinEmail({ minutes: 15, links: { signIn: 'https://app.example/x?a=1&b=2' } })
     expect(mail.subject).toBe('Your link to sign in to Arrakit')
     expect(mail.text).toContain('https://app.example/x?a=1&b=2')
     expect(mail.html).toContain('href="https://app.example/x?a=1&amp;b=2"')
     expect(mail.text).toContain('15 minutes')
+  })
+})
+
+describe('toMail', () => {
+  const rendered = { subject: 's', html: '<p>h</p>', text: 't', replyTo: null }
+
+  it('addresses a rendered email, with no Reply-To unless it has one', () => {
+    expect(toMail(rendered, 'ana@acme.com')).toEqual({
+      to: 'ana@acme.com',
+      subject: 's',
+      html: '<p>h</p>',
+      text: 't',
+    })
+    expect(toMail({ ...rendered, replyTo: 'billing@acme.com' }, 'ana@acme.com').replyTo).toBe(
+      'billing@acme.com',
+    )
   })
 })

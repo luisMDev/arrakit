@@ -2,7 +2,6 @@ import { actions, composeEmail, paragraph } from '../compose'
 import type { RenderedEmail } from '../mail'
 
 export interface DowngradedEmailInput {
-  /** The paid plan that ended. */
   plan: string
   organization: string
   links: { billing: string }
@@ -10,7 +9,6 @@ export interface DowngradedEmailInput {
 
 export function downgradedEmail(input: DowngradedEmailInput): RenderedEmail {
   return composeEmail({
-    organization: { name: input.organization },
     subject: `${input.organization} is back on Free`,
     heading: { lead: `${input.plan} ended.`, tail: `${input.organization} is on Free.` },
     blocks: [

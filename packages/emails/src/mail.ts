@@ -19,4 +19,10 @@ export interface RenderedEmail {
   replyTo: string | null
 }
 
-export type Email = RenderedEmail
+export const toMail = ({ subject, html, text, replyTo }: RenderedEmail, to: string): Mail => ({
+  to,
+  subject,
+  html,
+  text,
+  ...(replyTo ? { replyTo } : {}),
+})

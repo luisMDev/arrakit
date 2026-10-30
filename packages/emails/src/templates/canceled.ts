@@ -1,11 +1,10 @@
-import { type EmailOrganization, actions, composeEmail, paragraph } from '../compose'
+import { actions, composeEmail, paragraph } from '../compose'
 import { fullDay } from '../copy'
 import type { RenderedEmail } from '../mail'
 
 export interface CanceledEmailInput {
-  organization?: EmailOrganization
   plan: string
-  /** YYYY-MM-DD, the last day of the paid plan. */
+  /** YYYY-MM-DD */
   endsOn: string
   links: { billing: string }
 }
@@ -13,7 +12,6 @@ export interface CanceledEmailInput {
 export function canceledEmail(input: CanceledEmailInput): RenderedEmail {
   const endsOn = fullDay(input.endsOn)
   return composeEmail({
-    ...(input.organization ? { organization: input.organization } : {}),
     subject: `${input.plan} ends on ${endsOn}`,
     heading: { lead: `${input.plan} ends`, tail: `on ${endsOn}.` },
     blocks: [

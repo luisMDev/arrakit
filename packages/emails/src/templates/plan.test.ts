@@ -7,14 +7,12 @@ import { failedEmail } from './failed'
 import { receiptEmail } from './receipt'
 import { renewEmail } from './renew'
 
-const organization = { name: 'Acme' }
 const app = 'https://app.example.com/app'
 const charge = { amount: '€190,00', card: 'Mastercard ending 0005' }
 
 describe('receiptEmail', () => {
   it('confirms the plan, what was paid and when it renews', () => {
     const email = receiptEmail({
-      organization,
       plan: 'Pro',
       billing: 'yearly',
       charge,
@@ -33,7 +31,6 @@ describe('receiptEmail', () => {
 describe('renewEmail', () => {
   it('says what renews, when and on which card', () => {
     const email = renewEmail({
-      organization,
       plan: 'Pro',
       charge,
       renewsOn: '2027-10-09',
@@ -49,7 +46,6 @@ describe('renewEmail', () => {
 describe('failedEmail', () => {
   it('says the charge failed and when it is tried again', () => {
     const email = failedEmail({
-      organization,
       charge,
       retryInDays: 3,
       links: { billing: `${app}/billing` },
@@ -62,7 +58,6 @@ describe('failedEmail', () => {
 describe('canceledEmail', () => {
   it('names the last day of the plan', () => {
     const email = canceledEmail({
-      organization,
       plan: 'Team',
       endsOn: '2026-11-30',
       links: { billing: `${app}/billing` },

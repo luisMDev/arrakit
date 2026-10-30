@@ -1,27 +1,29 @@
 import { APP_NAME } from '../brand'
-import { composeEmail } from '../compose'
+import { actions, composeEmail, note, paragraph } from '../compose'
 import { count, firstName } from '../copy'
+import type { RenderedEmail } from '../mail'
 
 export interface MemberEmailInput {
-  organization: { name: string }
+  organization: string
   /** Display name (trimmed name, or the email local part). */
   inviter: string
   expiresInDays: number
   links: { join: string }
 }
 
-export function memberEmail({ organization, inviter, expiresInDays, links }: MemberEmailInput) {
+export function memberEmail({
+  organization,
+  inviter,
+  expiresInDays,
+  links,
+}: MemberEmailInput): RenderedEmail {
   return composeEmail({
-    organization,
-    subject: `${firstName(inviter)} invited you to ${organization.name} on ${APP_NAME}`,
-    heading: { lead: `Join ${organization.name}`, tail: `on ${APP_NAME}.` },
+    subject: `${firstName(inviter)} invited you to ${organization} on ${APP_NAME}`,
+    heading: { lead: `Join ${organization}`, tail: `on ${APP_NAME}.` },
     blocks: [
-      {
-        kind: 'paragraph',
-        text: `${inviter} invited you to work with them in ${organization.name}.`,
-      },
-      { kind: 'actions', primary: { label: `Join ${organization.name}`, href: links.join } },
-      { kind: 'note', text: `The invite expires in ${count(expiresInDays, 'day')}.` },
+      paragraph(`${inviter} invited you to work with them in ${organization}.`),
+      actions({ label: `Join ${organization}`, href: links.join }),
+      note(`The invite expires in ${count(expiresInDays, 'day')}.`),
     ],
   })
 }

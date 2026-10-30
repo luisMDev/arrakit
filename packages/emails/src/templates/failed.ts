@@ -1,10 +1,9 @@
-import { type EmailOrganization, actions, composeEmail, paragraph } from '../compose'
+import { actions, composeEmail, paragraph } from '../compose'
 import { count } from '../copy'
 import type { RenderedEmail } from '../mail'
 import type { Charge } from './receipt'
 
 export interface FailedEmailInput {
-  organization?: EmailOrganization
   charge: Charge
   retryInDays: number
   links: { billing: string }
@@ -12,7 +11,6 @@ export interface FailedEmailInput {
 
 export function failedEmail(input: FailedEmailInput): RenderedEmail {
   return composeEmail({
-    ...(input.organization ? { organization: input.organization } : {}),
     subject: "Your payment didn't go through",
     heading: { lead: 'Your payment', tail: "didn't go through." },
     blocks: [

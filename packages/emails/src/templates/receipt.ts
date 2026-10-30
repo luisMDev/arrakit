@@ -1,5 +1,5 @@
 import { APP_NAME } from '../brand'
-import { type EmailOrganization, actions, composeEmail, rows } from '../compose'
+import { actions, composeEmail, rows } from '../compose'
 import { fullDay } from '../copy'
 import type { RenderedEmail } from '../mail'
 
@@ -9,7 +9,6 @@ export interface Charge {
 }
 
 export interface ReceiptEmailInput {
-  organization?: EmailOrganization
   plan: string
   billing: 'monthly' | 'yearly'
   charge: Charge
@@ -20,7 +19,6 @@ export interface ReceiptEmailInput {
 
 export function receiptEmail(input: ReceiptEmailInput): RenderedEmail {
   return composeEmail({
-    ...(input.organization ? { organization: input.organization } : {}),
     subject: `You're on ${APP_NAME} ${input.plan}`,
     heading: { lead: `You're on ${input.plan}.`, tail: 'Thanks for paying.' },
     blocks: [

@@ -7,7 +7,7 @@ const join =
   'https://app.example.com/api/auth/magic-link/verify?token=AbC123xYz&callbackURL=https%3A%2F%2Fapp.example.com%2Fjoin%2Finv-1'
 
 const input = {
-  organization: { name: 'Acme' },
+  organization: 'Acme',
   inviter: 'Ana Pérez Soler',
   expiresInDays: 7,
   links: { join },

@@ -1,18 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { APP_NAME } from './brand'
-import {
-  actions,
-  bullets,
-  choices,
-  composeEmail,
-  link,
-  note,
-  paragraph,
-  quote,
-  rows,
-  sections,
-} from './compose'
+import { actions, composeEmail, note, paragraph, rows } from './compose'
 
 describe('composeEmail', () => {
   it('carries the subject and heading in both parts, and no Reply-To unless given', () => {
@@ -46,7 +35,7 @@ describe('composeEmail', () => {
       subject: 'Back on Free',
       heading: { lead: 'Pro ended.', tail: 'You are on Free.' },
       blocks: [paragraph('Your data stays.')],
-      footer: ['Sent to organization admins.'],
+      footer: 'Sent to organization admins.',
     })
 
     expect(email.html).toContain(`>${APP_NAME}</td>`)
@@ -59,8 +48,7 @@ describe('composeEmail', () => {
       subject: `Welcome to ${name}`,
       heading: { lead: 'Welcome', tail: `${name}.` },
       blocks: [
-        paragraph(['Ask ', link(name, 'https://app.example.com/a?b=1&c=2'), '.']),
-        actions({ label: `Open ${name}`, href: 'https://app.example.com/x' }),
+        actions({ label: `Open ${name}`, href: 'https://app.example.com/a?b=1&c=2' }),
         note(`Reply about Q3 <> Q4 for ${name}.`),
       ],
     })
@@ -70,8 +58,7 @@ describe('composeEmail', () => {
     expect(email.html).toContain('Ardent &amp; &quot;Co&quot; &lt;O&#39;Neil&gt;')
     expect(email.html).toContain('href="https://app.example.com/a?b=1&amp;c=2"')
     expect(email.html).toContain('Q3 &lt;&gt; Q4')
-    expect(email.text).toContain(`Ask ${name} (https://app.example.com/a?b=1&c=2).`)
-    expect(email.text).toContain(`Open ${name}: https://app.example.com/x`)
+    expect(email.text).toContain(`Open ${name}: https://app.example.com/a?b=1&c=2`)
   })
 
   it('renders every block kind in the text part', () => {
@@ -79,14 +66,9 @@ describe('composeEmail', () => {
       subject: 's',
       heading: { lead: 'Lead', tail: 'tail' },
       blocks: [
-        bullets(['one', 'two']),
+        paragraph('Hello'),
+        note('Small print'),
         rows([['Plan', 'Pro']]),
-        sections([{ label: 'Answered', text: 'Yes' }]),
-        quote('Hi'),
-        choices([
-          { label: 'A', href: 'https://a.example' },
-          { label: 'B', href: 'https://b.example' },
-        ]),
         actions(
           { label: 'Go', href: 'https://go.example' },
           { label: 'Later', href: 'https://later.example' },
@@ -97,11 +79,9 @@ describe('composeEmail', () => {
     expect(email.text).toBe(
       [
         'Lead tail',
-        '- one\n- two',
+        'Hello',
+        'Small print',
         'Plan: Pro',
-        'ANSWERED\nYes',
-        '“Hi”',
-        'A: https://a.example\nB: https://b.example',
         'Go: https://go.example\nLater: https://later.example',
       ].join('\n\n') + '\n',
     )
@@ -122,15 +102,5 @@ describe('composeEmail', () => {
     expect(withLink('http://localhost:5200/api/auth/x')).not.toThrow()
     expect(withLink('http://127.0.0.1/x')).not.toThrow()
     expect(withLink('http://localhost.evil.com/x')).toThrow(/https: or mailto:/)
-  })
-
-  it('checks links inside rich text too', () => {
-    expect(() =>
-      composeEmail({
-        subject: 's',
-        heading: { lead: 'a', tail: 'b' },
-        blocks: [paragraph([link('x', 'javascript:void(0)')])],
-      }),
-    ).toThrow(/https: or mailto:/)
   })
 })
