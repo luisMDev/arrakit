@@ -18,6 +18,7 @@ import { requireUser } from '#/lib/guards/require-user'
 
 import { AppShell } from './app-shell'
 import { HomePage } from './home-page'
+import { NotFoundPage } from './not-found-page'
 import { onPaidPlan } from './on-paid-plan'
 import { RootLayout } from './root-layout'
 import { UnavailablePage } from './unavailable-page'
@@ -166,16 +167,12 @@ export function renderApp(url: string, { queryClient = new QueryClient() } = {})
   const appCatchAll = createRoute({
     getParentRoute: () => app,
     path: '$',
-    beforeLoad: () => {
-      throw redirect({ to: '/app' })
-    },
+    component: NotFoundPage,
   })
   const catchAll = createRoute({
     getParentRoute: () => rootRoute,
     path: '$',
-    beforeLoad: () => {
-      throw redirect({ to: '/signin' })
-    },
+    component: NotFoundPage,
   })
   const routeTree = rootRoute.addChildren([
     index,

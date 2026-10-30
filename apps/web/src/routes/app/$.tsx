@@ -1,7 +1,9 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
+
+import { NotFoundPage } from '#/components/shell/not-found-page'
+import { titled } from '#/lib/page-title'
 
 export const Route = createFileRoute('/app/$')({
-  beforeLoad: () => {
-    throw redirect({ to: '/app' })
-  },
+  head: titled('notFound'),
+  component: NotFoundPage,
 })

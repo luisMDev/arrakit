@@ -14,7 +14,8 @@
       "settings": "Ajustes",
       "plans": "Planes",
       "checkout": "Pago",
-      "welcome": "Bienvenida"
+      "welcome": "Bienvenida",
+      "notFound": "Página no encontrada"
     }
   },
   "confirmDelete": {

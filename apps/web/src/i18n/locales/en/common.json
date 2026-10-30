@@ -14,7 +14,8 @@
       "settings": "Settings",
       "plans": "Plans",
       "checkout": "Checkout",
-      "welcome": "Welcome"
+      "welcome": "Welcome",
+      "notFound": "Page not found"
     }
   },
   "confirmDelete": {

@@ -169,11 +169,26 @@ describe('requireUser', () => {
     expect(location()).toBe('/profile')
   })
 
-  it.each(['/app/booking', '/app/booked'])('lands an unknown %s on Home', async (url) => {
-    meAnswers(meAs())
-    const { location } = renderApp(url)
-    expect(await screen.findByRole('heading', { name: 'Hi, Ana Ruiz.' })).toBeInTheDocument()
-    expect(location()).toBe('/app')
+  it.each(['/app/booking', '/app/booked'])(
+    'shows the not-found page inside the shell for an unknown %s',
+    async (url) => {
+      meAnswers(meAs())
+      const { location } = renderApp(url)
+      expect(
+        await screen.findByRole('heading', { name: 'This page does not exist.' }),
+      ).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Account menu' })).toBeInTheDocument()
+      expect(location()).toBe(url)
+    },
+  )
+
+  it('shows a not-found page for an unknown path outside /app', async () => {
+    const { location } = renderApp('/nope')
+    expect(
+      await screen.findByRole('heading', { name: 'This page does not exist.' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back home' })).toHaveAttribute('href', '/')
+    expect(location()).toBe('/nope')
   })
 
   it('sends / to sign in', async () => {

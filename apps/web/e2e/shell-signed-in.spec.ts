@@ -54,7 +54,8 @@ test('a signed-in owner moves around the app from the account menu', async ({ pa
   }
 
   await page.goto('/app/booking')
-  await expect(page).toHaveURL(/\/app$/)
+  await expect(page).toHaveURL(/\/app\/booking$/)
+  await expect(page.getByRole('heading', { name: 'This page does not exist.' })).toBeVisible()
 
   await menuButton.click()
   await page.locator('#app-menu').getByRole('button', { name: 'Sign out' }).click()
