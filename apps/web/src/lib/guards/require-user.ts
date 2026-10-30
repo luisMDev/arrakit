@@ -3,8 +3,10 @@ import type { QueryClient } from '@tanstack/react-query'
 import { redirect } from '@tanstack/react-router'
 
 import { isLanguage, loadLanguage } from '#/i18n'
-import { reportError, statusOf } from '#/lib/api-errors'
+import { reportError } from '#/lib/api-errors'
 import { orpc } from '#/lib/orpc'
+
+import { guardFailure, unavailableRedirect } from './guard-failure'
 
 async function signedInPerson(queryClient: QueryClient): Promise<Me> {
   const options = orpc.me.get.queryOptions()
@@ -25,35 +27,23 @@ export async function requireUser({
   context: { queryClient: QueryClient }
   location: { href: string }
 }) {
-  let outcome: 'ok' | 'profile' | 'signin' | 'forbidden' | 'unavailable'
+  let me: Me
   try {
-    const me = await signedInPerson(context.queryClient)
-    if (!me.organization || !me.role || !me.plan) outcome = 'profile'
-    else {
-      if (isLanguage(me.language)) {
-        // Always queued, even when the account language looks active: an earlier switch (this
-        // browser's remembered or own language) may still be loading and would win otherwise.
-        // The switch is serialized behind it and does nothing when the language is already on.
-        // A language file that will not load (a stale chunk, offline) keeps the current
-        // language rather than hiding the app behind the Unavailable screen.
-        await loadLanguage(me.language).catch((err: unknown) =>
-          reportError('[requireUser] loading the account language failed', err),
-        )
-      }
-      outcome = 'ok'
-    }
+    me = await signedInPerson(context.queryClient)
   } catch (err) {
-    const status = statusOf(err)
-    if (status === 401) outcome = 'signin'
-    else {
-      reportError('[requireUser] the guard failed', err)
-      outcome = status === 403 ? 'forbidden' : 'unavailable'
-    }
+    const failure = guardFailure('[requireUser] the guard failed', err)
+    if (failure === 'signed-out') throw redirect({ to: '/signin' })
+    throw unavailableRedirect(failure, location.href)
   }
-  if (outcome === 'profile') throw redirect({ to: '/profile' })
-  if (outcome === 'signin') throw redirect({ to: '/signin' })
-  if (outcome === 'forbidden')
-    throw redirect({ to: '/unavailable', search: { reason: 'forbidden' } })
-  if (outcome === 'unavailable')
-    throw redirect({ to: '/unavailable', search: { next: location.href } })
+  if (!me.organization || !me.role || !me.plan) throw redirect({ to: '/profile' })
+  if (isLanguage(me.language)) {
+    // Always queued, even when the account language looks active: an earlier switch (this
+    // browser's remembered or own language) may still be loading and would win otherwise.
+    // The switch is serialized behind it and does nothing when the language is already on.
+    // A language file that will not load (a stale chunk, offline) keeps the current
+    // language rather than hiding the app behind the Unavailable screen.
+    await loadLanguage(me.language).catch((err: unknown) =>
+      reportError('[requireUser] loading the account language failed', err),
+    )
+  }
 }

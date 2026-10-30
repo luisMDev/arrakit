@@ -5,9 +5,10 @@ import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { orpc } from '#/lib/orpc'
+import { answer, api, quiet, renderAt } from '#/test/rpc'
 
 import { PlansPage } from './plans-page'
-import { OFFERS, answer, api, billingOf, meOn, renderAt } from './testing'
+import { OFFERS, billingOf, meOn } from './testing'
 
 beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
 afterEach(() => {
@@ -19,8 +20,6 @@ afterEach(() => {
 afterAll(() => api.close())
 
 const card = (name: string) => screen.getByRole('article', { name })
-const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => undefined)
-
 async function setup(me: Me) {
   answer('plans/list', OFFERS)
   answer('me/get', me)
@@ -75,7 +74,7 @@ describe('PlansPage', () => {
     ).toBeInTheDocument()
     expect(within(dialog).getByText('Then $480 a year.')).toBeInTheDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Switch to Team' }))
-    await waitFor(() => expect(view.location().pathname).toBe('/app/billing'))
+    await waitFor(() => expect(view.location()).toBe('/app/billing'))
     expect(changes[0]?.input).toEqual({ plan: 'team', cycle: 'yearly' })
   })
 
@@ -218,8 +217,8 @@ describe('PlansPage', () => {
   it('sends a yearly Select straight to Checkout', async () => {
     const view = await setup(meOn('free'))
     await userEvent.click(within(card('Team')).getByRole('button', { name: 'Select Team' }))
-    await waitFor(() => expect(view.location().pathname).toBe('/app/checkout'))
-    expect(view.location().search).toEqual({ plan: 'team', cycle: 'yearly' })
+    await waitFor(() => expect(view.location()).toBe('/app/checkout'))
+    expect(view.router.state.location.search).toEqual({ plan: 'team', cycle: 'yearly' })
   })
 
   it('offers yearly billing before a monthly Checkout, and closes back to Plans', async () => {
@@ -232,7 +231,7 @@ describe('PlansPage', () => {
     expect(dialog).toHaveTextContent('$480 a year instead of $600.')
     await userEvent.keyboard('{Escape}')
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(view.location().pathname).toBe('/app/plans')
+    expect(view.location()).toBe('/app/plans')
   })
 
   it.each([
@@ -244,8 +243,8 @@ describe('PlansPage', () => {
     await userEvent.click(within(card('Pro')).getByRole('button', { name: 'Select Pro' }))
     const dialog = await screen.findByRole('dialog')
     await userEvent.click(within(dialog).getByRole('button', { name: button }))
-    await waitFor(() => expect(view.location().pathname).toBe('/app/checkout'))
-    expect(view.location().search).toEqual({ plan: 'pro', cycle })
+    await waitFor(() => expect(view.location()).toBe('/app/checkout'))
+    expect(view.router.state.location.search).toEqual({ plan: 'pro', cycle })
   })
 
   it('shows a member no buy buttons, only who can change the plan', async () => {

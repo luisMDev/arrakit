@@ -16,8 +16,8 @@ import {
   DialogTitle,
 } from '#/components/ui/dialog'
 import { Skeleton } from '#/components/ui/skeleton'
-import { paymentRefusal, refusalMessage } from '#/lib/api-errors'
 import { useCurrentUser } from '#/lib/current-user'
+import { money } from '#/lib/format'
 import { orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
 import { useFailureToast } from '#/lib/use-failure-toast'
@@ -27,7 +27,6 @@ import { isPaying, plansAbove } from './plan-access'
 import { FeatureList, PlanCard } from './plan-card'
 import {
   leastYearlySaving,
-  money,
   planFeatures,
   planLabel,
   seatsLine,
@@ -53,7 +52,7 @@ export function PlansPage() {
   const [annualOffer, setAnnualOffer] = useState<PaidOffer | null>(null)
   const [pending, setPending] = useState<PendingSwitch | null>(null)
 
-  const offers = useQuery(orpc.plans.list.queryOptions())
+  const offers = useQuery(orpc.plans.list.queryOptions({ staleTime: Infinity }))
   const wantsBilling = isAdmin && isPaying(current)
   const billingQuery = orpc.billing.get.queryOptions()
   const billing = useQuery({ ...billingQuery, enabled: wantsBilling })
@@ -65,12 +64,7 @@ export function PlansPage() {
   const cycle: BillingCycle = chosenCycle ?? paying?.cycle ?? 'yearly'
 
   useFailureToast(offers.error, '[plans] plans.list failed', t('plans.loadFailed'))
-  useFailureToast(
-    billing.error,
-    '[plans] billing.get failed',
-    t('plans.billingLoadFailed'),
-    refusalMessage,
-  )
+  useFailureToast(billing.error, '[plans] billing.get failed', t('plans.billingLoadFailed'))
 
   const preview = useApiMutation(
     {
@@ -89,7 +83,7 @@ export function PlansPage() {
         await navigate({ to: '/app/billing' })
       },
     },
-    { context: '[plans] switch failed', failure: t('plans.switchFailed'), refusal: paymentRefusal },
+    { context: '[plans] switch failed', failure: t('plans.switchFailed') },
   )
 
   const goToCheckout = (choice: PaidChoice) =>

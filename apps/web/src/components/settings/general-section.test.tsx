@@ -3,9 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { orpc } from '#/lib/orpc'
+import { answer, api, meAs, quiet, renderAt } from '#/test/rpc'
 
 import { GeneralSection } from './general-section'
-import { answer, api, meAs, renderScreen } from './testing'
 
 beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
 afterEach(() => {
@@ -19,7 +19,7 @@ const summary = { id: '0f8fad5b-d9cb-469f-a165-70867728950e', slug: 'acme', plan
 describe('GeneralSection', () => {
   it('shows the name and slug read-only to a member', async () => {
     answer('me/get', meAs({ role: 'member' }))
-    renderScreen(<GeneralSection />, { me: meAs({ role: 'member' }) })
+    renderAt(<GeneralSection />, { me: meAs({ role: 'member' }) })
     expect(await screen.findByLabelText('Organization name')).toBeDisabled()
     expect(screen.getByText('Slug: acme')).toBeInTheDocument()
   })
@@ -27,7 +27,7 @@ describe('GeneralSection', () => {
   it('renames on blur for an admin and patches me', async () => {
     const calls = answer('organizations/update', { ...summary, name: 'Acme Capital' })
     answer('me/get', meAs({ role: 'admin' }))
-    const { queryClient } = renderScreen(<GeneralSection />, { me: meAs({ role: 'admin' }) })
+    const { queryClient } = renderAt(<GeneralSection />, { me: meAs({ role: 'admin' }) })
     const input = await screen.findByLabelText('Organization name')
     await userEvent.clear(input)
     await userEvent.type(input, ' Acme Capital ')
@@ -44,7 +44,7 @@ describe('GeneralSection', () => {
   it('never sends a blank name', async () => {
     const calls = answer('organizations/update', { ...summary, name: 'x' })
     answer('me/get', meAs({ role: 'admin' }))
-    renderScreen(<GeneralSection />, { me: meAs({ role: 'admin' }) })
+    renderAt(<GeneralSection />, { me: meAs({ role: 'admin' }) })
     const input = await screen.findByLabelText('Organization name')
     await userEvent.clear(input)
     await userEvent.tab()
@@ -53,10 +53,10 @@ describe('GeneralSection', () => {
   })
 
   it('puts the saved name back when the rename fails', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    quiet()
     answer('organizations/update', 500)
     const loads = answer('me/get', meAs())
-    renderScreen(<GeneralSection />, { me: meAs({ role: 'owner' }) })
+    renderAt(<GeneralSection />, { me: meAs({ role: 'owner' }) })
     const input = await screen.findByLabelText('Organization name')
     await waitFor(() => expect(loads).toHaveLength(1))
     await userEvent.type(input, ' Two')
@@ -70,15 +70,15 @@ describe('GeneralSection', () => {
 
   it('loads the organization fresh when it opens', async () => {
     const loads = answer('me/get', meAs({ organization: { ...summary, name: 'Acme Labs' } }))
-    renderScreen(<GeneralSection />, { me: meAs({ role: 'admin' }) })
+    renderAt(<GeneralSection />, { me: meAs({ role: 'admin' }) })
     await waitFor(() => expect(loads).toHaveLength(1))
     await waitFor(() => expect(screen.getByLabelText('Organization name')).toHaveValue('Acme Labs'))
   })
 
   it('says so when the organization does not load', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    quiet()
     answer('me/get', 500)
-    renderScreen(<GeneralSection />, { me: meAs({ role: 'admin' }) })
+    renderAt(<GeneralSection />, { me: meAs({ role: 'admin' }) })
     expect(
       await screen.findByText("Couldn't load your organization's settings. Reload the page."),
     ).toBeInTheDocument()

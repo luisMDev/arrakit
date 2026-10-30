@@ -8,10 +8,9 @@ import { z } from 'zod'
 import { Card, CardContent } from '#/components/ui/card'
 import { Field, FieldDescription, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
-import { noRefusal, reportError } from '#/lib/api-errors'
+import { apiFailed } from '#/lib/api-errors'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing, useClearingForm } from '#/lib/form'
-import { notify } from '#/lib/notify'
 import { orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
@@ -32,13 +31,11 @@ export function GeneralSection() {
   const invalid = form.formState.errors.name !== undefined
   const queryClient = useQueryClient()
 
-  /** The organization as the API holds it now; a failure says `failure` and keeps what shows. */
   async function load(failure: string) {
     try {
       await queryClient.fetchQuery({ ...orpc.me.get.queryOptions(), staleTime: 0 })
     } catch (err) {
-      reportError('[general] loading the organization failed', err)
-      notify.error(failure)
+      apiFailed('[general] loading the organization failed', err, failure)
     }
   }
 
@@ -63,11 +60,7 @@ export function GeneralSection() {
         await load(t(`${K}.notSaved`))
       },
     },
-    {
-      context: '[general] renaming the organization failed',
-      failure: t(`${K}.notSaved`),
-      refusal: noRefusal,
-    },
+    { context: '[general] renaming the organization failed', failure: t(`${K}.notSaved`) },
   )
 
   async function saveName({ name: trimmed }: z.output<typeof nameSchema>) {

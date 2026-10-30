@@ -5,9 +5,7 @@ import { loadLanguage } from '#/i18n'
 import { plansAbove } from './plan-access'
 import {
   cardLine,
-  fullDay,
   leastYearlySaving,
-  money,
   planLine,
   planPrice,
   seatsLine,
@@ -19,20 +17,6 @@ import { OFFERS } from './testing'
 const [free, pro, team] = OFFERS as [(typeof OFFERS)[0], (typeof OFFERS)[0], (typeof OFFERS)[0]]
 
 afterEach(() => loadLanguage('en'))
-
-describe('money and days', () => {
-  it('writes whole amounts without cents, others with two', () => {
-    expect(money({ amount: 143_000, currency: 'usd' })).toBe('$1,430')
-    expect(money({ amount: 143_050, currency: 'usd' })).toBe('$1,430.50')
-    expect(money({ amount: 11_950, currency: 'usd' }, { whole: true })).toBe('$120')
-  })
-
-  it('writes a calendar day without moving it', async () => {
-    expect(fullDay('2027-10-04')).toBe('Oct 4, 2027')
-    await loadLanguage('es')
-    expect(fullDay('2027-10-04')).toBe('4 oct 2027')
-  })
-})
 
 describe('planPrice', () => {
   it('shows Free at $0 with nothing billed', () => {

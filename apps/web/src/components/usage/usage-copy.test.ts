@@ -6,8 +6,6 @@ import { usageFixture } from './fixtures'
 import {
   amountsLine,
   availableLine,
-  fullDay,
-  money,
   resetLine,
   splitLine,
   topUpLine,
@@ -41,10 +39,7 @@ describe('usage copy', () => {
     expect(usedPercent({ ...credits!, used: 0, available: 0 })).toBe(0)
   })
 
-  it('writes money, lists and top-ups', () => {
-    expect(money(2_500)).toBe('$25')
-    expect(money(2_550)).toBe('$25.50')
-    expect(fullDay('2026-10-08')).toBe('Oct 8, 2026')
+  it('writes top-ups', () => {
     expect(
       topUpLine({
         cents: 2_500,
@@ -64,6 +59,5 @@ describe('usage copy', () => {
         { metric: 'storage_gb', amount: 200 },
       ]),
     ).toBe('2000 créditos y 200 GB')
-    expect(fullDay('2026-11-04')).toBe('4 nov 2026')
   })
 })

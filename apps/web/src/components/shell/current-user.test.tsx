@@ -1,10 +1,10 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
-import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
 import { displayName, initialOf, roleFlags, useCurrentUser } from '#/lib/current-user'
 import { orpc } from '#/lib/orpc'
+import { withQueries } from '#/test/rpc'
 
 import { meAs } from './testing'
 
@@ -35,10 +35,10 @@ describe('useCurrentUser', () => {
   function setUp(seed?: ReturnType<typeof meAs>) {
     const queryClient = new QueryClient()
     if (seed) queryClient.setQueryData(orpc.me.get.queryOptions().queryKey, seed)
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    )
-    return { ...renderHook(() => useCurrentUser(), { wrapper }), queryClient }
+    return {
+      ...renderHook(() => useCurrentUser(), { wrapper: withQueries(queryClient) }),
+      queryClient,
+    }
   }
 
   it('is no one, and neither admin nor owner, before anyone signs in', () => {

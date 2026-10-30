@@ -49,11 +49,11 @@ export function RootFrame({ children }: { children: ReactNode }) {
  * A lazy chunk that Vite failed to preload after a deploy: reload the screen being opened once
  * (the router's latest location is the navigation's target).
  */
-export function useStaleChunkRecovery() {
+function useStaleChunkRecovery() {
   const router = useRouter()
   useEffect(() => {
     const listener = (event: Event) =>
-      void onPreloadError(event as PreloadErrorEvent, router.latestLocation.href, window)
+      onPreloadError(event as PreloadErrorEvent, router.latestLocation.href, window)
     window.addEventListener('vite:preloadError', listener)
     return () => window.removeEventListener('vite:preloadError', listener)
   }, [router])

@@ -9,9 +9,7 @@ import { useTranslation } from 'react-i18next'
 import {
   cancelLine,
   cardLine,
-  fullDay,
   invoiceLine,
-  money,
   planLine,
   scheduledLine,
   seatsLine,
@@ -32,7 +30,7 @@ import { Skeleton } from '#/components/ui/skeleton'
 import type { SectionProps } from '#/components/settings/settings-page'
 import { BillingUsage, TopUpsList } from '#/components/usage/billing-usage'
 import { useUsage } from '#/components/usage/use-usage'
-import { refusalMessage } from '#/lib/api-errors'
+import { fullDay, money } from '#/lib/format'
 import { client, orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
 import { useFailureToast } from '#/lib/use-failure-toast'
@@ -73,7 +71,7 @@ export function BillingSection({
   const usage = useUsage()
   const [cancelling, setCancelling] = useState(false)
 
-  useFailureToast(error, '[billing] billing.get failed', t(`${KEY}.notLoaded`), refusalMessage)
+  useFailureToast(error, '[billing] billing.get failed', t(`${KEY}.notLoaded`))
 
   const replace = (next: BillingView) => queryClient.setQueryData(billingQuery.queryKey, next)
 

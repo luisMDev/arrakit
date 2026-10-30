@@ -3,9 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { SITE_URL } from '#/config'
+import { answer, api, renderAt } from '#/test/rpc'
 
 import { PricingPage } from './pricing-page'
-import { OFFERS, answer, api, renderAt } from './testing'
+import { OFFERS } from './testing'
 
 beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
 afterEach(() => {

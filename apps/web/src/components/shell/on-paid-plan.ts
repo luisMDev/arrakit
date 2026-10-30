@@ -6,14 +6,14 @@ import { reportError } from '#/lib/api-errors'
 import { orpc } from '#/lib/orpc'
 
 export const PAID_WAIT_TRIES = 15
-export const PAID_WAIT_INTERVAL_MS = 1000
+const PAID_WAIT_INTERVAL_MS = 1000
 
 const isPaid = (me: Me | undefined) => !!me?.plan && me.plan !== 'free'
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 /** Re-reads the person until the organization's plan is paid; false after every try or a failure. */
-export async function waitForPaidPlan(queryClient: QueryClient): Promise<boolean> {
+async function waitForPaidPlan(queryClient: QueryClient): Promise<boolean> {
   const options = { ...orpc.me.get.queryOptions(), staleTime: 0 }
   for (let attempt = 0; attempt < PAID_WAIT_TRIES; attempt++) {
     if (attempt > 0) await wait(PAID_WAIT_INTERVAL_MS)

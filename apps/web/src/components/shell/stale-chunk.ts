@@ -56,16 +56,15 @@ export type PreloadErrorEvent = Event & { payload?: unknown }
 /**
  * Handles Vite's `vite:preloadError`: when the failure is a stale chunk worth a reload, cancels
  * the event (so Vite does not rethrow it) and recovers. The decision is synchronous because
- * `preventDefault()` only counts while the event is being dispatched. True when it recovers.
+ * `preventDefault()` only counts while the event is being dispatched.
  */
 export function onPreloadError(
   event: PreloadErrorEvent,
   targetUrl: string,
   win: StaleChunkWindow,
-): boolean {
+): void {
   const retry = claimRetry(event.payload, win)
-  if (!retry) return false
+  if (!retry) return
   event.preventDefault()
   void reload(retry, targetUrl, win)
-  return true
 }

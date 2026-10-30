@@ -17,7 +17,7 @@ import { leastYearlySaving, planLabel, pricingCopy } from './plan-copy'
 export function PricingPage() {
   const { t } = useTranslation()
   const [cycle, setCycle] = useState<BillingCycle>('yearly')
-  const { data: offers, error } = useQuery(orpc.plans.list.queryOptions())
+  const { data: offers, error } = useQuery(orpc.plans.list.queryOptions({ staleTime: Infinity }))
 
   useFailureToast(error, '[pricing] plans.list failed', t('pricing.loadFailed'))
 

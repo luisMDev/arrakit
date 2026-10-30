@@ -1,22 +1,10 @@
 import type { AuthProviders } from '@arrakit/contract'
-import { createContext, useContext } from 'react'
 
-import { client } from '#/lib/orpc'
+import { statusOf } from '#/lib/api-errors'
 
 export type SocialProvider = 'google' | 'microsoft'
 
 export const PROVIDERS_UNKNOWN: AuthProviders = { google: true, microsoft: false }
-
-export class EmailRefusedError extends Error {
-  override name = 'EmailRefusedError'
-}
-
-export class AuthRequestError extends Error {
-  override name = 'AuthRequestError'
-  constructor(readonly status: number) {
-    super(`The auth API answered ${status}`)
-  }
-}
 
 const OAUTH_AUTHORIZE = '/api/auth/oauth2/authorize?'
 
@@ -34,73 +22,53 @@ export function refusedLanding(landing: string, via?: SocialProvider): string {
   return withVia('/signup', new URLSearchParams(query))
 }
 
-export interface AuthApi {
-  sendMagicLink(email: string, landing: string): Promise<void>
-  signInWith(provider: SocialProvider, landing: string): Promise<void>
-  providers(): Promise<AuthProviders>
+/**
+ * Calls Better Auth's `/api/auth<path>` (a POST when there is a body). A failure rejects with the
+ * answer's `status` and Better Auth's own `message`. Not `authClient`: its OAuth provider plugin
+ * adds the page's signed query to every POST, which would tie a sign-in on /oauth/signin to it.
+ */
+export async function authFetch<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(
+    `/api/auth${path}`,
+    body === undefined
+      ? {}
+      : {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+  )
+  if (!res.ok) {
+    const answer = (await res.json().catch(() => null)) as { message?: unknown } | null
+    const message = typeof answer?.message === 'string' ? answer.message : ''
+    throw Object.assign(new Error(message), { status: res.status })
+  }
+  return (await res.json()) as T
 }
 
 const absolute = (path: string) => new URL(path, document.baseURI).href
 
-async function post(path: string, body: unknown): Promise<Response> {
-  const res = await fetch(`/api/auth${path}`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) throw new AuthRequestError(res.status)
-  return res
-}
-
-export function createHttpAuthApi(
-  options: {
-    loadProviders?: () => Promise<AuthProviders>
-    redirect?: (url: string) => void
-  } = {},
-): AuthApi {
-  const loadProviders = options.loadProviders ?? (() => client.authProviders.get())
-  const redirect =
-    options.redirect ??
-    ((url: string) => {
-      window.location.href = url
+/** Resolves `false` when Better Auth refuses the address (400), `true` once the link is sent. */
+export async function sendMagicLink(email: string, landing: string): Promise<boolean> {
+  try {
+    await authFetch('/sign-in/magic-link', {
+      email,
+      callbackURL: absolute(landing),
+      errorCallbackURL: absolute(refusedLanding(landing)),
     })
-  let knownProviders: Promise<AuthProviders> | null = null
-
-  return {
-    async sendMagicLink(email, landing) {
-      try {
-        await post('/sign-in/magic-link', {
-          email,
-          callbackURL: absolute(landing),
-          errorCallbackURL: absolute(refusedLanding(landing)),
-        })
-      } catch (err) {
-        if (err instanceof AuthRequestError && err.status === 400) throw new EmailRefusedError()
-        throw err
-      }
-    },
-    async signInWith(provider, landing) {
-      const res = await post('/sign-in/social', {
-        provider,
-        callbackURL: absolute(landing),
-        errorCallbackURL: absolute(refusedLanding(landing, provider)),
-      })
-      const { url } = (await res.json()) as { url: string }
-      redirect(url)
-    },
-    providers() {
-      knownProviders ??= loadProviders().catch((err: unknown) => {
-        knownProviders = null
-        throw err
-      })
-      return knownProviders.catch(() => PROVIDERS_UNKNOWN)
-    },
+    return true
+  } catch (err) {
+    if (statusOf(err) === 400) return false
+    throw err
   }
 }
 
-export const httpAuthApi = createHttpAuthApi()
-
-export const AuthApiContext = createContext<AuthApi>(httpAuthApi)
-
-export const useAuthApi = () => useContext(AuthApiContext)
+/** The provider's sign-in page to send the window to. */
+export async function socialSignInUrl(provider: SocialProvider, landing: string): Promise<string> {
+  const { url } = await authFetch<{ url: string }>('/sign-in/social', {
+    provider,
+    callbackURL: absolute(landing),
+    errorCallbackURL: absolute(refusedLanding(landing, provider)),
+  })
+  return url
+}

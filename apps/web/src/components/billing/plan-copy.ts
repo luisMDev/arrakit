@@ -1,40 +1,8 @@
 import type { BillingView, ChangePreview, PaidChoice, PlanOfferView } from '@arrakit/contract'
 import type { BillingCycle, Plan } from '@arrakit/plans'
 
-import { i18n, tr } from '#/i18n'
-
-export interface Money {
-  amount: number
-  currency: string
-}
-
-type Lang = 'en' | 'es'
-
-const LOCALES: Record<Lang, string> = { en: 'en-US', es: 'es-ES' }
-const activeLang = (): Lang => (i18n.language === 'es' ? 'es' : 'en')
-
-const MONTHS: Record<Lang, readonly string[]> = {
-  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-  es: ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'],
-}
-
-export function fullDay(day: string, lang: Lang = activeLang()): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day)
-  if (!match) throw new Error(`"${day}" is not a calendar day (YYYY-MM-DD)`)
-  const [year, month, date] = match.slice(1).map(Number) as [number, number, number]
-  const name = MONTHS[lang][month - 1]
-  return lang === 'es' ? `${date} ${name} ${year}` : `${name} ${date}, ${year}`
-}
-
-export function money({ amount, currency }: Money, { whole = false } = {}): string {
-  const digits = whole || amount % 100 === 0 ? 0 : 2
-  return new Intl.NumberFormat(LOCALES[activeLang()], {
-    style: 'currency',
-    currency: currency.toUpperCase(),
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(amount / 100)
-}
+import { tr } from '#/i18n'
+import { fullDay, type Money, money } from '#/lib/format'
 
 export const planLabel = (plan: Plan): string => tr(`pricing.plan.${plan}`)
 
@@ -69,7 +37,7 @@ export function seatsLine(seats: number, upTo = tr('pricing.upTo')): string {
   return seats === 1 ? tr('pricing.oneSeat') : tr('pricing.seatsUpTo', { upTo, seats })
 }
 
-export interface PlanPrice {
+interface PlanPrice {
   was: string | null
   price: string
   billed: string | null

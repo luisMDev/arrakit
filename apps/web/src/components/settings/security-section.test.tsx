@@ -3,9 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { orpc } from '#/lib/orpc'
+import { answer, api, meAs, quiet, renderAt } from '#/test/rpc'
 
 import { SecuritySection } from './security-section'
-import { answer, api, meAs, renderScreen } from './testing'
 
 beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
 afterEach(() => {
@@ -16,7 +16,7 @@ afterAll(() => api.close())
 
 describe('SecuritySection', () => {
   it.each(['admin', 'member'] as const)('only tells a %s who can delete', async (role) => {
-    renderScreen(<SecuritySection />, { me: meAs({ role }) })
+    renderAt(<SecuritySection />, { me: meAs({ role }) })
     expect(
       await screen.findByText('Only the owner can delete the organization.'),
     ).toBeInTheDocument()
@@ -28,7 +28,7 @@ describe('SecuritySection', () => {
       await new Promise((r) => setTimeout(r, 30))
       return null
     })
-    const { location, queryClient } = renderScreen(<SecuritySection />)
+    const { location, queryClient } = renderAt(<SecuritySection />)
     await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
     const dialog = await screen.findByRole('alertdialog', { name: 'Delete the organization?' })
     await userEvent.dblClick(
@@ -50,9 +50,9 @@ describe('SecuritySection', () => {
     ],
     [500, "Couldn't delete your organization. Try again."],
   ])('toasts a failed delete (%j) and stays', async (reply, message) => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    quiet()
     answer('organizations/delete', reply as number | [number, string])
-    const { location } = renderScreen(<SecuritySection />)
+    const { location } = renderAt(<SecuritySection />)
     await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Delete the organization' }))
     expect(await screen.findByText(message)).toBeInTheDocument()

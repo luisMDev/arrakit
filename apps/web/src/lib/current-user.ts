@@ -1,3 +1,4 @@
+import { isAdminRole } from '@arrakit/address'
 import type { Me } from '@arrakit/contract'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -20,10 +21,8 @@ export function initialOf(name: string): string {
 
 /** Owners and admins invite, remove and pay. */
 export function roleFlags(role: Role | null): { isAdmin: boolean; isOwner: boolean } {
-  return { isAdmin: role === 'owner' || role === 'admin', isOwner: role === 'owner' }
+  return { isAdmin: isAdminRole(role), isOwner: role === 'owner' }
 }
-
-export const meQueryKey = () => orpc.me.get.queryOptions().queryKey
 
 export function useCurrentUser() {
   const { t } = useTranslation()

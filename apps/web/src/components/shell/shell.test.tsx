@@ -2,7 +2,9 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { api, meAnswers, meAs, renderApp } from './testing'
+import { answer, api, quiet } from '#/test/rpc'
+
+import { meAs, renderApp } from './testing'
 
 const signOut = vi.hoisted(() => vi.fn())
 vi.mock('#/lib/auth-client', () => ({ authClient: { signOut } }))
@@ -15,7 +17,7 @@ afterEach(() => {
 afterAll(() => api.close())
 
 async function open(url = '/app', me = meAs()) {
-  meAnswers(me)
+  answer('me/get', me)
   const app = renderApp(url)
   const menuButton = await screen.findByRole('button', { name: 'Account menu' })
   const menu = () => document.querySelector<HTMLElement>('#app-menu')
@@ -142,7 +144,7 @@ describe('Signed-in shell', () => {
   })
 
   it('stays and says so when signing out fails', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    quiet()
     signOut.mockResolvedValue({ data: null, error: { status: 500, message: 'boom' } })
     const { openMenu, location, user } = await open()
     await user.click(within(await openMenu()).getByRole('button', { name: 'Sign out' }))
@@ -153,15 +155,15 @@ describe('Signed-in shell', () => {
 
 describe('requireUser', () => {
   it('sends a person the API does not recognise to sign in', async () => {
-    meAnswers(401)
+    answer('me/get', 401)
     const { location } = renderApp('/app')
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
     expect(location()).toBe('/signin')
   })
 
   it('keeps a person off sign in when the API cannot be reached, and says so', async () => {
-    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    meAnswers(500)
+    const report = quiet()
+    answer('me/get', 500)
     const { location } = renderApp('/app')
     expect(
       await screen.findByRole('heading', { name: "Couldn't reach Arrakit." }),
@@ -171,8 +173,8 @@ describe('requireUser', () => {
   })
 
   it('keeps a person the API forbids off sign in, and says who can help', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    meAnswers(403)
+    quiet()
+    answer('me/get', 403)
     const { location } = renderApp('/app/settings')
     expect(
       await screen.findByRole('heading', { name: "Your account can't open Arrakit right now." }),
@@ -181,7 +183,7 @@ describe('requireUser', () => {
   })
 
   it('sends a person with no organization to create one', async () => {
-    meAnswers(meAs({ organization: null, role: null, plan: null, seats: null }))
+    answer('me/get', meAs({ organization: null, role: null, plan: null, seats: null }))
     const { location } = renderApp('/app')
     expect(await screen.findByRole('heading', { name: 'Your organization' })).toBeInTheDocument()
     expect(location()).toBe('/profile')
@@ -190,7 +192,7 @@ describe('requireUser', () => {
   it.each(['/app/booking', '/app/booked'])(
     'shows the not-found page inside the shell for an unknown %s',
     async (url) => {
-      meAnswers(meAs())
+      answer('me/get', meAs())
       const { location } = renderApp(url)
       expect(
         await screen.findByRole('heading', { name: 'This page does not exist.' }),
@@ -217,7 +219,7 @@ describe('requireUser', () => {
 
   it('applies the account language before the first signed-in render', async () => {
     const { i18n, loadLanguage } = await import('#/i18n')
-    meAnswers(meAs({ language: 'es' }))
+    answer('me/get', meAs({ language: 'es' }))
     renderApp('/app')
     expect(await screen.findByRole('heading', { name: 'Hola, Ana Ruiz.' })).toBeInTheDocument()
     expect(i18n.language).toBe('es')
@@ -241,7 +243,7 @@ describe('requireUser', () => {
     const initial = loadLanguage('es')
     await vi.waitFor(() => expect(changeLanguage).toHaveBeenCalled())
     expect(i18n.language).toBe('en')
-    meAnswers(meAs({ language: 'en' }))
+    answer('me/get', meAs({ language: 'en' }))
     renderApp('/app')
     setTimeout(release, 20)
     expect(await screen.findByRole('heading', { name: 'Hi, Ana Ruiz.' })).toBeInTheDocument()
@@ -258,8 +260,8 @@ describe('requireUser', () => {
     const changeLanguage = vi
       .spyOn(i18n, 'changeLanguage')
       .mockRejectedValueOnce(new TypeError('Importing a module script failed.'))
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    meAnswers(meAs({ language: 'es' }))
+    const errors = quiet()
+    answer('me/get', meAs({ language: 'es' }))
     const { location } = renderApp('/app')
     expect(await screen.findByRole('heading', { name: 'Hi, Ana Ruiz.' })).toBeInTheDocument()
     expect(location()).toBe('/app')

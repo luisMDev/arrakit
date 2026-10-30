@@ -2,7 +2,7 @@ import { toast } from 'sonner'
 
 type NotifyLevel = 'success' | 'info' | 'warning' | 'error'
 
-export interface NotifyOptions {
+interface NotifyOptions {
   description?: string
   action?: { label: string; onClick: () => void }
 }

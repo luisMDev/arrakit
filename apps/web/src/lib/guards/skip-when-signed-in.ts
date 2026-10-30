@@ -6,7 +6,8 @@ import { statusOf } from '#/lib/api-errors'
 import { type ChoiceSearch, checkoutChoice } from '#/lib/checkout-choice'
 import { notify } from '#/lib/notify'
 import { orpc } from '#/lib/orpc'
-import { session } from '#/lib/session'
+
+import { guardFailure } from './guard-failure'
 
 const FETCH_FAILURE =
   /failed to fetch|fetch failed|networkerror|network request failed|load failed/i
@@ -33,12 +34,10 @@ export async function skipWhenSignedIn({
 }) {
   let hasOrganization: boolean
   try {
-    if (!(await session())) return
     const me = await context.queryClient.fetchQuery(orpc.me.get.queryOptions())
     hasOrganization = me.organization !== null
   } catch (err) {
-    if (statusOf(err) === 401) return
-    console.error('[skipWhenSignedIn] the guard failed', err)
+    if (guardFailure('[skipWhenSignedIn] the guard failed', err) === 'signed-out') return
     if (cause === 'preload') return
     notify.error(tr(isUnreachable(err) ? 'onboarding.unreachable' : 'onboarding.failed'))
     return

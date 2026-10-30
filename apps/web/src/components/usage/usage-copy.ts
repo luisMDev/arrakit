@@ -1,50 +1,19 @@
 import type { UsageView } from '@arrakit/contract'
 import { CURRENCY, type Metric } from '@arrakit/plans'
 
-import { i18n, tr } from '#/i18n'
+import { tr } from '#/i18n'
+import { fullDay, listing, money, quantity } from '#/lib/format'
 
 export type MetricUsage = UsageView['metrics'][number]
-export type TopUpRecord = UsageView['topUps'][number]
+type TopUpRecord = UsageView['topUps'][number]
 type MetricAmount = TopUpRecord['amounts'][number]
 
 const KEY = 'settings.usageSettings'
-const LOCALES: Record<string, string> = { en: 'en-US', es: 'es-ES' }
-
-const locale = () => LOCALES[i18n.language] ?? 'en-US'
-
-/** "2,000", "2.000" */
-export function quantity(n: number): string {
-  return new Intl.NumberFormat(locale()).format(n)
-}
-
-/** "$25", "$25.50": cents shown only when there are some. */
-export function money(cents: number, currency: string = CURRENCY): string {
-  const digits = cents % 100 === 0 ? 0 : 2
-  return new Intl.NumberFormat(locale(), {
-    style: 'currency',
-    currency: currency.toUpperCase(),
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(cents / 100)
-}
-
-/** "Nov 4, 2026", "4 nov 2026" for a `YYYY-MM-DD` day. */
-export function fullDay(day: string): string {
-  return new Intl.DateTimeFormat(locale(), { dateStyle: 'medium', timeZone: 'UTC' }).format(
-    new Date(`${day}T00:00:00Z`),
-  )
-}
-
-function listing(items: readonly string[]): string {
-  return new Intl.ListFormat(locale(), { style: 'long', type: 'conjunction' }).format(items)
-}
-
 export function metricLabel(metric: Metric | string): string {
   return tr(`${KEY}.metric.${metric}`)
 }
 
-/** "2,000 credits", "200 GB" */
-export function amountText(metric: Metric | string, amount: number): string {
+function amountText(metric: Metric | string, amount: number): string {
   return tr(`${KEY}.amount.${metric}`, { n: quantity(amount) })
 }
 
@@ -89,5 +58,5 @@ export function amountsLine(amounts: readonly MetricAmount[]): string {
 
 /** "$25 · 2,500 credits and 250 GB" */
 export function topUpLine({ cents, amounts }: Pick<TopUpRecord, 'cents' | 'amounts'>): string {
-  return `${money(cents)} · ${amountsLine(amounts)}`
+  return `${money({ amount: cents, currency: CURRENCY })} · ${amountsLine(amounts)}`
 }

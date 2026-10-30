@@ -3,7 +3,6 @@ import { renderHook } from '@testing-library/react'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { refusalMessage } from './api-errors'
 import { useFailureToast } from './use-failure-toast'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
@@ -23,15 +22,16 @@ describe('useFailureToast', () => {
     expect(report).not.toHaveBeenCalled()
   })
 
-  it("reports the error and toasts the screen's text, even when the API has a message", () => {
+  it("reports the error and toasts the API's own message", () => {
     renderHook(() => useFailureToast(refused, '[test] load failed', 'Not loaded'))
     expect(report).toHaveBeenCalledWith('[test] load failed', refused)
-    expect(toast.error).toHaveBeenCalledWith('Not loaded', expect.anything())
+    expect(toast.error).toHaveBeenCalledWith('Only admins can see billing.', expect.anything())
   })
 
-  it("toasts the API's own message when given a refusal reader", () => {
-    renderHook(() => useFailureToast(refused, '[test] load failed', 'Not loaded', refusalMessage))
-    expect(toast.error).toHaveBeenCalledWith('Only admins can see billing.', expect.anything())
+  it("toasts the screen's text when the API has no message", () => {
+    const down = new ORPCError('INTERNAL_SERVER_ERROR', { status: 500 })
+    renderHook(() => useFailureToast(down, '[test] load failed', 'Not loaded'))
+    expect(toast.error).toHaveBeenCalledWith('Not loaded', expect.anything())
   })
 
   it('toasts once per error across renders', () => {

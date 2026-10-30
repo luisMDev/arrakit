@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/components/ui/card'
-import { apiMessage } from '#/lib/api-errors'
 import { useCurrentUser } from '#/lib/current-user'
 import { notify } from '#/lib/notify'
 import { orpc } from '#/lib/orpc'
@@ -33,7 +32,6 @@ export function SecuritySection() {
     {
       context: '[security] deleting the organization failed',
       failure: t(`${K}.notDeleted`),
-      refusal: (err) => apiMessage(err, (status) => status >= 400),
     },
   )
 

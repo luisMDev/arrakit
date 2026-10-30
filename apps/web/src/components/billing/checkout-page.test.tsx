@@ -5,10 +5,11 @@ import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { orpc } from '#/lib/orpc'
+import { answer, api, quiet, renderAt } from '#/test/rpc'
 
 import { canCheckout } from './can-checkout'
 import { CheckoutPage } from './checkout-page'
-import { OFFERS, answer, api, meOn, renderAt } from './testing'
+import { OFFERS, meOn } from './testing'
 
 const stripe = vi.hoisted(() => {
   const mount = vi.fn()
@@ -63,7 +64,7 @@ describe('CheckoutPage', () => {
   it('goes back to Plans', async () => {
     const view = setup()
     await userEvent.click(await screen.findByRole('link', { name: 'Back' }))
-    await waitFor(() => expect(view.location().pathname).toBe('/app/plans'))
+    await waitFor(() => expect(view.location()).toBe('/app/plans'))
   })
 
   it('mounts Stripe Embedded Checkout with the session, and destroys it on leaving', async () => {
@@ -79,7 +80,7 @@ describe('CheckoutPage', () => {
   })
 
   it("shows the API's refusal instead of the form", async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    quiet()
     answer('plans/list', OFFERS)
     answer('billing/checkout', [
       409,
@@ -99,7 +100,7 @@ describe('CheckoutPage', () => {
     [503, 'Payments are not set up yet.'],
     [502, 'Stripe refused the session: the price is archived.'],
   ])("shows the API's own words for a %i", async (status, message) => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    quiet()
     answer('plans/list', OFFERS)
     answer('billing/checkout', [status, message])
     renderAt(<CheckoutPage choice={{ plan: 'team', cycle: 'yearly' }} />, {
@@ -111,7 +112,7 @@ describe('CheckoutPage', () => {
   })
 
   it('says it could not open the form when Stripe fails', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    quiet()
     answer('plans/list', OFFERS)
     answer('billing/checkout', 502)
     renderAt(<CheckoutPage choice={{ plan: 'team', cycle: 'yearly' }} />, {

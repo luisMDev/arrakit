@@ -20,13 +20,7 @@ import {
 } from '#/components/ui/select'
 import { Switch } from '#/components/ui/switch'
 import { type Language, isLanguage, loadLanguage } from '#/i18n'
-import {
-  conflictRefusal,
-  noRefusal,
-  reportError,
-  type SaveOnChange,
-  saveOnChange,
-} from '#/lib/api-errors'
+import { apiFailed, reportError, type SaveOnChange, saveOnChange } from '#/lib/api-errors'
 import { authClient } from '#/lib/auth-client'
 import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing, useClearingForm } from '#/lib/form'
@@ -41,7 +35,7 @@ import { SettingRow, SettingsCard, SettingsHeading, SettingsSectionLayout } from
 
 const LANGUAGE_NAMES: Record<Language, string> = { en: 'English', es: 'Español' }
 
-export const TIME_ZONES: { zone: string; key: string }[] = [
+const TIME_ZONES: { zone: string; key: string }[] = [
   { zone: 'Europe/Madrid', key: 'zoneMadrid' },
   { zone: 'Europe/London', key: 'zoneLondon' },
   { zone: 'America/New_York', key: 'zoneNewYork' },
@@ -76,8 +70,7 @@ export function devicesLine(devices: string[], t: Translate, language: string): 
   return new Intl.ListFormat(language, { style: 'long', type: 'conjunction' }).format(parts)
 }
 
-/** The account as it reads once `changes` are saved. */
-export function withChanges(account: AccountView, changes: AccountUpdate): AccountView {
+function withChanges(account: AccountView, changes: AccountUpdate): AccountView {
   return {
     ...account,
     name: changes.name ?? account.name,
@@ -122,13 +115,11 @@ export function AccountSection({ open }: SectionProps) {
     t(`${K}.notLoaded`),
   )
 
-  /** The saved account, fresh; a failure says `failure` and keeps what the screen shows. */
   async function load(failure: string) {
     try {
       await queryClient.fetchQuery({ ...accountQuery, staleTime: 0 })
     } catch (err) {
-      reportError('[account] reloading the account failed', err)
-      notify.error(failure)
+      apiFailed('[account] reloading the account failed', err, failure)
     }
   }
 
@@ -146,7 +137,6 @@ export function AccountSection({ open }: SectionProps) {
   const lastChange = useRef(0)
   const saver = useRef<SaveOnChange<QueuedChange> | null>(null)
 
-  /** Shows the change at once and queues its save behind the ones still running. */
   function save(changes: AccountUpdate) {
     queryClient.setQueryData<AccountView>(accountQuery.queryKey, (current) =>
       current ? withChanges(current, changes) : current,
@@ -157,6 +147,7 @@ export function AccountSection({ open }: SectionProps) {
         id,
       }),
       {
+        context: '[account] saving a setting failed',
         failure: () => handlers.current.t(`${K}.notSaved`),
         saved: ({ saved, id }) =>
           void handlers.current.applySaved(saved, id === lastChange.current),
@@ -208,11 +199,7 @@ export function AccountSection({ open }: SectionProps) {
         void load(t(`${K}.devicesNotLoaded`))
       },
     },
-    {
-      context: '[account] signing out everywhere failed',
-      failure: t(`${K}.notSignedOut`),
-      refusal: noRefusal,
-    },
+    { context: '[account] signing out everywhere failed', failure: t(`${K}.notSignedOut`) },
   )
 
   const deleteAccount = useApiMutation(
@@ -226,11 +213,7 @@ export function AccountSection({ open }: SectionProps) {
         void navigate({ to: '/signin' })
       },
     },
-    {
-      context: '[account] deleting the account failed',
-      failure: t(`${K}.notDeleted`),
-      refusal: conflictRefusal,
-    },
+    { context: '[account] deleting the account failed', failure: t(`${K}.notDeleted`) },
   )
 
   const zones =

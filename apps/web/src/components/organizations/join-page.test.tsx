@@ -1,38 +1,31 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  type AuthApi,
-  AuthApiContext,
-  AuthRequestError,
-  EmailRefusedError,
-} from '#/components/auth/auth-api'
-import { answer, api, renderScreen } from '#/components/settings/testing'
+import { sendMagicLink } from '#/components/auth/auth-api'
+import { answer, api, quiet, renderAt } from '#/test/rpc'
 
 import { JoinPage } from './join-page'
 
+vi.mock('#/components/auth/auth-api', async (original) => ({
+  ...(await original<typeof import('#/components/auth/auth-api')>()),
+  sendMagicLink: vi.fn(),
+}))
+
+const sendLink = vi.mocked(sendMagicLink)
+
 beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
+beforeEach(() => {
+  sendLink.mockReset().mockResolvedValue(true)
+  quiet()
+})
 afterEach(() => {
   api.resetHandlers()
   vi.restoreAllMocks()
 })
 afterAll(() => api.close())
 
-function setup(sendMagicLink: AuthApi['sendMagicLink'] = vi.fn().mockResolvedValue(undefined)) {
-  const auth: AuthApi = {
-    sendMagicLink,
-    signInWith: vi.fn(),
-    providers: vi.fn(),
-  }
-  const view = renderScreen(
-    <AuthApiContext.Provider value={auth}>
-      <JoinPage invitationId="inv/1" />
-    </AuthApiContext.Provider>,
-    { me: null as never, url: '/join/inv-1' },
-  )
-  return { ...view, auth }
-}
+const setup = () => renderAt(<JoinPage invitationId="inv/1" />, { me: null, url: '/join/inv-1' })
 
 async function askForLink(email = 'jon@birch.vc') {
   await userEvent.type(await screen.findByLabelText('Your work email'), email)
@@ -73,41 +66,49 @@ describe('JoinPage', () => {
   })
 
   it('reports an unexpected failure', async () => {
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     answer('invitations/accept', 500)
     setup()
     expect(await screen.findByText("Couldn't join right now.")).toBeInTheDocument()
-    expect(errors).toHaveBeenCalled()
+    expect(console.error).toHaveBeenCalled()
   })
 
   it('asks a signed-out person for their email and sends a link back here', async () => {
     answer('invitations/accept', 401)
-    const { auth } = setup()
+    setup()
     expect(await screen.findByText('Your link has')).toBeInTheDocument()
     await askForLink(' jon@birch.vc ')
     expect(await screen.findByText('Check your')).toBeInTheDocument()
-    expect(auth.sendMagicLink).toHaveBeenCalledWith('jon@birch.vc', '/join/inv%2F1')
+    expect(sendLink).toHaveBeenCalledWith('jon@birch.vc', '/join/inv%2F1')
   })
 
   it('refuses an address that is not a work email without sending', async () => {
     answer('invitations/accept', 401)
-    const { auth } = setup()
+    setup()
     await askForLink('jon@birch')
     expect(
       await screen.findByText('Enter your work email, like name@company.com.'),
     ).toBeInTheDocument()
-    expect(auth.sendMagicLink).not.toHaveBeenCalled()
+    expect(sendLink).not.toHaveBeenCalled()
+  })
+
+  it('explains a refused address', async () => {
+    answer('invitations/accept', 401)
+    sendLink.mockResolvedValue(false)
+    setup()
+    await askForLink()
+    expect(
+      await screen.findByText('Enter your work email, like name@company.com.'),
+    ).toBeInTheDocument()
   })
 
   it.each([
-    [new EmailRefusedError(), 'Enter your work email, like name@company.com.'],
-    [new AuthRequestError(429), 'Too many links asked for. Wait a minute and try again.'],
+    [{ status: 429 }, 'Too many links asked for. Wait a minute and try again.'],
     [Object.assign(new Error('Sign in from the app.'), { status: 403 }), 'Sign in from the app.'],
     [new Error('network'), "Couldn't send the link. Try again."],
   ])('explains a link that did not go (%s)', async (error, message) => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
     answer('invitations/accept', 401)
-    setup(vi.fn().mockRejectedValue(error))
+    sendLink.mockRejectedValue(error)
+    setup()
     await askForLink()
     expect(await screen.findByText(message)).toBeInTheDocument()
   })

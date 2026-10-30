@@ -1,19 +1,13 @@
 import { ORPCError } from '@orpc/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
-import type { ReactNode } from 'react'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { apiMessage } from './api-errors'
+import { withQueries } from '#/test/rpc'
+
 import { useApiMutation } from './use-api-mutation'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
-
-function wrapper({ children }: { children: ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
-}
 
 const toasts = () => vi.mocked(toast.error).mock.calls.map(([message]) => message)
 
@@ -31,7 +25,7 @@ describe('useApiMutation', () => {
           { mutationFn: (n: number) => Promise.resolve(n * 3), onSuccess },
           { context: '[test] failed', failure: 'Failed' },
         ),
-      { wrapper },
+      { wrapper: withQueries() },
     )
     let value: number | undefined
     await act(async () => {
@@ -42,7 +36,7 @@ describe('useApiMutation', () => {
     expect(toast.error).not.toHaveBeenCalled()
   })
 
-  it("toasts the API's refusal, then runs the caller's onError", async () => {
+  it("toasts the API's own message, then runs the caller's onError", async () => {
     const err = new ORPCError('BAD_REQUEST', { message: 'Pick another name.' })
     const onError = vi.fn()
     const { result } = renderHook(
@@ -51,7 +45,7 @@ describe('useApiMutation', () => {
           { mutationFn: () => Promise.reject(err), onError },
           { context: '[test] failed', failure: 'Failed' },
         ),
-      { wrapper },
+      { wrapper: withQueries() },
     )
     let value: unknown = 'unset'
     await act(async () => {
@@ -74,7 +68,7 @@ describe('useApiMutation', () => {
           { mutationFn: (_email: string) => Promise.reject(failures.shift()) },
           { context: '[test] failed', failure: (email) => `${email} not invited` },
         ),
-      { wrapper },
+      { wrapper: withQueries() },
     )
     await act(async () => {
       await result.current.run('ana@acme.com')
@@ -83,15 +77,15 @@ describe('useApiMutation', () => {
     expect(toasts()).toEqual(['ana@acme.com not invited', 'bo@acme.com not invited'])
   })
 
-  it('uses the given refusal reader', async () => {
+  it("toasts the API's own message for a conflict too", async () => {
     const err = new ORPCError('CONFLICT', { status: 409, message: 'Already a member.' })
     const { result } = renderHook(
       () =>
         useApiMutation(
           { mutationFn: () => Promise.reject(err) },
-          { context: '[test] failed', failure: 'Failed', refusal: apiMessage },
+          { context: '[test] failed', failure: 'Failed' },
         ),
-      { wrapper },
+      { wrapper: withQueries() },
     )
     await act(async () => {
       await result.current.run()
@@ -104,7 +98,7 @@ describe('useApiMutation', () => {
     const mutationFn = vi.fn(() => new Promise<void>((resolve) => pending.push(resolve)))
     const { result } = renderHook(
       () => useApiMutation({ mutationFn }, { context: '[test] failed', failure: 'Failed' }),
-      { wrapper },
+      { wrapper: withQueries() },
     )
     let first: Promise<void | undefined> = Promise.resolve()
     let second: Promise<void | undefined> = Promise.resolve()

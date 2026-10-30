@@ -25,6 +25,16 @@ globalThis.matchMedia ??= (query: string) =>
     dispatchEvent: () => false,
   }) as MediaQueryList
 
+// Radix Select and Dialog call these; jsdom lacks them or logs "not implemented".
+if (typeof window !== 'undefined') {
+  const proto = window.HTMLElement.prototype as unknown as Record<string, unknown>
+  proto.hasPointerCapture ??= () => false
+  proto.releasePointerCapture ??= () => undefined
+  proto.setPointerCapture ??= () => undefined
+  proto.scrollIntoView ??= () => undefined
+  window.scrollTo = () => undefined
+}
+
 afterEach(() => {
   cleanup()
 })

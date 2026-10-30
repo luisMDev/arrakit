@@ -3,9 +3,10 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { answer, api, meAs, quiet, renderAt } from '#/test/rpc'
+
 import { MembersSection, daysSince } from './members-section'
 import { SettingsPage } from './settings-page'
-import { answer, api, meAs, renderScreen } from './testing'
 
 beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
 afterEach(() => {
@@ -35,7 +36,7 @@ const invitation = (overrides: Partial<InvitationView> = {}): InvitationView => 
 function setup(me: Me = meAs(), members: unknown = MEMBERS, invitations: unknown = [invitation()]) {
   answer('members/list', members)
   answer('invitations/list', invitations)
-  return renderScreen(<MembersSection open={() => undefined} />, { me })
+  return renderAt(<MembersSection open={() => undefined} />, { me })
 }
 
 const row = async (email: string) => (await screen.findByText(email)).closest('li') as HTMLElement
@@ -44,7 +45,7 @@ describe('MembersSection', () => {
   it('counts members and offers more seats, opening Billing', async () => {
     answer('members/list', MEMBERS)
     answer('invitations/list', [])
-    renderScreen(<SettingsPage section="members" />, { me: meAs({ plan: 'pro' }) })
+    renderAt(<SettingsPage section="members" />, { me: meAs({ plan: 'pro' }) })
     const seats = await screen.findByText(/3 members/)
     expect(seats).toHaveTextContent('3 members · Team has up to 10')
     await userEvent.click(within(seats).getByRole('button', { name: 'Team has up to 10' }))
@@ -161,7 +162,7 @@ describe('MembersSection', () => {
     ],
     [503, "Couldn't invite ana@acme.com. Try again."],
   ])('toasts the API reason or the fallback (%j), keeping the email', async (reply, message) => {
-    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const report = quiet()
     answer('invitations/invite', reply as number | [number, string])
     setup(meAs(), MEMBERS, [])
     const input = await screen.findByLabelText('Invite someone from your organization')
@@ -173,7 +174,7 @@ describe('MembersSection', () => {
   })
 
   it('changes a role, and puts the select back when refused', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    quiet()
     answer('members/changeRole', { name: '', email: 'marta@acme.com', role: 'admin' }, [
       403,
       'Only the owner names admins.',
@@ -206,7 +207,7 @@ describe('MembersSection', () => {
   })
 
   it('toasts when a removal fails', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    quiet()
     answer('members/remove', 500)
     setup()
     await userEvent.click(
@@ -234,7 +235,7 @@ describe('MembersSection', () => {
   })
 
   it('toasts failed resends and cancels', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    quiet()
     answer('invitations/resend', 500)
     answer('invitations/cancel', 500)
     setup()
@@ -248,7 +249,7 @@ describe('MembersSection', () => {
   })
 
   it('toasts when the lists do not load', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    quiet()
     setup(meAs(), 500, [])
     expect(
       await screen.findByText("Couldn't load your organization's members. Reload the page."),

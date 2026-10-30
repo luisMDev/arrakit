@@ -5,10 +5,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 
 import { i18n, loadLanguage } from '#/i18n'
 import { orpc } from '#/lib/orpc'
+import { answer, api, meAs, quiet, renderAt } from '#/test/rpc'
 
 import { AccountSection, devicesLine } from './account-section'
 import { SettingsPage } from './settings-page'
-import { answer, api, meAs, renderScreen } from './testing'
 
 const auth = vi.hoisted(() => ({
   revokeOtherSessions: vi.fn(),
@@ -36,11 +36,9 @@ const ACCOUNT: AccountView = {
   emails: { productNews: false },
 }
 
-const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => undefined)
-
 function setup(account: Partial<AccountView> = {}, role: 'owner' | 'admin' | 'member' = 'member') {
   answer('me/account/get', { ...ACCOUNT, ...account })
-  return renderScreen(<AccountSection open={() => undefined} />, {
+  return renderAt(<AccountSection open={() => undefined} />, {
     me: meAs({ role, email: 'ana@acme.com', name: 'Ana' }),
   })
 }
@@ -222,7 +220,7 @@ describe('AccountSection', () => {
       (input: unknown) => ({ ...ACCOUNT, ...(input as object) }),
     )
     const loads = answer('me/account/get', ACCOUNT)
-    renderScreen(<AccountSection open={() => undefined} />, {
+    renderAt(<AccountSection open={() => undefined} />, {
       me: meAs({ role: 'member', email: 'ana@acme.com', name: 'Ana' }),
     })
     await userEvent.click(await screen.findByRole('switch', { name: /Product news/ }))
@@ -252,7 +250,7 @@ describe('AccountSection', () => {
   it('toasts when the account does not load', async () => {
     quiet()
     answer('me/account/get', 500)
-    renderScreen(<AccountSection open={() => undefined} />)
+    renderAt(<AccountSection open={() => undefined} />)
     expect(
       await screen.findByText("Couldn't load your account. Reload the page."),
     ).toBeInTheDocument()
@@ -262,7 +260,7 @@ describe('AccountSection', () => {
     let resolve: (value: unknown) => void = () => undefined
     auth.revokeOtherSessions.mockReturnValue(new Promise((r) => (resolve = r)))
     answer('me/account/get', ACCOUNT, { ...ACCOUNT, devices: ['Mac'] })
-    renderScreen(<AccountSection open={() => undefined} />)
+    renderAt(<AccountSection open={() => undefined} />)
     const button = await screen.findByRole('button', { name: 'Sign out everywhere' })
     await userEvent.dblClick(button)
     expect(button).toBeDisabled()
@@ -276,7 +274,7 @@ describe('AccountSection', () => {
     quiet()
     auth.revokeOtherSessions.mockResolvedValue({ data: { status: true }, error: null })
     const loads = answer('me/account/get', ACCOUNT, 500)
-    renderScreen(<AccountSection open={() => undefined} />)
+    renderAt(<AccountSection open={() => undefined} />)
     await userEvent.click(await screen.findByRole('button', { name: 'Sign out everywhere' }))
     expect(await screen.findByText('Signed out on your other devices.')).toBeInTheDocument()
     expect(
@@ -299,7 +297,7 @@ describe('AccountSection', () => {
 
   it('tells an owner to delete the organization first, linking to Security', async () => {
     answer('me/account/get', ACCOUNT)
-    renderScreen(<SettingsPage section="account" />, { me: meAs({ role: 'owner' }) })
+    renderAt(<SettingsPage section="account" />, { me: meAs({ role: 'owner' }) })
     expect(await screen.findByText(/You own this organization/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull()
     const owned = screen.getByText(/You own this organization/)

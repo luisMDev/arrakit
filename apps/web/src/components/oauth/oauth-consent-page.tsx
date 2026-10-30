@@ -1,13 +1,14 @@
 import { Loader2Icon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, AlertDescription } from '#/components/ui/alert'
 import { Button } from '#/components/ui/button'
 import { APP_NAME } from '#/config'
 import { reportError } from '#/lib/api-errors'
+import { client } from '#/lib/orpc'
+import { useApiMutation } from '#/lib/use-api-mutation'
 
-import { useOAuthApi } from './oauth-api'
+import { consent, publicClientName } from './oauth-api'
 
 type ConsentView =
   | { state: 'loading' }
@@ -27,7 +28,6 @@ function Message({ title, body }: { title: string; body: string }) {
 
 export function OAuthConsentPage({ search = window.location.search }: { search?: string }) {
   const { t } = useTranslation()
-  const api = useOAuthApi()
   const [oauthQuery] = useState(() => (search.startsWith('?') ? search.slice(1) : search))
   const [view, setView] = useState<ConsentView>(() => {
     const query = new URLSearchParams(oauthQuery)
@@ -35,21 +35,28 @@ export function OAuthConsentPage({ search = window.location.search }: { search?:
       ? { state: 'loading' }
       : { state: 'incomplete' }
   })
-  const [pending, setPending] = useState(false)
-  const [failed, setFailed] = useState(false)
-  const pendingRef = useRef(false)
+  const answer = useApiMutation(
+    {
+      mutationFn: (accept: boolean) => consent(accept, oauthQuery),
+      onSuccess: (url) => {
+        window.location.href = url
+      },
+    },
+    { context: '[oauth] consent failed', failure: t('oauth.oauthConsent.failed') },
+  )
+  const pending = answer.isPending || answer.isSuccess
 
   useEffect(() => {
     const clientId = new URLSearchParams(oauthQuery).get('client_id')
     if (!clientId || view.state !== 'loading') return
     let live = true
-    Promise.all([api.publicClient(clientId), api.currentOrganization()]).then(
-      ([client, organization]) => {
+    Promise.all([publicClientName(clientId), client.me.get()]).then(
+      ([name, { organization }]) => {
         if (!live) return
         setView(
           organization
-            ? { state: 'ask', client: client.name, organization: organization.name }
-            : { state: 'no-organization', client: client.name },
+            ? { state: 'ask', client: name, organization: organization.name }
+            : { state: 'no-organization', client: name },
         )
       },
       (err: unknown) => {
@@ -60,22 +67,7 @@ export function OAuthConsentPage({ search = window.location.search }: { search?:
     return () => {
       live = false
     }
-  }, [api, oauthQuery, view.state])
-
-  async function answer(accept: boolean) {
-    if (pendingRef.current) return
-    pendingRef.current = true
-    setPending(true)
-    setFailed(false)
-    try {
-      await api.consent(accept, oauthQuery)
-    } catch (err) {
-      reportError('[oauth] consent failed', err)
-      pendingRef.current = false
-      setPending(false)
-      setFailed(true)
-    }
-  }
+  }, [oauthQuery, view.state])
 
   const startAgain = t('oauth.oauthConsent.startAgain', { appName: APP_NAME })
 
@@ -107,14 +99,14 @@ export function OAuthConsentPage({ search = window.location.search }: { search?:
                 </p>
               </div>
               <div className="flex flex-col gap-2">
-                <Button size="lg" disabled={pending} onClick={() => void answer(true)}>
+                <Button size="lg" disabled={pending} onClick={() => void answer.run(true)}>
                   {t('oauth.oauthConsent.allow')}
                 </Button>
                 <Button
                   size="lg"
                   variant="ghost"
                   disabled={pending}
-                  onClick={() => void answer(false)}
+                  onClick={() => void answer.run(false)}
                 >
                   {t('oauth.oauthConsent.deny')}
                 </Button>
@@ -126,16 +118,11 @@ export function OAuthConsentPage({ search = window.location.search }: { search?:
                 title={t('oauth.oauthConsent.noOrganizationTitle')}
                 body={t('oauth.oauthConsent.noOrganizationBody', { client: view.client })}
               />
-              <Button size="lg" disabled={pending} onClick={() => void answer(false)}>
+              <Button size="lg" disabled={pending} onClick={() => void answer.run(false)}>
                 {t('oauth.oauthConsent.backTo', { client: view.client })}
               </Button>
             </>
           )}
-          {failed ? (
-            <Alert variant="destructive">
-              <AlertDescription>{t('oauth.oauthConsent.failed')}</AlertDescription>
-            </Alert>
-          ) : null}
         </div>
       )}
     </main>

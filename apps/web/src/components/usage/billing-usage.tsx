@@ -6,10 +6,11 @@ import { useTranslation } from 'react-i18next'
 import { EmptyState } from '#/components/shell/empty-state'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent } from '#/components/ui/card'
+import { fullDay } from '#/lib/format'
 
 import { AddCreditsDialog, type AddCreditsDialogProps } from './add-credits-dialog'
 import { UsageCards } from './usage-cards'
-import { fullDay, topUpLine } from './usage-copy'
+import { topUpLine } from './usage-copy'
 
 const KEY = 'settings.billingSettings.usage'
 
@@ -18,7 +19,7 @@ function paidFromUrl(): boolean {
   return new URLSearchParams(window.location.search).get('top_up') === 'paid'
 }
 
-export interface BillingUsageProps extends Pick<AddCreditsDialogProps, 'startTopUp' | 'redirect'> {
+interface BillingUsageProps extends Pick<AddCreditsDialogProps, 'startTopUp' | 'redirect'> {
   usage: UsageView | undefined
   /** Checkout came back paid (`?top_up=paid`); read from the URL when omitted. */
   topUpPaid?: boolean

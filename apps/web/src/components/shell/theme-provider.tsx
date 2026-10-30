@@ -1,7 +1,7 @@
 import { ThemeProvider as NextThemesProvider } from 'next-themes'
 import type { ReactNode } from 'react'
 
-export const STORED_THEME_KEY = 'arrakit.theme'
+const STORED_THEME_KEY = 'arrakit.theme'
 
 /** Light, dark or the system's; toggles the `.dark` class on <html> and remembers the choice. */
 export function ThemeProvider({ children }: { children: ReactNode }) {

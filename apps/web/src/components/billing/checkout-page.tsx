@@ -12,21 +12,20 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '#/componen
 import { Separator } from '#/components/ui/separator'
 import { Spinner } from '#/components/ui/spinner'
 import { APP_NAME } from '#/config'
-import { paymentRefusal, reportError } from '#/lib/api-errors'
+import { apiMessage, reportError } from '#/lib/api-errors'
+import { money } from '#/lib/format'
 import { client, orpc } from '#/lib/orpc'
 import { useFailureToast } from '#/lib/use-failure-toast'
 
-import { money, planLabel } from './plan-copy'
+import { planLabel } from './plan-copy'
 
 type Mounted = { destroy(): void }
 
 function useEmbeddedCheckout({ plan, cycle }: PaidChoice) {
   const mountRef = useRef<HTMLDivElement>(null)
-  const [state, setState] = useState<{
-    opening: boolean
-    failed: boolean
-    refusal: string | null
-  }>({ opening: true, failed: false, refusal: null })
+  const [state, setState] = useState<{ opening: boolean; failed: boolean; message: string | null }>(
+    { opening: true, failed: false, message: null },
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -43,11 +42,11 @@ function useEmbeddedCheckout({ plan, cycle }: PaidChoice) {
         }
         checkout = embedded
         if (mountRef.current) embedded.mount(mountRef.current)
-        setState({ opening: false, failed: false, refusal: null })
+        setState({ opening: false, failed: false, message: null })
       } catch (err) {
         if (cancelled) return
         reportError('[checkout] could not open Embedded Checkout', err)
-        setState({ opening: false, failed: true, refusal: paymentRefusal(err) })
+        setState({ opening: false, failed: true, message: apiMessage(err) })
       }
     })()
     return () => {
@@ -61,9 +60,9 @@ function useEmbeddedCheckout({ plan, cycle }: PaidChoice) {
 
 export function CheckoutPage({ choice }: { choice: PaidChoice }) {
   const { t } = useTranslation()
-  const offers = useQuery(orpc.plans.list.queryOptions())
-  const { mountRef, opening, failed, refusal } = useEmbeddedCheckout(choice)
-  const error = failed ? (refusal ?? t('checkout.openFailed')) : null
+  const offers = useQuery(orpc.plans.list.queryOptions({ staleTime: Infinity }))
+  const { mountRef, opening, failed, message } = useEmbeddedCheckout(choice)
+  const error = failed ? (message ?? t('checkout.openFailed')) : null
   const offer = offers.data?.find((o) => o.plan === choice.plan)
   const total = offer ? money(choice.cycle === 'yearly' ? offer.yearly : offer.monthly) : null
   const product = `${APP_NAME} ${planLabel(choice.plan)}`

@@ -1,7 +1,6 @@
 import { createOrganizationSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
-import { useRef, useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
@@ -13,9 +12,8 @@ import { Input } from '#/components/ui/input'
 import { PRIVACY_URL, TERMS_URL } from '#/config'
 import { type CheckoutChoice, type ChoiceSearch, checkoutChoice } from '#/lib/checkout-choice'
 import { notify } from '#/lib/notify'
-import { orpc } from '#/lib/orpc'
-
-import { useOnboardingApi } from './onboarding-api'
+import { client, orpc } from '#/lib/orpc'
+import { useApiMutation } from '#/lib/use-api-mutation'
 
 const profileForm = z.object({
   personName: createOrganizationSchema.shape.personName.unwrap(),
@@ -23,11 +21,22 @@ const profileForm = z.object({
   termsAccepted: z.boolean(),
 })
 
-export type ProfileTarget = { to: '/app' } | { to: '/app/checkout'; search: CheckoutChoice }
+type ProfileTarget = { to: '/app' } | { to: '/app/checkout'; search: CheckoutChoice }
 
-export function profileTarget(search: ChoiceSearch): ProfileTarget {
-  const choice = checkoutChoice(search)
-  return choice ? { to: '/app/checkout', search: choice } : { to: '/app' }
+type ProfileStep = { name: string; personName: string } | 'skip'
+
+/** A step whose answer was lost still counts once the person has an organization. */
+async function save(step: ProfileStep): Promise<void> {
+  try {
+    if (step === 'skip') await client.organizations.skip()
+    else await client.organizations.create({ ...step, termsAccepted: true })
+  } catch (err) {
+    const saved = await client.me.get().then(
+      (me) => me.organization !== null,
+      () => false,
+    )
+    if (!saved) throw err
+  }
 }
 
 export function ProfilePage({
@@ -38,44 +47,31 @@ export function ProfilePage({
   onDone: (target: ProfileTarget) => void
 }) {
   const { t } = useTranslation()
-  const api = useOnboardingApi()
   const queryClient = useQueryClient()
   const form = useForm({
     resolver: zodResolver(profileForm),
     defaultValues: { personName: '', organization: '', termsAccepted: false },
   })
   const termsAccepted = useWatch({ control: form.control, name: 'termsAccepted' })
-  const [pending, setPending] = useState(false)
-  const pendingRef = useRef(false)
-
-  async function settle(request: () => Promise<unknown>, failure: string) {
-    if (pendingRef.current) return
-    pendingRef.current = true
-    setPending(true)
-    let saved = true
-    try {
-      await request()
-    } catch {
-      saved = await api.currentOrganization().then(
-        (current) => current !== null,
-        () => false,
-      )
-    }
-    if (saved) {
-      queryClient.removeQueries({ queryKey: orpc.me.get.queryOptions().queryKey })
-      onDone(profileTarget(search))
-      return
-    }
-    pendingRef.current = false
-    setPending(false)
-    notify.error(t(failure))
-  }
+  const step = useApiMutation(
+    {
+      mutationFn: save,
+      onSuccess: () => {
+        queryClient.removeQueries({ queryKey: orpc.me.get.queryOptions().queryKey })
+        const choice = checkoutChoice(search)
+        onDone(choice ? { to: '/app/checkout', search: choice } : { to: '/app' })
+      },
+    },
+    {
+      context: '[profile] saving failed',
+      failure: (variables) =>
+        t(variables === 'skip' ? 'profile.notSkipped' : 'profile.organizationNotSaved'),
+    },
+  )
+  const pending = step.isPending || step.isSuccess
 
   function next({ personName, organization }: z.output<typeof profileForm>) {
-    return settle(
-      () => api.create({ name: organization, personName }),
-      'profile.organizationNotSaved',
-    )
+    return step.run({ name: organization, personName })
   }
 
   const notSaved = () => notify.error(t('profile.organizationNotSaved'))
@@ -144,7 +140,7 @@ export function ProfilePage({
             type="button"
             variant="ghost"
             disabled={pending}
-            onClick={() => void settle(() => api.skip(), 'profile.notSkipped')}
+            onClick={() => void step.run('skip')}
           >
             {t('profile.skip')}
           </Button>

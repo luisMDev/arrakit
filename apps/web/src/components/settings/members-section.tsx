@@ -1,5 +1,5 @@
-import { isWorkEmail, normalizeEmail } from '@arrakit/address'
-import type { AssignableRole } from '@arrakit/auth/roles'
+import { domainOf, isWorkEmail, normalizeEmail } from '@arrakit/address'
+import type { AssignableRole } from '@arrakit/address'
 import { type InvitationView, assignableRoleSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -21,7 +21,6 @@ import {
   SelectValue,
 } from '#/components/ui/select'
 import { Separator } from '#/components/ui/separator'
-import { apiMessage } from '#/lib/api-errors'
 import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
@@ -48,8 +47,6 @@ export function daysSince(invitedOn: string, today = new Date()): number {
   const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
   return Math.max(0, Math.round((todayUtc - Date.parse(`${invitedOn}T00:00:00Z`)) / DAY_MS))
 }
-
-const emailDomain = (email: string) => email.split('@').at(-1) ?? 'organization.com'
 
 function inviteForm(
   t: TFunction,
@@ -84,7 +81,7 @@ export function MembersSection({ open }: SectionProps) {
   const invites = useQuery({ ...invitesQuery, enabled: me.isAdmin })
 
   const myEmail = me.user?.email ?? ''
-  const placeholder = `name@${emailDomain(myEmail)}`
+  const placeholder = `name@${domainOf(myEmail)}`
   const memberList = members.data ?? []
   const inviteList = invites.data ?? []
   const form = useClearingForm({
@@ -120,7 +117,6 @@ export function MembersSection({ open }: SectionProps) {
     {
       context: '[members] inviting failed',
       failure: ({ email }) => t(`${K}.notInvited`, { email }),
-      refusal: apiMessage,
     },
   )
 
@@ -138,7 +134,6 @@ export function MembersSection({ open }: SectionProps) {
     {
       context: '[members] changing a role failed',
       failure: ({ member }) => t(`${K}.roleNotChanged`, { name: displayName(member) }),
-      refusal: apiMessage,
     },
   )
 
@@ -154,7 +149,6 @@ export function MembersSection({ open }: SectionProps) {
     {
       context: '[members] removing failed',
       failure: (member) => t(`${K}.notRemoved`, { name: displayName(member) }),
-      refusal: apiMessage,
     },
   )
 
@@ -166,7 +160,7 @@ export function MembersSection({ open }: SectionProps) {
         notify.success(t(`${K}.inviteResent`, { email: sent.email }))
       },
     },
-    { context: '[members] resending failed', failure: t(`${K}.notResent`), refusal: apiMessage },
+    { context: '[members] resending failed', failure: t(`${K}.notResent`) },
   )
 
   const cancel = useApiMutation(
@@ -177,11 +171,7 @@ export function MembersSection({ open }: SectionProps) {
         notify.success(t(`${K}.inviteCancelled`, { email: invitation.email }))
       },
     },
-    {
-      context: '[members] cancelling failed',
-      failure: t(`${K}.notCancelled`),
-      refusal: apiMessage,
-    },
+    { context: '[members] cancelling failed', failure: t(`${K}.notCancelled`) },
   )
 
   const busy = invite.isPending || remove.isPending || resend.isPending || cancel.isPending

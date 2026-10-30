@@ -1,9 +1,11 @@
 import { screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { answer, api } from '#/test/rpc'
+
 import { isInApp } from './root-layout'
 import { RETRIED_AT_KEY } from './stale-chunk'
-import { api, meAnswers, meAs, renderApp } from './testing'
+import { meAs, renderApp } from './testing'
 
 beforeAll(() => api.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => api.resetHandlers())
@@ -36,7 +38,7 @@ describe('Root layout', () => {
   it.each(['/app', '/app/settings', '/app?tab=1'])(
     'links the wordmark to Home from %s',
     async (url) => {
-      meAnswers(meAs())
+      answer('me/get', meAs())
       renderApp(url)
       await screen.findByRole('button', { name: 'Account menu' })
       const header = document.querySelector('header')!

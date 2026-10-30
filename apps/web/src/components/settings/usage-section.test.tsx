@@ -1,11 +1,10 @@
 import type { Me } from '@arrakit/contract'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import '#/i18n'
 import { usageFixture } from '#/components/usage/fixtures'
 import { orpc } from '#/lib/orpc'
+import { meAs, testQueryClient, withQueries } from '#/test/rpc'
 
 import { UsageSection } from './usage-section'
 
@@ -16,27 +15,10 @@ vi.mock('sonner', async (original) => {
 })
 
 function renderAs(role: Me['role'], { withUsage = true } = {}) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  queryClient.setQueryData(orpc.me.get.queryOptions().queryKey, {
-    email: 'ana@acme.com',
-    name: 'Ana',
-    language: 'en',
-    organization: {
-      id: '0f8fad5b-d9cb-469f-a165-70867728950e',
-      name: 'Acme',
-      slug: 'acme',
-      plan: 'pro',
-    },
-    role,
-    plan: 'pro',
-    seats: 3,
-  } satisfies Me)
+  const queryClient = testQueryClient()
+  queryClient.setQueryData(orpc.me.get.queryOptions().queryKey, meAs({ role, plan: 'pro' }))
   if (withUsage) queryClient.setQueryData(orpc.usage.get.queryOptions().queryKey, usageFixture())
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <UsageSection />
-    </QueryClientProvider>,
-  )
+  return render(<UsageSection />, { wrapper: withQueries(queryClient) })
 }
 
 describe('Settings > Usage', () => {

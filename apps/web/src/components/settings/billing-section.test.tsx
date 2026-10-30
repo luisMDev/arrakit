@@ -5,8 +5,9 @@ import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { answer, api, billingOf, meOn, renderAt } from '#/components/billing/testing'
+import { billingOf, meOn } from '#/components/billing/testing'
 import { usageFixture } from '#/components/usage/fixtures'
+import { answer, api, quiet, renderAt } from '#/test/rpc'
 
 import { BillingSection, type BillingSectionProps } from './billing-section'
 
@@ -20,8 +21,6 @@ afterEach(() => {
 afterAll(() => api.close())
 
 const KEPT_FAILED = "Couldn't keep the plan. Try again."
-
-const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
 function row(label: string) {
   const term = screen.getByText(label, { selector: 'dt' })

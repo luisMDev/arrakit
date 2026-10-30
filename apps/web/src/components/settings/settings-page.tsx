@@ -19,7 +19,7 @@ export interface SectionProps {
   open: (section: SettingsSection) => void
 }
 
-export const SETTINGS_NAV: {
+const SETTINGS_NAV: {
   group: string
   items: { id: SettingsSection; adminOnly?: boolean }[]
 }[] = [

@@ -1,16 +1,14 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ORPCError } from '@orpc/client'
 import { render as renderUi, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import '#/i18n'
+import { withQueries } from '#/test/rpc'
 
 import { BillingUsage, TopUpsList } from './billing-usage'
 import { usageFixture } from './fixtures'
 
-const render = (ui: ReactElement) =>
-  renderUi(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>)
+const render = (ui: React.ReactElement) => renderUi(ui, { wrapper: withQueries() })
 
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }))
 vi.mock('sonner', async (original) => {
@@ -131,7 +129,7 @@ describe('Settings > Billing usage', () => {
 
   it('says when Checkout did not open and lets the admin retry', async () => {
     const startTopUp = vi.fn(async () => {
-      throw Object.assign(new Error('Bad gateway'), { status: 502 })
+      throw new ORPCError('BAD_GATEWAY', { status: 502 })
     })
     const redirect = vi.fn()
     const { pay, user } = await openDialog({ startTopUp, redirect })

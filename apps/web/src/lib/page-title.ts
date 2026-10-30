@@ -2,7 +2,7 @@ import { APP_NAME } from '#/config'
 import { tr } from '#/i18n'
 
 /** `<APP_NAME> · <translated title>` in the language active at navigation time. */
-export function pageTitle(key: string): string {
+function pageTitle(key: string): string {
   return `${APP_NAME} · ${tr(key)}`
 }
 

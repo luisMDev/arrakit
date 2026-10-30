@@ -2,7 +2,9 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { api, meAnswers, meAs, renderApp } from './testing'
+import { answer, api } from '#/test/rpc'
+
+import { meAs, renderApp } from './testing'
 import { viewTransitionRouterOptions } from './view-transitions'
 
 beforeAll(() => api.listen({ onUnhandledFrame: 'error' }))
@@ -34,7 +36,7 @@ describe('View transitions', () => {
   })
 
   it('keeps the app bar out of the page fade', async () => {
-    meAnswers(meAs())
+    answer('me/get', meAs())
     renderApp('/app')
     await screen.findByRole('button', { name: 'Account menu' })
     expect(screen.getByRole('navigation', { name: 'Account' })).toHaveClass(
@@ -44,7 +46,7 @@ describe('View transitions', () => {
   })
 
   it('runs a navigation inside a view transition where the browser has them', async () => {
-    meAnswers(meAs())
+    answer('me/get', meAs())
     const { location } = renderApp('/app')
     const menuButton = await screen.findByRole('button', { name: 'Account menu' })
     const start = stubStartViewTransition()

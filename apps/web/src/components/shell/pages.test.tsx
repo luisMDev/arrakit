@@ -2,8 +2,10 @@ import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { answer, api, quiet } from '#/test/rpc'
+
 import { PAID_WAIT_TRIES } from './on-paid-plan'
-import { api, meAnswers, meAs, renderApp } from './testing'
+import { meAs, renderApp } from './testing'
 import { safeNext } from './unavailable-page'
 
 beforeAll(() => api.listen({ onUnhandledFrame: 'error' }))
@@ -16,7 +18,7 @@ afterAll(() => api.close())
 
 describe('Home', () => {
   it('greets the person and names the organization and its plan', async () => {
-    meAnswers(meAs())
+    answer('me/get', meAs())
     renderApp('/app')
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Hi, Ana Ruiz.' }),
@@ -25,7 +27,7 @@ describe('Home', () => {
   })
 
   it('gives an admin Settings, Members and Plans', async () => {
-    meAnswers(meAs({ role: 'admin' }))
+    answer('me/get', meAs({ role: 'admin' }))
     renderApp('/app')
     const main = await screen.findByRole('main')
     expect(within(main).getByRole('link', { name: 'Settings' })).toHaveAttribute(
@@ -40,7 +42,7 @@ describe('Home', () => {
   })
 
   it('gives a member Settings only', async () => {
-    meAnswers(meAs({ role: 'member' }))
+    answer('me/get', meAs({ role: 'member' }))
     renderApp('/app')
     const main = await screen.findByRole('main')
     expect(within(main).getByRole('link', { name: 'Settings' })).toBeInTheDocument()
@@ -49,7 +51,7 @@ describe('Home', () => {
   })
 
   it('opens Settings', async () => {
-    meAnswers(meAs())
+    answer('me/get', meAs())
     const { location } = renderApp('/app')
     const main = await screen.findByRole('main')
     await userEvent.click(within(main).getByRole('link', { name: 'Settings' }))
@@ -63,7 +65,7 @@ describe('Welcome', () => {
     ['pro', 'Welcome to Pro.'],
     ['team', 'Welcome to Team.'],
   ] as const)('welcomes an organization on %s', async (plan, title) => {
-    meAnswers(meAs({ plan }))
+    answer('me/get', meAs({ plan }))
     renderApp('/app/welcome')
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(title)
     expect(screen.getByRole('link', { name: 'Go to the app →' })).toHaveAttribute('href', '/app')
@@ -71,14 +73,15 @@ describe('Welcome', () => {
   })
 
   it('sends an organization on Free with no checkout to Plans', async () => {
-    meAnswers(meAs({ plan: 'free' }))
+    answer('me/get', meAs({ plan: 'free' }))
     const { location } = renderApp('/app/welcome')
     expect(await screen.findByRole('heading', { name: 'Plans' })).toBeInTheDocument()
     expect(location()).toBe('/app/plans')
   })
 
   it('waits for the webhook to move the plan after Checkout', async () => {
-    const me = meAnswers(
+    const me = answer(
+      'me/get',
       meAs({ plan: 'free' }),
       meAs({ plan: 'free' }),
       meAs({ plan: 'free' }),
@@ -88,24 +91,24 @@ describe('Welcome', () => {
     expect(await screen.findByRole('heading', { level: 1 }, { timeout: 5000 })).toHaveTextContent(
       'Welcome to Pro.',
     )
-    expect(me.calls()).toBe(4)
+    expect(me.length).toBe(4)
   })
 
   it(`gives up after ${PAID_WAIT_TRIES} tries, a second apart, and opens Plans`, async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
-    const me = meAnswers(meAs({ plan: 'free' }))
+    const me = answer('me/get', meAs({ plan: 'free' }))
     const { location } = renderApp('/app/welcome?session_id=cs_test_1')
     for (let second = 0; second < PAID_WAIT_TRIES + 1; second++) {
       await act(() => vi.advanceTimersByTimeAsync(1000))
     }
     expect(await screen.findByRole('heading', { name: 'Plans' })).toBeInTheDocument()
     expect(location()).toBe('/app/plans')
-    expect(me.calls()).toBe(1 + PAID_WAIT_TRIES)
+    expect(me.length).toBe(1 + PAID_WAIT_TRIES)
   })
 
   it('opens Plans when reading the plan fails while waiting', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    meAnswers(meAs({ plan: 'free' }), 500)
+    quiet()
+    answer('me/get', meAs({ plan: 'free' }), 500)
     const { location } = renderApp('/app/welcome?session_id=cs_test_1')
     expect(await screen.findByRole('heading', { name: 'Plans' })).toBeInTheDocument()
     expect(location()).toBe('/app/plans')
@@ -114,8 +117,8 @@ describe('Welcome', () => {
 
 describe('Unavailable', () => {
   it('says the API could not be reached and tries again once it answers', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    meAnswers(500, 500, meAs())
+    quiet()
+    answer('me/get', 500, 500, meAs())
     const { location } = renderApp('/app/settings')
     const tryAgain = await screen.findByRole('button', { name: 'Try again' })
     expect(screen.getByText('Nothing is lost. Try again in a moment.')).toBeInTheDocument()

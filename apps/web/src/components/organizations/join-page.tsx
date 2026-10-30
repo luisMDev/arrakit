@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
-import { AuthRequestError, EmailRefusedError, useAuthApi } from '#/components/auth/auth-api'
+import { sendMagicLink } from '#/components/auth/auth-api'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/components/ui/card'
 import { Field, FieldError, FieldLabel } from '#/components/ui/field'
@@ -18,9 +18,9 @@ import { client } from '#/lib/orpc'
 const joinForm = (workEmailError: string) =>
   z.object({ email: z.string().trim().refine(isWorkEmail, workEmailError) })
 
-export type JoinState = 'joining' | 'signed-out' | 'sent' | 'taken' | 'closed' | 'failed'
+type JoinState = 'joining' | 'signed-out' | 'sent' | 'taken' | 'closed' | 'failed'
 
-export function joinStateFor(err: unknown): JoinState {
+function joinStateFor(err: unknown): JoinState {
   const status = statusOf(err)
   if (status === 401) return 'signed-out'
   if (status === 409) return 'taken'
@@ -39,15 +39,12 @@ function Heading({ start, end }: { start: string; end: string }) {
 export function JoinPage({ invitationId }: { invitationId: string }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const auth = useAuthApi()
   const [state, setState] = useState<JoinState>('joining')
   const form = useClearingForm({
     resolver: zodResolver(joinForm(t('join.workEmail'))),
     defaultValues: { email: '' },
   })
   const emailError = form.formState.errors.email?.message
-  const [pending, setPending] = useState(false)
-  const pendingRef = useRef(false)
   const started = useRef(false)
 
   useEffect(() => {
@@ -64,9 +61,7 @@ export function JoinPage({ invitationId }: { invitationId: string }) {
   }, [invitationId, navigate])
 
   function sendFailure(err: unknown): string {
-    if (err instanceof EmailRefusedError) return t('join.workEmail')
-    const status = err instanceof AuthRequestError ? err.status : statusOf(err)
-    if (status === 429) return t('join.tooManyLinks')
+    if (statusOf(err) === 429) return t('join.tooManyLinks')
     const message = apiMessage(err)
     if (message) return message
     reportError('[join] sending a new link failed', err)
@@ -74,17 +69,11 @@ export function JoinPage({ invitationId }: { invitationId: string }) {
   }
 
   async function sendLink({ email }: z.output<ReturnType<typeof joinForm>>) {
-    if (pendingRef.current) return
-    pendingRef.current = true
-    setPending(true)
     try {
-      await auth.sendMagicLink(email, `/join/${encodeURIComponent(invitationId)}`)
-      setState('sent')
+      if (await sendMagicLink(email, `/join/${encodeURIComponent(invitationId)}`)) setState('sent')
+      else form.setError('email', { type: 'send', message: t('join.workEmail') })
     } catch (err) {
       form.setError('email', { type: 'send', message: sendFailure(err) })
-    } finally {
-      pendingRef.current = false
-      setPending(false)
     }
   }
 
@@ -128,7 +117,7 @@ export function JoinPage({ invitationId }: { invitationId: string }) {
                   />
                   {emailError ? <FieldError>{emailError}</FieldError> : null}
                 </Field>
-                <Button type="submit" disabled={pending}>
+                <Button type="submit" disabled={form.formState.isSubmitting}>
                   {t('join.sendNewLink')}
                 </Button>
               </form>

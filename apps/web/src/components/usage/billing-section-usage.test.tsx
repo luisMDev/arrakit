@@ -2,8 +2,9 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { answer, api, billingOf, meOn, renderAt } from '#/components/billing/testing'
+import { billingOf, meOn } from '#/components/billing/testing'
 import { BillingSection } from '#/components/settings/billing-section'
+import { answer, api, quiet, renderAt } from '#/test/rpc'
 
 import { usageFixture } from './fixtures'
 
@@ -14,8 +15,6 @@ afterEach(() => {
   window.history.pushState({}, '', '/')
 })
 afterAll(() => api.close())
-
-const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
 async function openBilling(
   usage: Parameters<typeof answer>[1] = usageFixture(),

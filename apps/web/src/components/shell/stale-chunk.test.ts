@@ -109,7 +109,7 @@ describe('onPreloadError', () => {
   it("cancels Vite's rethrow and reloads the target once the chunk was fetched again", async () => {
     const { win, fetch, assign } = setUp()
     const event = preloadError(failed(`Failed to fetch dynamically imported module: ${CHUNK}`))
-    expect(onPreloadError(event, '/app/settings', win)).toBe(true)
+    onPreloadError(event, '/app/settings', win)
     expect(event.defaultPrevented).toBe(true)
     await vi.waitFor(() =>
       expect(assign).toHaveBeenCalledExactlyOnceWith('https://app.example.com/app/settings'),
@@ -120,13 +120,15 @@ describe('onPreloadError', () => {
   it('lets Vite rethrow anything else, and a chunk that fails again right after', () => {
     const { win, assign } = setUp()
     const other = preloadError(new Error('Unable to preload CSS for /assets/a.css'))
-    expect(onPreloadError(other, '/app', win)).toBe(false)
+    onPreloadError(other, '/app', win)
     expect(other.defaultPrevented).toBe(false)
 
     const stale = failed('Importing a module script failed.')
-    expect(onPreloadError(preloadError(stale), '/app', win)).toBe(true)
+    const first = preloadError(stale)
+    onPreloadError(first, '/app', win)
+    expect(first.defaultPrevented).toBe(true)
     const again = preloadError(stale)
-    expect(onPreloadError(again, '/app', win)).toBe(false)
+    onPreloadError(again, '/app', win)
     expect(again.defaultPrevented).toBe(false)
     expect(assign).toHaveBeenCalledOnce()
   })
@@ -134,7 +136,7 @@ describe('onPreloadError', () => {
   it('shares the loop guard with the router error screen', async () => {
     const { win } = setUp()
     const stale = failed('Importing a module script failed.')
-    expect(onPreloadError(preloadError(stale), '/app', win)).toBe(true)
+    onPreloadError(preloadError(stale), '/app', win)
     expect(await recoverFromStaleChunk(stale, '/app', win)).toBe(false)
   })
 })

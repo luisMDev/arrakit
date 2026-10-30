@@ -3,8 +3,9 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
+import { answer, api, meAs, renderAt } from '#/test/rpc'
+
 import { SettingsPage, type SettingsSection } from './settings-page'
-import { answer, api, meAs, renderScreen } from './testing'
 
 beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
 beforeEach(() => {
@@ -24,7 +25,7 @@ afterEach(() => api.resetHandlers())
 afterAll(() => api.close())
 
 const renderAs = (role: Me['role'], section: SettingsSection = 'account') =>
-  renderScreen(<SettingsPage section={section} />, { me: meAs({ role }) })
+  renderAt(<SettingsPage section={section} />, { me: meAs({ role }) })
 
 const nav = () => screen.getByRole('navigation', { name: 'Settings' })
 

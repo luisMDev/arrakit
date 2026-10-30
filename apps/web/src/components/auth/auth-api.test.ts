@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { EmailRefusedError, PROVIDERS_UNKNOWN, createHttpAuthApi, refusedLanding } from './auth-api'
+import { authFetch, refusedLanding, sendMagicLink, socialSignInUrl } from './auth-api'
 
 const ORIGIN = window.location.origin
 
@@ -36,10 +36,10 @@ describe('refusedLanding', () => {
   )
 })
 
-describe('createHttpAuthApi', () => {
+describe('auth calls', () => {
   it('posts the magic link with absolute callback URLs', async () => {
     const calls = stubFetch(() => Response.json({ status: true }))
-    await createHttpAuthApi().sendMagicLink('ana@acme.com', '/profile?plan=team&cycle=monthly')
+    expect(await sendMagicLink('ana@acme.com', '/profile?plan=team&cycle=monthly')).toBe(true)
     expect(calls[0]).toEqual({
       url: '/api/auth/sign-in/magic-link',
       body: {
@@ -50,54 +50,40 @@ describe('createHttpAuthApi', () => {
     })
   })
 
-  it('turns a 400 into EmailRefusedError and keeps a 500 apart', async () => {
+  it('answers false on a 400 and rejects a 500 with its status', async () => {
     stubFetch(() => new Response('{}', { status: 400 }))
-    await expect(createHttpAuthApi().sendMagicLink('x@y.co', '/profile')).rejects.toBeInstanceOf(
-      EmailRefusedError,
-    )
+    expect(await sendMagicLink('x@y.co', '/profile')).toBe(false)
     stubFetch(() => new Response('{}', { status: 500 }))
-    const err = await createHttpAuthApi()
-      .sendMagicLink('x@y.co', '/profile')
-      .catch((e: unknown) => e)
-    expect(err).not.toBeInstanceOf(EmailRefusedError)
-    expect(err).toMatchObject({ status: 500 })
+    await expect(sendMagicLink('x@y.co', '/profile')).rejects.toMatchObject({ status: 500 })
   })
 
   it('rejects on a network error', async () => {
     stubFetch(() => Promise.reject(new TypeError('offline')))
-    await expect(createHttpAuthApi().sendMagicLink('x@y.co', '/profile')).rejects.toThrow('offline')
+    await expect(sendMagicLink('x@y.co', '/profile')).rejects.toThrow('offline')
   })
 
-  it('redirects to the provider only after it answers, with the via param', async () => {
-    const redirect = vi.fn()
+  it("keeps Better Auth's message on a refusal", async () => {
+    stubFetch(() => Response.json({ message: 'Sign in from the app.' }, { status: 403 }))
+    await expect(authFetch('/x', {})).rejects.toMatchObject({
+      status: 403,
+      message: 'Sign in from the app.',
+    })
+  })
+
+  it('starts a social sign-in with the via param and answers the provider URL', async () => {
     const calls = stubFetch(() => Response.json({ url: 'https://accounts.google.com/x' }))
-    await createHttpAuthApi({ redirect }).signInWith('google', '/api/auth/oauth2/authorize?a=1')
+    expect(await socialSignInUrl('google', '/api/auth/oauth2/authorize?a=1')).toBe(
+      'https://accounts.google.com/x',
+    )
     expect(calls[0]?.body).toEqual({
       provider: 'google',
       callbackURL: `${ORIGIN}/api/auth/oauth2/authorize?a=1`,
       errorCallbackURL: `${ORIGIN}/oauth/signin?a=1&via=google`,
     })
-    expect(redirect).toHaveBeenCalledWith('https://accounts.google.com/x')
   })
 
-  it('does not redirect when the start fails', async () => {
-    const redirect = vi.fn()
+  it('rejects a social sign-in that does not start', async () => {
     stubFetch(() => new Response('{}', { status: 404 }))
-    await expect(
-      createHttpAuthApi({ redirect }).signInWith('microsoft', '/signin'),
-    ).rejects.toMatchObject({ status: 404 })
-    expect(redirect).not.toHaveBeenCalled()
-  })
-
-  it('asks for the providers once, falls back on failure and retries next time', async () => {
-    const load = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('down'))
-      .mockResolvedValue({ google: false, microsoft: true })
-    const api = createHttpAuthApi({ loadProviders: load })
-    expect(await api.providers()).toEqual(PROVIDERS_UNKNOWN)
-    expect(await api.providers()).toEqual({ google: false, microsoft: true })
-    expect(await api.providers()).toEqual({ google: false, microsoft: true })
-    expect(load).toHaveBeenCalledTimes(2)
+    await expect(socialSignInUrl('microsoft', '/signin')).rejects.toMatchObject({ status: 404 })
   })
 })

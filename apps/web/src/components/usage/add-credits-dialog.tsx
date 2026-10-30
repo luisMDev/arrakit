@@ -15,16 +15,17 @@ import {
 } from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
+import { money } from '#/lib/format'
 import { client } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
 import { cn } from '#/lib/utils'
 
-import { amountsLine, money } from './usage-copy'
+import { amountsLine } from './usage-copy'
 
 const KEY = 'settings.billingSettings.usage'
 const DEFAULT_DOLLARS = String(2_000 / 100)
 
-export function toCents(value: string): number | null {
+function toCents(value: string): number | null {
   return value.trim() === '' ? null : Math.round(Number(value) * 100)
 }
 
@@ -92,8 +93,8 @@ export function AddCreditsDialog({
               className={cn('text-sm', valid ? 'text-muted-foreground' : 'text-destructive')}
             >
               {t(`${KEY}.topUpBounds`, {
-                min: money(TOP_UP.minCents),
-                max: money(TOP_UP.maxCents),
+                min: money({ amount: TOP_UP.minCents, currency: CURRENCY }),
+                max: money({ amount: TOP_UP.maxCents, currency: CURRENCY }),
               })}
             </p>
           </div>
