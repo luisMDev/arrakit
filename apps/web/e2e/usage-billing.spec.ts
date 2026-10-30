@@ -1,61 +1,12 @@
-import { type Page, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 import { magicLinkFor } from './mailpit'
-import { createOrganization, rpc, signIn, stripeWebhook, uniqueEmail } from './session'
-
-async function ownerWithOrganization(page: Page) {
-  const email = uniqueEmail('owner')
-  await signIn(page, email)
-  const organization = await createOrganization(page, 'Usage Co')
-  return { email, organizationId: organization.id }
-}
-
-/** Moves the organization to Team through the fake Stripe webhook, so it has seats to invite. */
-async function payForTeam(page: Page, organizationId: string, email: string) {
-  const slug = organizationId.slice(0, 8)
-  const customerId = `cus_${slug}`
-  const subscriptionId = `sub_${slug}`
-  await stripeWebhook(page, {
-    subscriptionId,
-    organizationId,
-    subscribe: {
-      id: subscriptionId,
-      customerId,
-      organizationId,
-      status: 'active',
-      lookupKey: 'team_monthly',
-    },
-    bill: {
-      customerId,
-      snapshot: {
-        subscription: {
-          status: 'active',
-          lookupKey: 'team_monthly',
-          periodEnd: Date.UTC(2027, 9, 4) / 1000,
-          cancelAtPeriodEnd: false,
-          amount: { amount: 5_000, currency: 'usd' },
-          scheduled: null,
-        },
-        customer: { email, name: 'Usage Co SL', taxId: null, card: null },
-        invoices: [
-          {
-            id: `in_${slug}`,
-            created: Date.UTC(2026, 9, 4) / 1000,
-            total: { amount: 5_000, currency: 'usd' },
-            status: 'paid',
-            pdfUrl: null,
-          },
-        ],
-      },
-    },
-  })
-  await expect.poll(async () => (await rpc<{ plan: string }>(page, 'me/get')).plan).toBe('team')
-}
+import { payFor, rpc, signedInOwner, stripeWebhook, uniqueEmail } from './session'
 
 test('an admin adds credits from Billing: preview, Checkout, then the webhook credits the top-up', async ({
   page,
 }) => {
-  const { organizationId } = await ownerWithOrganization(page)
+  const { organizationId } = await signedInOwner(page, { organization: 'Usage Co' })
   await page.route('https://checkout.stripe.test/**', (route) =>
     route.fulfill({ status: 200, contentType: 'text/html', body: '<h1>Fake Checkout</h1>' }),
   )
@@ -104,8 +55,8 @@ test('a member sees the usage cards in Settings > Usage, with no Add credits', a
   browser,
   baseURL,
 }) => {
-  const { email, organizationId } = await ownerWithOrganization(page)
-  await payForTeam(page, organizationId, email)
+  const { organizationId } = await signedInOwner(page, { organization: 'Usage Co' })
+  await payFor(page, organizationId, 'team_monthly')
 
   const memberEmail = uniqueEmail('member')
   await rpc(page, 'invitations/invite', { email: memberEmail, role: 'member' })
@@ -116,7 +67,7 @@ test('a member sees the usage cards in Settings > Usage, with no Add credits', a
   expect(await rpc<{ role: string }>(memberPage, 'me/get')).toMatchObject({ role: 'member' })
 
   await memberPage.goto('/app/settings')
-  await memberPage.getByRole('button', { name: 'Usage' }).click()
+  await memberPage.getByRole('link', { name: 'Usage' }).click()
   const section = memberPage.getByRole('region', { name: 'Usage' })
   await expect(section.locator('[data-metric="credits"] [data-available]')).toContainText(
     'credits left',

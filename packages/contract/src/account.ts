@@ -39,13 +39,10 @@ export const accountUpdateSchema = z.object({
 })
 
 export const meContract = {
-  get: base.route({ method: 'GET', path: '/me', tags: ['me'] }).output(meSchema),
-  delete: base.route({ method: 'DELETE', path: '/me', tags: ['me'] }).output(z.void()),
+  get: base.output(meSchema),
+  delete: base.output(z.void()),
   account: {
-    get: base.route({ method: 'GET', path: '/me/account', tags: ['me'] }).output(accountViewSchema),
-    update: base
-      .route({ method: 'PATCH', path: '/me/account', tags: ['me'] })
-      .input(accountUpdateSchema)
-      .output(accountViewSchema),
+    get: base.output(accountViewSchema),
+    update: base.input(accountUpdateSchema).output(accountViewSchema),
   },
 }

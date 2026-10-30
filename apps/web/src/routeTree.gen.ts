@@ -12,12 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SplatRouteImport } from './routes/$'
 import { Route as AppRouteImport } from './routes/app'
-import { Route as NewRouteImport } from './routes/new'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as SigninRouteImport } from './routes/signin'
 import { Route as SignupRouteImport } from './routes/signup'
-import { Route as StartRouteImport } from './routes/start'
 import { Route as UnavailableRouteImport } from './routes/unavailable'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppSplatRouteImport } from './routes/app/$'
@@ -46,11 +44,6 @@ const AppRoute = AppRouteImport.update({
   path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const NewRoute = NewRouteImport.update({
-  id: '/new',
-  path: '/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
   path: '/pricing',
@@ -69,11 +62,6 @@ const SigninRoute = SigninRouteImport.update({
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const StartRoute = StartRouteImport.update({
-  id: '/start',
-  path: '/start',
   getParentRoute: () => rootRouteImport,
 } as any)
 const UnavailableRoute = UnavailableRouteImport.update({
@@ -141,12 +129,10 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/app': typeof AppRouteWithChildren
-  '/new': typeof NewRoute
   '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/signin': typeof SigninRoute
   '/signup': typeof SignupRoute
-  '/start': typeof StartRoute
   '/unavailable': typeof UnavailableRoute
   '/app/$': typeof AppSplatRoute
   '/app/billing': typeof AppBillingRoute
@@ -163,12 +149,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
-  '/new': typeof NewRoute
   '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/signin': typeof SigninRoute
   '/signup': typeof SignupRoute
-  '/start': typeof StartRoute
   '/unavailable': typeof UnavailableRoute
   '/app/$': typeof AppSplatRoute
   '/app/billing': typeof AppBillingRoute
@@ -187,12 +171,10 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/app': typeof AppRouteWithChildren
-  '/new': typeof NewRoute
   '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/signin': typeof SigninRoute
   '/signup': typeof SignupRoute
-  '/start': typeof StartRoute
   '/unavailable': typeof UnavailableRoute
   '/app/$': typeof AppSplatRoute
   '/app/billing': typeof AppBillingRoute
@@ -212,12 +194,10 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/app'
-    | '/new'
     | '/pricing'
     | '/profile'
     | '/signin'
     | '/signup'
-    | '/start'
     | '/unavailable'
     | '/app/$'
     | '/app/billing'
@@ -234,12 +214,10 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/$'
-    | '/new'
     | '/pricing'
     | '/profile'
     | '/signin'
     | '/signup'
-    | '/start'
     | '/unavailable'
     | '/app/$'
     | '/app/billing'
@@ -257,12 +235,10 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/app'
-    | '/new'
     | '/pricing'
     | '/profile'
     | '/signin'
     | '/signup'
-    | '/start'
     | '/unavailable'
     | '/app/$'
     | '/app/billing'
@@ -281,12 +257,10 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SplatRoute: typeof SplatRoute
   AppRoute: typeof AppRouteWithChildren
-  NewRoute: typeof NewRoute
   PricingRoute: typeof PricingRoute
   ProfileRoute: typeof ProfileRoute
   SigninRoute: typeof SigninRoute
   SignupRoute: typeof SignupRoute
-  StartRoute: typeof StartRoute
   UnavailableRoute: typeof UnavailableRoute
   JoinInvitationIdRoute: typeof JoinInvitationIdRoute
   OauthConsentRoute: typeof OauthConsentRoute
@@ -316,13 +290,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/new': {
-      id: '/new'
-      path: '/new'
-      fullPath: '/new'
-      preLoaderRoute: typeof NewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/pricing': {
       id: '/pricing'
       path: '/pricing'
@@ -349,13 +316,6 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/start': {
-      id: '/start'
-      path: '/start'
-      fullPath: '/start'
-      preLoaderRoute: typeof StartRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/unavailable': {
@@ -473,12 +433,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SplatRoute: SplatRoute,
   AppRoute: AppRouteWithChildren,
-  NewRoute: NewRoute,
   PricingRoute: PricingRoute,
   ProfileRoute: ProfileRoute,
   SigninRoute: SigninRoute,
   SignupRoute: SignupRoute,
-  StartRoute: StartRoute,
   UnavailableRoute: UnavailableRoute,
   JoinInvitationIdRoute: JoinInvitationIdRoute,
   OauthConsentRoute: OauthConsentRoute,

@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm'
 
-import type { Database } from '../connection'
+import { type Database, transaction } from '../connection'
 import type { DataContext } from '../context'
 import { toOrganizationId } from '../organization-id'
 import {
@@ -37,26 +37,14 @@ export function organizationsData(ctx: DataContext) {
     /** Revokes grants and deletes the row (cascades every org table). True when a row was deleted. */
     async deleteOrganization(rawId: string): Promise<boolean> {
       const organizationId = toOrganizationId(rawId)
-      return ctx.db.transaction(async (tx) => {
-        await revokeGrants(tx as unknown as Database, organizationId)
+      return transaction(ctx.db, async (tx) => {
+        await revokeGrants(tx, organizationId)
         const removed = await tx
           .delete(organizations)
           .where(eq(organizations.id, organizationId))
           .returning({ id: organizations.id })
         return removed.length > 0
       })
-    },
-    async organizationBySlug(slug: string): Promise<string | undefined> {
-      const [row] = await ctx.db
-        .select({ id: organizations.id })
-        .from(organizations)
-        .where(eq(organizations.slug, slug))
-      return row?.id
-    },
-    /** Every organization id (jobs only). */
-    async organizationIds(): Promise<string[]> {
-      const rows = await ctx.db.select({ id: organizations.id }).from(organizations)
-      return rows.map((row) => row.id)
     },
   }
 }

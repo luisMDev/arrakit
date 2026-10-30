@@ -19,21 +19,16 @@ export function SecuritySection() {
   const navigate = useNavigate()
   const me = useCurrentUser()
   const [confirming, setConfirming] = useState(false)
-  const deleteOrganization = useApiMutation(
-    {
-      ...orpc.organizations.delete.mutationOptions(),
-      onSuccess: () => {
-        setConfirming(false)
-        notify.success(t(`${K}.deleted`))
-        me.signedOut()
-        void navigate({ to: '/profile' })
-      },
+  const deleteOrganization = useApiMutation({
+    ...orpc.organizations.delete.mutationOptions(),
+    onSuccess: async () => {
+      setConfirming(false)
+      notify.success(t(`${K}.deleted`))
+      await me.refresh()
+      void navigate({ to: '/profile' })
     },
-    {
-      context: '[security] deleting the organization failed',
-      failure: t(`${K}.notDeleted`),
-    },
-  )
+    meta: { failure: t(`${K}.notDeleted`) },
+  })
 
   return (
     <SettingsSectionLayout id="security" title={t(`${K}.title`)}>

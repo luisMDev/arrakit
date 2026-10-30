@@ -1,8 +1,8 @@
-import { type AuthDeps, createAuth, loadAuthConfig } from '@arrakit/auth'
+import { type AuthConfig, type AuthDeps, createAuth, loadAuthConfig } from '@arrakit/auth'
 import { type Data, loadDataConfig, openData } from '@arrakit/db'
 import type { Mailer } from '@arrakit/emails'
 
-import { type StripeGateway, createStripeGateway } from './billing/stripe-gateway'
+import { type StripeGateway, createStripeGateway, guardedStripe } from './billing/stripe-gateway'
 import type { AppDeps } from './deps'
 import { type ApiEnv, loadApiEnv } from './env'
 import { createMailer } from './mail/mailer'
@@ -11,17 +11,17 @@ import type { Logger } from './observability/logger'
 
 interface DepsParts {
   env: ApiEnv
-  rawEnv: Record<string, string | undefined>
+  authConfig: AuthConfig
   data: Data
   mailer: Mailer
-  stripe: StripeGateway | null
+  stripe: StripeGateway
   log: Logger
   errors: ErrorReporter
   testing?: boolean
 }
 
 export function buildDeps(parts: DepsParts): AppDeps {
-  const authConfig = loadAuthConfig(parts.rawEnv)
+  const { authConfig } = parts
   const auth = createAuth({
     config: authConfig,
     database: parts.data.authDatabase,
@@ -37,7 +37,7 @@ export function buildDeps(parts: DepsParts): AppDeps {
     auth,
     authConfig,
     mailer: parts.mailer,
-    stripe: parts.stripe,
+    stripe: guardedStripe(parts.stripe, parts.log.child({ component: 'stripe' })),
     log: parts.log,
     errors: parts.errors,
   }
@@ -77,14 +77,14 @@ export async function depsFromEnv(
   log: Logger,
 ): Promise<AppDeps> {
   const env = loadApiEnv(rawEnv)
-  loadAuthConfig(rawEnv) // fail the boot, not the first sign-in
+  const authConfig = loadAuthConfig(rawEnv)
   const errors = createErrorReporter(env)
   const mailLog = log.child({ component: 'mail' })
   const mailer = createMailer(rawEnv, { log: (line) => mailLog.info(line) })
   const data = await openData(loadDataConfig(rawEnv), { log: log.child({ component: 'data' }) })
   return buildDeps({
     env,
-    rawEnv,
+    authConfig,
     data,
     mailer,
     stripe: createStripeGateway(env),

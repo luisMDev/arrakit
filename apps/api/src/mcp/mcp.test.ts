@@ -1,7 +1,7 @@
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto'
 
 import { revokeGrants } from '@arrakit/db'
-import { members } from '@arrakit/db/schema'
+import { insertMember } from '@arrakit/db/testing'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -12,7 +12,7 @@ import {
   jwtPayload,
   rpcResult,
 } from '../testing/app'
-import { NO_GAPS, coverageGaps } from '../testing/coverage'
+import { sqlOf } from '../testing/people'
 
 const ISSUER = `${TEST_WEB_ORIGIN}/api/auth`
 const METADATA_PATH = '/.well-known/oauth-protected-resource/api/mcp'
@@ -96,14 +96,7 @@ describe('the MCP endpoint', () => {
     const tools = (await rpcResult(res)).result?.tools as { name: string; title: string }[]
     expect(tools.map((tool) => tool.name)).toEqual(['whoami'])
     expect(tools[0]?.title).toBe('Who am I')
-    const cased = TOOL_CASES.map((line) => line.split(':')[0]!)
-    expect(
-      coverageGaps(
-        tools.map((tool) => tool.name),
-        cased,
-        [],
-      ),
-    ).toEqual(NO_GAPS)
+    expect(tools.map((tool) => tool.name)).toEqual(TOOL_CASES.map((line) => line.split(':')[0]))
   })
 
   it("answers whoami with the token's organization and role", async () => {
@@ -186,15 +179,14 @@ describe('the MCP endpoint', () => {
     const other = await connectedOrganization('owner@yew.vc', 'Yew Capital')
     const memberCookie = await t.magicLinkSignIn('member@elm.vc')
     const memberId = await sessionUserId(memberCookie)
-    const elm = t.data.forOrganization(owner.organization.id)
-    await elm.table(members).insert({ userId: memberId, role: 'member' })
+    await insertMember(t.data, owner.organization.id, memberId, 'member')
     const { clientId, tokens } = await t.connector.connect(memberCookie)
     const refreshed = await t.connector.refresh(clientId, tokens.refresh_token)
     expect(refreshed.status).toBe(200)
     const refreshedTokens = (await refreshed.json()) as typeof tokens
     expect((await whoami(tokens.access_token))?.structuredContent).toMatchObject({ role: 'member' })
 
-    await elm.table(members).delete((table, { eq }) => eq(table.userId, memberId))
+    await sqlOf(t)('delete from members where user_id = $1', [memberId])
     await t.data.db.transaction((tx) => revokeGrants(tx, owner.organization.id, memberId))
 
     for (const token of [tokens.access_token, refreshedTokens.access_token]) {

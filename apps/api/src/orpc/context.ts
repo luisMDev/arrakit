@@ -1,30 +1,39 @@
 import { type OrganizationRole, isAdminRole } from '@arrakit/address'
 import type { Auth } from '@arrakit/auth'
-import { isTrustedOrigin } from '@arrakit/auth'
-import type { OrganizationRow, OrganizationScope, ScopedData } from '@arrakit/db'
+import { DomainError, type OrganizationRow, type OrganizationScope } from '@arrakit/db'
 import { ORPCError, os } from '@orpc/server'
 
 import type { AppDeps } from '../deps'
 import type { Logger } from '../observability/logger'
 import { isUnexpected, reportUnexpected } from '../observability/unexpected-error'
-import { toMemberError } from '../organizations/member-errors'
 
 export interface BaseContext {
   deps: AppDeps
-  data: ScopedData
   headers: Headers
   /** The app logger bound to this request's id. */
   log: Logger
 }
 
 export function procedureContext(deps: AppDeps, headers: Headers, log: Logger): BaseContext {
-  return { deps, data: deps.data, headers, log }
+  return { deps, headers, log }
 }
+
+/** oRPC has no default status for PAYMENT_REQUIRED. */
+export const PAYMENT_REQUIRED_STATUS = 402
+
+const toORPCError = (thrown: unknown): unknown =>
+  thrown instanceof DomainError
+    ? new ORPCError(thrown.code, {
+        status: thrown.code === 'PAYMENT_REQUIRED' ? PAYMENT_REQUIRED_STATUS : undefined,
+        message: thrown.message,
+        data: thrown.data,
+      })
+    : thrown
 
 /**
  * Maps the data layer's domain errors to oRPC errors. oRPC answers a thrown error itself, before
- * Hono's onError, so unexpected ones are logged and reported here (for every transport), then
- * rethrown for oRPC to answer 500.
+ * Hono's onError, so unexpected ones are logged and reported here, then rethrown for oRPC to
+ * answer 500.
  */
 export const reportErrors = os
   .$context<BaseContext>()
@@ -32,7 +41,7 @@ export const reportErrors = os
     try {
       return await next()
     } catch (thrown) {
-      const error = toMemberError(thrown)
+      const error = toORPCError(thrown)
       if (isUnexpected(error)) {
         reportUnexpected(context.log, context.deps.errors, error, { procedure: path.join('.') })
       }
@@ -80,7 +89,7 @@ function roleAllows(role: OrganizationRole, level: MemberLevel): boolean {
  */
 export function requireMember(level: MemberLevel) {
   return os.$context<SessionContext>().middleware(async ({ context, next }) => {
-    const membership = await context.data.memberOf(context.user.id)
+    const membership = await context.deps.data.memberOf(context.user.id)
     if (!membership) throw notInOrganization()
     if (!roleAllows(membership.role, level)) {
       throw new ORPCError('FORBIDDEN', {
@@ -94,25 +103,8 @@ export function requireMember(level: MemberLevel) {
       context: {
         activeOrganization: membership.organization,
         role: membership.role,
-        scope: context.data.forOrganization(membership.organization.id),
+        scope: context.deps.data.forOrganization(membership.organization.id),
       },
     })
   })
 }
-
-/** 403 `message` unless the request's Origin is exactly one of the trusted origins (CSRF guard). */
-export function requireTrustedOrigin(message: string) {
-  return os.$context<BaseContext>().middleware(async ({ context, next }) => {
-    if (!isTrustedOrigin(context.headers.get('origin'), context.deps.authConfig.trustedOrigins)) {
-      throw new ORPCError('FORBIDDEN', { message })
-    }
-    return next()
-  })
-}
-
-export const requireStripe = os.$context<BaseContext>().middleware(async ({ context, next }) => {
-  const stripe = context.deps.stripe
-  if (!stripe)
-    throw new ORPCError('SERVICE_UNAVAILABLE', { message: 'Payments are not set up yet.' })
-  return next({ context: { stripe } })
-})

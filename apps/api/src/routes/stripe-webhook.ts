@@ -8,15 +8,10 @@ export function stripeWebhookRoutes(deps: AppDeps) {
   return new Hono().post('/api/webhooks/stripe', async (c) => {
     const raw = await c.req.text()
     const signature = c.req.header('stripe-signature')
-    const stripe = deps.stripe
-    if (!stripe || !signature) {
-      const reason = stripe ? 'no Stripe-Signature header' : 'Stripe is not set up'
-      c.get('log').warn({ reason }, 'webhook refused')
-      return c.body(null, 401)
-    }
     let event: BillingEvent | null
     try {
-      event = stripe.event(raw, signature)
+      if (!signature) throw new Error('no Stripe-Signature header')
+      event = deps.stripe.event(raw, signature)
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)
       c.get('log').warn({ reason }, 'webhook refused')
@@ -26,7 +21,7 @@ export function stripeWebhookRoutes(deps: AppDeps) {
       await settleBillingEvent(
         {
           data: deps.data,
-          stripe,
+          stripe: deps.stripe,
           mailer: deps.mailer,
           webUrl: deps.env.webUrl,
           log: c.get('log'),

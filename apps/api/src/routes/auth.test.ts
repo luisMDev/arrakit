@@ -1,10 +1,10 @@
-import { members } from '@arrakit/db/schema'
 import { ORPCError, call, os } from '@orpc/server'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { BaseContext } from '../orpc/context'
 import { requireMember, requireSession } from '../orpc/context'
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp, sessionCookieOf } from '../testing/app'
+import { joinAs, ownerOf, sqlOf } from '../testing/people'
 
 const WEB = TEST_WEB_ORIGIN
 
@@ -18,7 +18,7 @@ describe('Better Auth routes on Hono', () => {
   afterEach(() => vi.useRealTimers())
 
   const me = (headers: Record<string, string>) =>
-    t.app.request('/api/rpc/me/get', { method: 'POST', headers })
+    t.app.request('/api/rpc/me/get', { method: 'POST', headers: { origin: WEB, ...headers } })
 
   async function signedInCookie(email: string) {
     const { headers } = await t.signIn({ email })
@@ -112,12 +112,8 @@ describe('Better Auth routes on Hono', () => {
       })
 
     async function withRole(email: string, role: 'owner' | 'admin' | 'member') {
-      const owner = await t.signIn({ email: `owner-of-${email}` })
-      const org = await t.client(owner.headers).organizations.skip()
-      if (role === 'owner') return { headers: owner.headers, organizationId: org.id }
-      const { headers, userId } = await t.signIn({ email })
-      await t.data.db.insert(members).values({ organizationId: org.id, userId, role })
-      return { headers, organizationId: org.id, userId }
+      const owner = await ownerOf(t, `owner-of-${email}`, 'free')
+      return role === 'owner' ? owner : joinAs(t, owner.organizationId, email, role)
     }
 
     const errorOf = async (promise: Promise<unknown>) => {
@@ -165,8 +161,7 @@ describe('Better Auth routes on Hono', () => {
     it('reads the membership fresh: a removed member gets 404 on the next call', async () => {
       const { headers, userId } = await withRole('removed@fresh.vc', 'member')
       expect(await run('member', headers)).toBe('member')
-      const { adapter } = await t.deps.auth.$context
-      await adapter.delete({ model: 'member', where: [{ field: 'userId', value: userId! }] })
+      await sqlOf(t)('delete from members where user_id = $1', [userId])
       expect((await errorOf(run('member', headers))).status).toBe(404)
     })
 

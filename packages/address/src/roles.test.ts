@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isAdminRole, toOrganizationRole } from './roles'
+import { isAccountLanguage, isAdminRole, toAssignableRole, toOrganizationRole } from './roles'
 
 describe('isAdminRole', () => {
   it.each([
@@ -23,5 +23,29 @@ describe('toOrganizationRole', () => {
     ['superadmin', 'member'],
   ])('%j reads as %j', (stored, role) => {
     expect(toOrganizationRole(stored)).toBe(role)
+  })
+})
+
+describe('toAssignableRole', () => {
+  it.each([
+    ['admin', 'admin'],
+    ['member', 'member'],
+    ['owner', 'member'],
+    ['Admin', 'member'],
+    [null, 'member'],
+  ])('%j reads as %j', (stored, role) => {
+    expect(toAssignableRole(stored)).toBe(role)
+  })
+})
+
+describe('isAccountLanguage', () => {
+  it.each([
+    ['en', true],
+    ['es', true],
+    ['EN', false],
+    ['fr', false],
+    [undefined, false],
+  ])('%j → %s', (value, expected) => {
+    expect(isAccountLanguage(value)).toBe(expected)
   })
 })

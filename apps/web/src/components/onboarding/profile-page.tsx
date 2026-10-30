@@ -1,7 +1,6 @@
 import { createOrganizationSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useQueryClient } from '@tanstack/react-query'
-import { Controller, useForm, useWatch } from 'react-hook-form'
+import { Controller, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -10,9 +9,11 @@ import { Checkbox } from '#/components/ui/checkbox'
 import { Field, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { PRIVACY_URL, TERMS_URL } from '#/config'
-import { type CheckoutChoice, type ChoiceSearch, checkoutChoice } from '#/lib/checkout-choice'
+import { type ChoiceSearch, appLanding, checkoutChoice } from '#/lib/checkout-choice'
+import { useCurrentUser } from '#/lib/current-user'
+import { useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
-import { client, orpc } from '#/lib/orpc'
+import { client } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
 const profileForm = z.object({
@@ -21,7 +22,7 @@ const profileForm = z.object({
   termsAccepted: z.boolean(),
 })
 
-type ProfileTarget = { to: '/app' } | { to: '/app/checkout'; search: CheckoutChoice }
+type ProfileTarget = ReturnType<typeof appLanding>
 
 type ProfileStep = { name: string; personName: string } | 'skip'
 
@@ -47,28 +48,24 @@ export function ProfilePage({
   onDone: (target: ProfileTarget) => void
 }) {
   const { t } = useTranslation()
-  const queryClient = useQueryClient()
-  const form = useForm({
+  const me = useCurrentUser()
+  const form = useClearingForm({
     resolver: zodResolver(profileForm),
     defaultValues: { personName: '', organization: '', termsAccepted: false },
   })
   const termsAccepted = useWatch({ control: form.control, name: 'termsAccepted' })
-  const step = useApiMutation(
-    {
-      mutationFn: save,
-      onSuccess: () => {
-        queryClient.removeQueries({ queryKey: orpc.me.get.queryOptions().queryKey })
-        const choice = checkoutChoice(search)
-        onDone(choice ? { to: '/app/checkout', search: choice } : { to: '/app' })
-      },
+  const step = useApiMutation({
+    mutationKey: ['profile'],
+    mutationFn: save,
+    onSuccess: async () => {
+      await me.refresh()
+      onDone(appLanding(checkoutChoice(search)))
     },
-    {
-      context: '[profile] saving failed',
-      failure: (variables) =>
+    meta: {
+      failure: (variables: ProfileStep) =>
         t(variables === 'skip' ? 'profile.notSkipped' : 'profile.organizationNotSaved'),
     },
-  )
-  const pending = step.isPending || step.isSuccess
+  })
 
   function next({ personName, organization }: z.output<typeof profileForm>) {
     return step.run({ name: organization, personName })
@@ -133,13 +130,13 @@ export function ProfilePage({
           </p>
         </div>
         <div className="flex gap-3">
-          <Button type="submit" disabled={!termsAccepted || pending}>
+          <Button type="submit" disabled={!termsAccepted || step.busy}>
             {t('profile.next')}
           </Button>
           <Button
             type="button"
             variant="ghost"
-            disabled={pending}
+            disabled={step.busy}
             onClick={() => void step.run('skip')}
           >
             {t('profile.skip')}

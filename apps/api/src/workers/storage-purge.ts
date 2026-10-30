@@ -4,20 +4,18 @@ import type { Logger } from '../observability/logger'
 
 export const STORAGE_PURGE = 'storage-purge'
 
-type StoragePurgeJob = { organizationId: string } & ({ folder: string } | { keys: string[] })
+interface StoragePurgeJob {
+  organizationId: string
+  folder: string
+}
 
-const target = (job: StoragePurgeJob) =>
-  'keys' in job
-    ? `files ${job.keys.join(', ')}`
-    : `folder "${job.folder === '' ? '<all>' : job.folder}"`
+const target = (job: StoragePurgeJob) => `folder "${job.folder === '' ? '<all>' : job.folder}"`
 
 export async function registerStoragePurge(data: ScopedData, log: Logger): Promise<void> {
   await data.jobs.defineQueue(STORAGE_PURGE, WORKER_RETRY_POLICY)
   await data.jobs.work<StoragePurgeJob>(STORAGE_PURGE, async (job) => {
     try {
-      const files = data.forOrganization(job.organizationId).files
-      if ('keys' in job) await files.remove(job.keys)
-      else await files.removePrefix(job.folder)
+      await data.forOrganization(job.organizationId).files.removePrefix(job.folder)
     } catch (err) {
       log.error(
         { err, organizationId: job.organizationId, target: target(job) },

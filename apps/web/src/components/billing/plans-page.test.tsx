@@ -1,27 +1,18 @@
 import type { Me } from '@arrakit/contract'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { toast } from 'sonner'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { orpc } from '#/lib/orpc'
-import { answer, api, quiet, renderAt } from '#/test/rpc'
+import { answer, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
 import { PlansPage } from './plans-page'
-import { OFFERS, billingOf, meOn } from './testing'
+import { billingOf, meOn } from './testing'
 
-beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
-afterEach(() => {
-  // sonner keeps its toasts across mounts; a new Toaster would replay the previous test's.
-  toast.dismiss()
-  api.resetHandlers()
-  vi.restoreAllMocks()
-})
-afterAll(() => api.close())
+setupTestApi()
 
 const card = (name: string) => screen.getByRole('article', { name })
 async function setup(me: Me) {
-  answer('plans/list', OFFERS)
   answer('me/get', me)
   const view = renderAt(<PlansPage />, { me, url: '/app/plans' })
   await screen.findByRole('article', { name: 'Team' })
@@ -74,8 +65,13 @@ describe('PlansPage', () => {
     ).toBeInTheDocument()
     expect(within(dialog).getByText('Then $480 a year.')).toBeInTheDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Switch to Team' }))
-    await waitFor(() => expect(view.location()).toBe('/app/billing'))
+    await waitFor(() => expect(view.location()).toBe('/app/settings'))
+    expect(view.router.state.location.search).toEqual({ section: 'billing' })
     expect(changes[0]?.input).toEqual({ plan: 'team', cycle: 'yearly' })
+    expect(view.queryClient.getQueryData(orpc.me.get.queryOptions().queryKey)).toMatchObject({
+      plan: 'team',
+      organization: { plan: 'team' },
+    })
   })
 
   it('switches down at the renewal, nothing to pay today', async () => {
@@ -263,11 +259,5 @@ describe('PlansPage', () => {
       'href',
       '/pricing',
     )
-  })
-
-  it('says so when the plans cannot load', async () => {
-    answer('plans/list', 500)
-    renderAt(<PlansPage />, { me: meOn('free'), url: '/app/plans' })
-    expect(await screen.findByText("Couldn't load the plans. Reload the page.")).toBeInTheDocument()
   })
 })

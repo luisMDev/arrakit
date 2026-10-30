@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { openApiDocument } from './app'
 import { type TestApp, createTestApp } from './testing/app'
 
 describe('api app', () => {
@@ -17,16 +16,27 @@ describe('api app', () => {
     expect(await res.json()).toEqual({ status: 'ok', postgres: 'up', storage: 'up', queue: 'up' })
   })
 
-  it('serves the OpenAPI document generated from the contract', async () => {
-    const res = await t.app.request('/api/openapi.json')
-    const doc = (await res.json()) as { openapi: string; paths: Record<string, unknown> }
-    expect(doc.openapi).toMatch(/^3\./)
-    expect(doc).toEqual(JSON.parse(JSON.stringify(await openApiDocument())))
-    expect(Object.keys(doc.paths)).toContain('/me')
+  it('returns 404 for unknown routes, and serves no REST or OpenAPI', async () => {
+    expect((await t.app.request('/nope')).status).toBe(404)
+    expect((await t.app.request('/api/openapi.json')).status).toBe(404)
+    expect((await t.app.request('/api/me')).status).toBe(404)
   })
 
-  it('returns 404 for unknown routes', async () => {
-    expect((await t.app.request('/nope')).status).toBe(404)
+  it('refuses a procedure call that does not come from the app', async () => {
+    const { headers } = await t.signIn({ email: 'csrf@acme.com' })
+    for (const origin of [null, 'null', 'https://evil.example']) {
+      const sent = new Headers(headers)
+      if (origin === null) sent.delete('origin')
+      else sent.set('origin', origin)
+      const res = await t.request('/api/rpc/me/get', { method: 'POST', headers: sent })
+      expect(res.status).toBe(403)
+    }
+    const evil = new Headers(headers)
+    evil.set('origin', 'https://evil.example')
+    await expect(t.client(evil).me.get()).rejects.toMatchObject({
+      status: 403,
+      message: 'Use the app.',
+    })
   })
 
   it('answers public procedures and refuses signed-out callers', async () => {

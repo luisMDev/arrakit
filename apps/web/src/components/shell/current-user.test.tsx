@@ -1,10 +1,9 @@
-import { QueryClient } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { displayName, initialOf, roleFlags, useCurrentUser } from '#/lib/current-user'
+import { initialOf, roleFlags, useCurrentUser } from '#/lib/current-user'
 import { orpc } from '#/lib/orpc'
-import { withQueries } from '#/test/rpc'
+import { testQueryClient, withQueries } from '#/test/rpc'
 
 import { meAs } from './testing'
 
@@ -19,12 +18,7 @@ describe('roleFlags', () => {
   })
 })
 
-describe('displayName and initialOf', () => {
-  it('uses the trimmed name, else the email local part', () => {
-    expect(displayName({ name: ' Ana Ruiz ', email: 'ana@acme.com' })).toBe('Ana Ruiz')
-    expect(displayName({ name: '  ', email: 'ana@acme.com' })).toBe('ana')
-  })
-
+describe('initialOf', () => {
   it('takes the first letter, uppercased', () => {
     expect(initialOf(' ana ruiz')).toBe('A')
     expect(initialOf('')).toBe('')
@@ -33,7 +27,7 @@ describe('displayName and initialOf', () => {
 
 describe('useCurrentUser', () => {
   function setUp(seed?: ReturnType<typeof meAs>) {
-    const queryClient = new QueryClient()
+    const queryClient = testQueryClient()
     if (seed) queryClient.setQueryData(orpc.me.get.queryOptions().queryKey, seed)
     return {
       ...renderHook(() => useCurrentUser(), { wrapper: withQueries(queryClient) }),

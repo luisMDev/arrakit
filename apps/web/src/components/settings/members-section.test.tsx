@@ -1,19 +1,14 @@
 import type { InvitationView, Me } from '@arrakit/contract'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
-import { answer, api, meAs, quiet, renderAt } from '#/test/rpc'
+import { answer, meAs, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
 import { MembersSection, daysSince } from './members-section'
-import { SettingsPage } from './settings-page'
+import { RoutedSettings } from './testing'
 
-beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
-afterEach(() => {
-  api.resetHandlers()
-  vi.restoreAllMocks()
-})
-afterAll(() => api.close())
+setupTestApi()
 
 const today = new Date().toISOString().slice(0, 10)
 
@@ -36,7 +31,7 @@ const invitation = (overrides: Partial<InvitationView> = {}): InvitationView => 
 function setup(me: Me = meAs(), members: unknown = MEMBERS, invitations: unknown = [invitation()]) {
   answer('members/list', members)
   answer('invitations/list', invitations)
-  return renderAt(<MembersSection open={() => undefined} />, { me })
+  return renderAt(<MembersSection />, { me })
 }
 
 const row = async (email: string) => (await screen.findByText(email)).closest('li') as HTMLElement
@@ -45,17 +40,23 @@ describe('MembersSection', () => {
   it('counts members and offers more seats, opening Billing', async () => {
     answer('members/list', MEMBERS)
     answer('invitations/list', [])
-    renderAt(<SettingsPage section="members" />, { me: meAs({ plan: 'pro' }) })
+    answer('billing/get', 500)
+    answer('usage/get', 500)
+    quiet()
+    renderAt(<RoutedSettings />, {
+      me: meAs({ plan: 'pro' }),
+      url: '/app/settings?section=members',
+    })
     const seats = await screen.findByText(/3 members/)
     expect(seats).toHaveTextContent('3 members · Team has up to 10')
-    await userEvent.click(within(seats).getByRole('button', { name: 'Team has up to 10' }))
-    expect(screen.getByRole('heading', { level: 2, name: 'Billing' })).toBeInTheDocument()
+    await userEvent.click(within(seats).getByRole('link', { name: 'Team has up to 10' }))
+    expect(await screen.findByRole('heading', { level: 2, name: 'Billing' })).toBeInTheDocument()
   })
 
   it('offers no bigger plan on Team', async () => {
     setup()
     expect(await screen.findByText('3 members')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /has up to/ })).toBeNull()
+    expect(screen.queryByRole('link', { name: /has up to/ })).toBeNull()
   })
 
   it('lists members then invites, names by local part, and marks an unsent invite', async () => {
@@ -170,7 +171,7 @@ describe('MembersSection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Invite' }))
     expect(await screen.findByText(message)).toBeInTheDocument()
     expect(input).toHaveValue('ana@acme.com')
-    expect(report).toHaveBeenCalledWith('[members] inviting failed', expect.anything())
+    expect(report).toHaveBeenCalledWith('[invitations.invite] failed', expect.anything())
   })
 
   it('changes a role, and puts the select back when refused', async () => {

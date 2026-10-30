@@ -24,7 +24,9 @@ export function HomePage() {
         {isAdmin ? (
           <>
             <Button asChild variant="outline">
-              <Link to="/app/members">{t('home.members')}</Link>
+              <Link to="/app/settings" search={{ section: 'members' }}>
+                {t('home.members')}
+              </Link>
             </Button>
             <Button asChild variant="outline">
               <Link to="/app/plans">{t('home.plans')}</Link>

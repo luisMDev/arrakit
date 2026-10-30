@@ -10,7 +10,6 @@ const WORK_EMAIL_REQUIRED = 'Enter a work email, like name@company.com.'
 
 export function beforeHook(config: AuthConfig) {
   return createAuthMiddleware(async (ctx) => {
-    if (ctx.path.startsWith('/organization/')) throw new APIError('NOT_FOUND')
     if (!SIGN_IN_PATHS.has(ctx.path)) return
 
     if (!isTrustedOrigin(ctx.headers?.get('origin'), config.trustedOrigins)) {

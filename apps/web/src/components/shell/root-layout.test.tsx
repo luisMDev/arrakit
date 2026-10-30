@@ -1,15 +1,13 @@
 import { screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { answer, api } from '#/test/rpc'
+import { answer, setupTestApi } from '#/test/rpc'
 
 import { isInApp } from './root-layout'
-import { RETRIED_AT_KEY } from './stale-chunk'
+import { RELOADED_AT_KEY } from './stale-chunk'
 import { meAs, renderApp } from './testing'
 
-beforeAll(() => api.listen({ onUnhandledFrame: 'error' }))
-afterEach(() => api.resetHandlers())
-afterAll(() => api.close())
+setupTestApi({ onUnhandledFrame: 'error' })
 
 describe('isInApp', () => {
   it.each(['/app', '/app/settings', '/app/anything/deep'])('%s is in the app', (path) => {
@@ -52,20 +50,19 @@ describe('Root layout', () => {
 describe('Stale chunk recovery', () => {
   afterEach(() => {
     vi.restoreAllMocks()
-    sessionStorage.removeItem(RETRIED_AT_KEY)
+    sessionStorage.removeItem(RELOADED_AT_KEY)
   })
 
   it("answers Vite's preload error on every screen", async () => {
     renderApp('/unavailable')
     await screen.findByRole('link', { name: 'Home' })
-    const fetch = vi.spyOn(window, 'fetch').mockResolvedValue(new Response(''))
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const event = Object.assign(new Event('vite:preloadError', { cancelable: true }), {
       payload: new TypeError('Importing a module script failed.'),
     })
     window.dispatchEvent(event)
     expect(event.defaultPrevented).toBe(true)
-    expect(sessionStorage.getItem(RETRIED_AT_KEY)).not.toBeNull()
-    expect(fetch).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem(RELOADED_AT_KEY)).not.toBeNull()
   })
 })
 

@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { organizations } from '../schema/index'
-import { type TestData, openTestData } from '../testing'
+import { type TestData, insertOrganization, openTestData } from '../testing'
 
 describe('organization billing', () => {
   let data: TestData
@@ -11,13 +10,8 @@ describe('organization billing', () => {
   })
   afterAll(() => data.close())
 
-  const create = async (slug: string) => {
-    const [row] = await data.db.insert(organizations).values({ name: slug, slug }).returning()
-    return row!
-  }
-
   it('starts every organization on Free with no Stripe ids', async () => {
-    const org = await create('alder')
+    const org = await insertOrganization(data, { slug: 'alder' })
     expect(org).toMatchObject({
       plan: 'free',
       stripeCustomerId: null,
@@ -27,7 +21,7 @@ describe('organization billing', () => {
   })
 
   it('records the customer, the subscription and the anchor with a paid plan', async () => {
-    const org = await create('birch')
+    const org = await insertOrganization(data, { slug: 'birch' })
     const anchor = new Date('2026-10-04T12:00:00Z')
     const row = await data
       .forOrganization(org.id)
@@ -41,7 +35,7 @@ describe('organization billing', () => {
   })
 
   it('keeps the customer when it goes back to Free alone, and clears the anchor', async () => {
-    const org = await create('cedar')
+    const org = await insertOrganization(data, { slug: 'cedar' })
     const scope = data.forOrganization(org.id)
     await scope.setPlan('team', {
       customerId: 'cus_cedar',
@@ -58,14 +52,14 @@ describe('organization billing', () => {
   })
 
   it('records the first Stripe customer and keeps it afterwards', async () => {
-    const org = await create('elm')
+    const org = await insertOrganization(data, { slug: 'elm' })
     const scope = data.forOrganization(org.id)
     expect((await scope.setStripeCustomer('cus_first'))?.stripeCustomerId).toBe('cus_first')
     expect((await scope.setStripeCustomer('cus_second'))?.stripeCustomerId).toBe('cus_first')
   })
 
   it('answers undefined for an unknown organization and never touches another', async () => {
-    const other = await create('fir')
+    const other = await insertOrganization(data, { slug: 'fir' })
     const unknown = data.forOrganization('0f8fad5b-d9cb-469f-a165-70867728950e')
     expect(await unknown.setPlan('pro', { customerId: 'cus_x', subscriptionId: 'sub_x' })).toBe(
       undefined,

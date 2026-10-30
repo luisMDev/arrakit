@@ -9,17 +9,20 @@ import * as schema from '../schema/index'
 import {
   creditLedger,
   invitations,
-  members,
   oauthAccessTokens,
   oauthClients,
   oauthConsents,
   oauthRefreshTokens,
-  organizations,
-  sessions,
   usageLevels,
   users,
 } from '../schema/index'
-import { type TestData, openTestData } from '../testing'
+import {
+  type TestData,
+  insertMember,
+  insertOrganization,
+  insertUser,
+  openTestData,
+} from '../testing'
 
 describe('organizations', () => {
   let data: TestData
@@ -30,11 +33,10 @@ describe('organizations', () => {
   afterAll(() => data.close())
 
   const organizationWithOwner = async (slug: string) => {
-    const owner = randomUUID()
-    await data.db.insert(users).values({ id: owner, name: '', email: `owner@${slug}.vc` })
-    const [row] = await data.db.insert(organizations).values({ name: slug, slug }).returning()
-    await data.db.insert(members).values({ organizationId: row!.id, userId: owner, role: 'owner' })
-    return { id: row!.id, owner }
+    const owner = await insertUser(data, `owner@${slug}.vc`)
+    const { id } = await insertOrganization(data, { slug })
+    await insertMember(data, id, owner, 'owner')
+    return { id, owner }
   }
 
   const grant = async (userId: string, organizationId: string) => {
@@ -85,13 +87,6 @@ describe('organizations', () => {
       inviterId: doomed.owner,
       expiresAt: new Date(Date.now() + 86_400_000),
     })
-    await data.db.insert(sessions).values({
-      id: randomUUID(),
-      token: randomUUID(),
-      userId: doomed.owner,
-      expiresAt: new Date(Date.now() + 86_400_000),
-      activeOrganizationId: doomed.id,
-    })
     const client = await grant(doomed.owner, doomed.id)
     await grant(kept.owner, kept.id)
 
@@ -103,8 +98,6 @@ describe('organizations', () => {
       await data.db.select().from(invitations).where(eq(invitations.organizationId, doomed.id)),
     ).toEqual([])
     expect(await data.db.select().from(users).where(eq(users.id, doomed.owner))).toHaveLength(1)
-    const [owned] = await data.db.select().from(sessions).where(eq(sessions.userId, doomed.owner))
-    expect(owned?.activeOrganizationId).toBeNull()
     for (const table of [oauthAccessTokens, oauthRefreshTokens, oauthConsents]) {
       expect(await data.db.select().from(table).where(eq(table.referenceId, doomed.id))).toEqual([])
       expect(await data.db.select().from(table).where(eq(table.referenceId, kept.id))).toHaveLength(
@@ -155,13 +148,8 @@ describe('organizations', () => {
          where c.contype = 'f' and c.confrelid = 'organizations'::regclass`,
       )
       const references = rows.map((row) => `${row.table}.${row.column}:${row.onDelete}`).sort()
-      // 'c' = CASCADE; the only other reference is the session's active organization ('n' = SET NULL).
-      expect(references).toEqual(
-        [
-          ...tables.map((table) => `${table}.organization_id:c`),
-          'sessions.active_organization_id:n',
-        ].sort(),
-      )
+      // 'c' = CASCADE.
+      expect(references).toEqual(tables.map((table) => `${table}.organization_id:c`).sort())
       const { rows: nullable } = await raw().query<{ table: string }>(
         `select table_name as "table" from information_schema.columns
          where table_schema = 'public' and column_name = 'organization_id' and is_nullable = 'YES'`,

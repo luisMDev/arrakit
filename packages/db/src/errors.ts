@@ -1,68 +1,79 @@
-export class PersonHasOrganizationError extends Error {
-  override name = 'PersonHasOrganizationError'
-  constructor(message = 'You already belong to an organization.') {
+export type DomainErrorCode =
+  'BAD_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'CONFLICT' | 'PAYMENT_REQUIRED'
+
+/** A refusal the API answers with `code`, `message` and `data` as they are. */
+export class DomainError extends Error {
+  constructor(
+    readonly code: DomainErrorCode,
+    message: string,
+    readonly data?: Record<string, unknown>,
+  ) {
     super(message)
   }
 }
 
-export class OrganizationNameUnusableError extends Error {
-  override name = 'OrganizationNameUnusableError'
-  constructor() {
-    super('Give the organization a name with letters or digits.')
+export class PersonHasOrganizationError extends DomainError {
+  override name = 'PersonHasOrganizationError'
+  constructor(message = 'You already belong to an organization.') {
+    super('CONFLICT', message)
   }
 }
 
-export class PersonOwnsOrganizationError extends Error {
+export class OrganizationNameUnusableError extends DomainError {
+  override name = 'OrganizationNameUnusableError'
+  constructor() {
+    super('BAD_REQUEST', 'Give the organization a name with letters or digits.')
+  }
+}
+
+export class PersonOwnsOrganizationError extends DomainError {
   override name = 'PersonOwnsOrganizationError'
   constructor() {
     super(
+      'CONFLICT',
       'You own an organization. Delete the organization first, in Settings → Security and data.',
     )
   }
 }
 
-export class InvitationNotFoundError extends Error {
+export class InvitationNotFoundError extends DomainError {
   override name = 'InvitationNotFoundError'
   constructor() {
-    super('This invitation is not open for you.')
+    super('NOT_FOUND', 'This invitation is not open for you.')
   }
 }
 
-export class MemberChangeRefusedError extends Error {
+export class MemberChangeRefusedError extends DomainError {
   override name = 'MemberChangeRefusedError'
   constructor(readonly reason: string) {
-    super(reason)
+    super('FORBIDDEN', reason)
   }
 }
 
-export class SeatLimitError extends Error {
+export class SeatLimitError extends DomainError {
   override name = 'SeatLimitError'
+  constructor(message: string) {
+    super('FORBIDDEN', message)
+  }
 }
 
-export class AlreadyMemberError extends Error {
+export class AlreadyMemberError extends DomainError {
   override name = 'AlreadyMemberError'
   constructor(email: string) {
-    super(`${email} is already in the organization.`)
+    super('BAD_REQUEST', `${email} is already in the organization.`)
   }
 }
 
-export class InviteEmailUnusableError extends Error {
+export class InviteEmailUnusableError extends DomainError {
   override name = 'InviteEmailUnusableError'
   constructor(raw: string) {
-    super(`Enter a work email, like name@organization.com: "${raw}" is not one.`)
+    super('BAD_REQUEST', `Enter a work email, like name@organization.com: "${raw}" is not one.`)
   }
 }
 
-export class NoSuchMemberError extends Error {
+export class NoSuchMemberError extends DomainError {
   override name = 'NoSuchMemberError'
   constructor(email: string) {
-    super(`No one in the organization is ${email}.`)
-  }
-}
-
-export class FileNotFoundError extends Error {
-  override name = 'FileNotFoundError'
-  constructor(name: string) {
-    super(`[data] no file stored under "${name}"`)
+    super('NOT_FOUND', `No one in the organization is ${email}.`)
   }
 }

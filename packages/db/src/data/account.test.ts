@@ -4,8 +4,14 @@ import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { PersonOwnsOrganizationError } from '../errors'
-import { accounts, invitations, members, organizations, sessions, users } from '../schema/index'
-import { type TestData, openTestData } from '../testing'
+import { accounts, invitations, sessions } from '../schema/index'
+import {
+  type TestData,
+  insertMember,
+  insertOrganization,
+  insertUser,
+  openTestData,
+} from '../testing'
 
 describe('account', () => {
   let data: TestData
@@ -15,11 +21,6 @@ describe('account', () => {
   })
   afterAll(() => data.close())
 
-  const person = async (email: string, name = ''): Promise<string> => {
-    const id = randomUUID()
-    await data.db.insert(users).values({ id, name, email })
-    return id
-  }
   const session = async (
     userId: string,
     userAgent: string | null,
@@ -31,13 +32,9 @@ describe('account', () => {
       .values({ id, userId, userAgent, token: randomUUID(), createdAt, expiresAt })
     return id
   }
-  const organization = async (slug: string) => {
-    const [row] = await data.db.insert(organizations).values({ name: slug, slug }).returning()
-    return row!.id
-  }
 
   it('reads a fresh person: email sign-in, defaults, the current session first', async () => {
-    const ana = await person('ana@acme.com')
+    const ana = await insertUser(data, 'ana@acme.com')
     const older = await session(ana, 'phone', { createdAt: new Date(Date.now() - 60_000) })
     const newer = await session(ana, 'laptop')
     await session(ana, 'gone', { expiresAt: new Date(Date.now() - 1000) })
@@ -59,7 +56,7 @@ describe('account', () => {
   })
 
   it('names the newest social provider the person signs in with', async () => {
-    const bo = await person('bo@acme.com')
+    const bo = await insertUser(data, 'bo@acme.com')
     await data.db.insert(accounts).values({
       id: randomUUID(),
       accountId: 'g',
@@ -74,8 +71,8 @@ describe('account', () => {
   })
 
   it('writes only the given keys and never touches another person', async () => {
-    const cy = await person('cy@acme.com', 'Cy')
-    const other = await person('dee@acme.com', 'Dee')
+    const cy = await insertUser(data, 'cy@acme.com', 'Cy')
+    const other = await insertUser(data, 'dee@acme.com', 'Dee')
     const unchanged = await data.updateAccount(cy, 'none', {})
     expect(unchanged?.user.name).toBe('Cy')
     const updated = await data.updateAccount(cy, 'none', {
@@ -99,21 +96,21 @@ describe('account', () => {
   })
 
   it('refuses to delete an owner of any organization', async () => {
-    const owner = await person('owner@oak.vc')
-    const first = await organization('oak-first')
-    const second = await organization('oak-second')
-    await data.db.insert(members).values({ organizationId: first, userId: owner, role: 'admin' })
-    await data.db.insert(members).values({ organizationId: second, userId: owner, role: 'owner' })
+    const owner = await insertUser(data, 'owner@oak.vc')
+    const first = (await insertOrganization(data, { slug: 'oak-first' })).id
+    const second = (await insertOrganization(data, { slug: 'oak-second' })).id
+    await insertMember(data, first, owner, 'admin')
+    await insertMember(data, second, owner, 'owner')
     await expect(data.deleteAccount(owner)).rejects.toBeInstanceOf(PersonOwnsOrganizationError)
     expect(await data.memberOf(owner)).not.toBeNull()
   })
 
   it('deletes a person with their sessions, memberships and invitations to and from them', async () => {
-    const org = await organization('pine')
-    const owner = await person('owner@pine.vc')
-    const ana = await person('ana@pine.vc')
-    await data.db.insert(members).values({ organizationId: org, userId: owner, role: 'owner' })
-    await data.db.insert(members).values({ organizationId: org, userId: ana, role: 'admin' })
+    const org = (await insertOrganization(data, { slug: 'pine' })).id
+    const owner = await insertUser(data, 'owner@pine.vc')
+    const ana = await insertUser(data, 'ana@pine.vc')
+    await insertMember(data, org, owner, 'owner')
+    await insertMember(data, org, ana, 'admin')
     await session(ana, null)
     const expiresAt = new Date(Date.now() + 86_400_000)
     await data.db.insert(invitations).values([

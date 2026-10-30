@@ -22,7 +22,7 @@ export function mcpRoutes(deps: AppDeps) {
   const { baseURL } = deps.authConfig
   const resource = mcpResourceURL(baseURL)
   const metadataURL = new URL(PROTECTED_RESOURCE_PATH, baseURL).toString()
-  const handler = mcpHandler(deps.data, deps.log.child({ component: 'mcp' }))
+  const handler = mcpHandler(deps.log.child({ component: 'mcp' }))
   openHandlers.add(handler)
 
   return new Hono()
@@ -49,12 +49,7 @@ export function mcpRoutes(deps: AppDeps) {
           clientId: caller.clientId,
           scopes: caller.scopes,
           resource: new URL(resource),
-          extra: {
-            organizationId: caller.organizationId,
-            userId: caller.userId,
-            role: caller.role,
-            organizationSlug: caller.organizationSlug,
-          },
+          extra: { userId: caller.userId, organization: caller.organization, role: caller.role },
         },
       })
     })

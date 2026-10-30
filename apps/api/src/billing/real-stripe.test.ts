@@ -1,9 +1,17 @@
 import type Stripe from 'stripe'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { ORPCError } from '@orpc/server'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { loadApiEnv } from '../env'
+import { recordingLogger } from '../observability/logger'
+import { fakeStripe } from '../testing/fake-stripe'
 import { mapStripeEvent, planKeyOf, realStripeGateway } from './real-stripe'
-import { createStripeGateway } from './stripe-gateway'
+import {
+  type SubscriptionState,
+  createStripeGateway,
+  guardedStripe,
+  unconfiguredStripe,
+} from './stripe-gateway'
 
 const ENV = {
   STRIPE_SECRET_KEY: 'sk_test_x',
@@ -26,7 +34,7 @@ function heldSubscription() {
         {
           id: 'si_1',
           quantity: 1,
-          price: { id: 'price_pro_monthly', lookup_key: 'arrakit_pro_monthly', metadata: {} },
+          price: { id: 'price_pro_monthly', lookup_key: 'arrakit_pro_monthly' },
           current_period_end: 2_000,
         },
       ],
@@ -43,11 +51,22 @@ function stripeClient() {
       sent.push({ call, params: args.length > 1 ? args[1] : args[0] })
       return {}
     }
+  const listPrices = vi.fn(async () => ({
+    data: [{ id: 'price_new', product: 'prod_credits', unit_amount: 19_200, currency: 'usd' }],
+  }))
   const client = {
-    prices: {
-      list: async () => ({
-        data: [{ id: 'price_new', product: 'prod_credits', unit_amount: 19_200, currency: 'usd' }],
-      }),
+    prices: { list: listPrices },
+    customers: {
+      retrieve: async (id: string) =>
+        id === 'cus_gone'
+          ? { id, deleted: true }
+          : {
+              id,
+              email: 'finance@acme.com',
+              invoice_settings: {
+                default_payment_method: { card: { brand: 'visa', last4: '4242' } },
+              },
+            },
     },
     checkout: {
       sessions: {
@@ -79,7 +98,14 @@ function stripeClient() {
       release: record('subscriptionSchedules.release'),
       create: async () => ({
         id: 'sub_sched_new',
-        phases: [{ start_date: 1_000, end_date: 2_000, discounts: [{ discount: 'di_1' }] }],
+        phases: [
+          {
+            start_date: 1_000,
+            end_date: 2_000,
+            items: [{ price: 'price_pro_monthly', quantity: 1 }],
+            discounts: [{ discount: 'di_1' }],
+          },
+        ],
       }),
       update: async (_id: string, params: unknown) => {
         sent.push({ call: 'subscriptionSchedules.update', params })
@@ -87,26 +113,80 @@ function stripeClient() {
       },
     },
   }
-  return { client: client as unknown as Stripe, sent, held }
+  return { client: client as unknown as Stripe, sent, held, listPrices }
 }
+
+const state = (fields: Partial<SubscriptionState> = {}): SubscriptionState => ({
+  id: 'sub_1',
+  customerId: 'cus_1',
+  organizationId: 'organization_1',
+  cancellationReason: null,
+  status: 'active',
+  lookupKey: 'pro_monthly',
+  anchor: new Date(1_760_054_400 * 1000),
+  periodEnd: 2_000,
+  itemId: 'si_1',
+  scheduleId: 'sub_sched_old',
+  ...fields,
+})
 
 const event = (type: string, object: object, extra: object = {}) =>
   ({ type, data: { object, ...extra } }) as unknown as Stripe.Event
 
 describe('createStripeGateway', () => {
-  it.each(Object.keys(ENV))('is null without %s: payments are not set up', (missing) => {
-    expect(createStripeGateway(loadApiEnv({ ...ENV, [missing]: undefined }))).toBeNull()
-    expect(createStripeGateway(loadApiEnv({ ...ENV, [missing]: '' }))).toBeNull()
+  it.each(Object.keys(ENV))('answers 503 without %s: payments are not set up', async (missing) => {
+    for (const value of [undefined, '']) {
+      const gateway = createStripeGateway(loadApiEnv({ ...ENV, [missing]: value }))
+      await expect(gateway.portal('cus_1', 'https://app.test', 'payment')).rejects.toMatchObject({
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'Payments are not set up yet.',
+      })
+      expect(() => gateway.event('{}', 'sig')).toThrow('Stripe is not set up')
+    }
   })
 
   it('carries the publishable key once all three are set', () => {
-    expect(createStripeGateway(loadApiEnv(ENV))?.publishableKey).toBe('pk_test_x')
+    expect(createStripeGateway(loadApiEnv(ENV)).publishableKey).toBe('pk_test_x')
   })
 
   it('is the in-memory fake with STRIPE_FAKE=1', () => {
-    expect(createStripeGateway(loadApiEnv({ STRIPE_FAKE: '1' }))?.publishableKey).toBe(
+    expect(createStripeGateway(loadApiEnv({ STRIPE_FAKE: '1' })).publishableKey).toBe(
       'pk_test_fake',
     )
+  })
+})
+
+describe('guardedStripe', () => {
+  const declined = () =>
+    Object.assign(new Error('Your card was declined.'), { type: 'StripeCardError' })
+
+  it('answers a declined card 402 and any other failure 502, logging both', async () => {
+    const fake = fakeStripe()
+    const { log, logs } = recordingLogger()
+    const guarded = guardedStripe(fake, log)
+    fake.failNext('portal', declined())
+    fake.failNext('portal', new Error('socket hang up'))
+
+    await expect(guarded.portal('cus_1', 'https://app.test', 'payment')).rejects.toMatchObject({
+      status: 402,
+      message: 'Your card was declined. Update it under Payment, then try again.',
+    })
+    await expect(guarded.portal('cus_1', 'https://app.test', 'payment')).rejects.toMatchObject({
+      status: 502,
+      message: "Couldn't reach Stripe. Try again in a minute.",
+    })
+    expect(logs.filter((entry) => entry.msg === 'Stripe call failed')).toEqual([
+      expect.objectContaining({ operation: 'portal', err: expect.objectContaining({}) }),
+      expect.objectContaining({ operation: 'portal' }),
+    ])
+  })
+
+  it('passes oRPC errors and webhook signature failures through unchanged', async () => {
+    const guarded = guardedStripe(unconfiguredStripe(), recordingLogger().log)
+    const error = await guarded.billing('cus_1', null).catch((err: unknown) => err)
+    expect(error).toBeInstanceOf(ORPCError)
+    expect(error).toMatchObject({ status: 503 })
+    expect(() => guarded.event('{}', 'sig')).toThrow('Stripe is not set up')
   })
 })
 
@@ -124,7 +204,7 @@ describe('the real gateway', () => {
 
   const params = (call: string) => stripe.sent.filter((s) => s.call === call).map((s) => s.params)
 
-  it("opens Embedded Checkout with the paying admin's email as requestedBy", async () => {
+  it("opens Embedded Checkout with the paying admin's email", async () => {
     await gateway.checkout({
       organizationId: 'organization_1',
       plan: 'pro',
@@ -138,9 +218,7 @@ describe('the real gateway', () => {
       mode: 'subscription',
       line_items: [{ price: 'price_new', quantity: 1 }],
       client_reference_id: 'organization_1',
-      subscription_data: {
-        metadata: { organizationId: 'organization_1', requestedBy: 'ana@acme.com' },
-      },
+      subscription_data: { metadata: { organizationId: 'organization_1' } },
       customer_email: 'ana@acme.com',
       tax_id_collection: { enabled: true },
     })
@@ -161,22 +239,23 @@ describe('the real gateway', () => {
     })
   })
 
-  it('changes now with requestedBy, prorating and refusing an incomplete payment', async () => {
-    await gateway.changeNow('sub_1', { plan: 'team', cycle: 'yearly' }, 'ana@acme.com')
+  it('changes now, prorating and refusing an incomplete payment, and answers the changed subscription', async () => {
+    const changed = await gateway.changeNow(state(), { plan: 'team', cycle: 'yearly' })
     expect(params('subscriptionSchedules.release')).toEqual(['sub_sched_old'])
     expect(params('subscriptions.update')[0]).toEqual({
       items: [{ id: 'si_1', price: 'price_new' }],
       proration_behavior: 'always_invoice',
       payment_behavior: 'error_if_incomplete',
       cancel_at_period_end: false,
-      metadata: { requestedBy: 'ana@acme.com' },
     })
+    expect(changed).toMatchObject({ id: 'sub_1', lookupKey: 'pro_monthly', itemId: 'si_1' })
   })
 
-  it('schedules a change at renewal keeping requestedBy and the discounts in both phases', async () => {
-    await gateway.changeAtRenewal('sub_1', { plan: 'pro', cycle: 'yearly' }, 'ana@acme.com')
-    const metadata = { organizationId: 'organization_1', requestedBy: 'ana@acme.com' }
-    expect(params('subscriptions.update')[0]).toEqual({ cancel_at_period_end: false, metadata })
+  it('schedules a change at renewal keeping the organization and the discounts in both phases', async () => {
+    const kept = await gateway.changeAtRenewal(state(), { plan: 'pro', cycle: 'yearly' })
+    const metadata = { organizationId: 'organization_1' }
+    expect(params('subscriptions.update')[0]).toEqual({ cancel_at_period_end: false })
+    expect(kept).toMatchObject({ id: 'sub_1', scheduleId: 'sub_sched_new' })
     expect(params('subscriptionSchedules.update')[0]).toEqual({
       end_behavior: 'release',
       phases: [
@@ -211,6 +290,7 @@ describe('the real gateway', () => {
         {
           start_date: 1_000,
           end_date: 2_000,
+          items: [{ price: 'price_pro_monthly', quantity: 1 }],
           discounts: [
             { discount: null, coupon: 'co_1', promotion_code: null },
             { discount: null, coupon: null, promotion_code: { id: 'promo_1' } },
@@ -219,7 +299,7 @@ describe('the real gateway', () => {
         },
       ],
     })
-    await gateway.changeAtRenewal('sub_1', { plan: 'pro', cycle: 'monthly' }, 'ana@acme.com')
+    await gateway.changeAtRenewal(state(), { plan: 'pro', cycle: 'monthly' })
     const { phases } = params('subscriptionSchedules.update')[0] as {
       phases: { discounts: unknown }[]
     }
@@ -227,29 +307,36 @@ describe('the real gateway', () => {
     expect(phases.map((phase) => phase.discounts)).toEqual([expected, expected])
   })
 
-  it('reads requestedBy, the receipt marker, the anchor and the cancellation reason', async () => {
-    stripe.held.metadata = {
-      organizationId: 'organization_1',
-      requestedBy: 'ana@acme.com',
-      receiptFor: 'pro_monthly',
-    }
+  it('reads the plan, the period, the item, the schedule, the anchor and the cancellation reason', async () => {
     stripe.held.cancellation_details = { reason: 'payment_failed' }
-    await expect(gateway.subscription('sub_1')).resolves.toEqual({
-      id: 'sub_1',
-      customerId: 'cus_1',
-      organizationId: 'organization_1',
-      requestedBy: 'ana@acme.com',
-      receiptFor: 'pro_monthly',
-      cancellationReason: 'payment_failed',
-      status: 'active',
-      lookupKey: 'pro_monthly',
-      anchor: new Date(1_760_054_400 * 1000),
-    })
+    await expect(gateway.subscription('sub_1')).resolves.toEqual(
+      state({ cancellationReason: 'payment_failed' }),
+    )
   })
 
-  it('marks a receipt in the metadata', async () => {
-    await gateway.markReceipted('sub_1', 'pro_yearly')
-    expect(params('subscriptions.update')).toEqual([{ metadata: { receiptFor: 'pro_yearly' } }])
+  it('reads the email and card of a customer, and nothing of a deleted one', async () => {
+    await expect(gateway.customer('cus_1')).resolves.toEqual({
+      email: 'finance@acme.com',
+      card: { brand: 'visa', last4: '4242' },
+    })
+    await expect(gateway.customer('cus_gone')).resolves.toEqual({ email: null, card: null })
+  })
+
+  it('looks each price up once', async () => {
+    await gateway.price({ plan: 'pro', cycle: 'yearly' })
+    await gateway.price({ plan: 'pro', cycle: 'yearly' })
+    await gateway.price({ plan: 'team', cycle: 'yearly' })
+    expect(stripe.listPrices).toHaveBeenCalledTimes(2)
+  })
+
+  it('cancels at the period end, releasing a schedule first, and resumes', async () => {
+    await gateway.cancelAtPeriodEnd(state(), true)
+    await gateway.cancelAtPeriodEnd(state(), false)
+    expect(params('subscriptionSchedules.release')).toEqual(['sub_sched_old'])
+    expect(params('subscriptions.update')).toEqual([
+      { cancel_at_period_end: true },
+      { cancel_at_period_end: false },
+    ])
   })
 
   it('opens a hosted top-up Checkout under the Credits product', async () => {
@@ -270,7 +357,7 @@ describe('the real gateway', () => {
           quantity: 1,
         },
       ],
-      metadata: { kind: 'top_up', organizationId: 'organization_1', requestedBy: 'ana@acme.com' },
+      metadata: { kind: 'top_up', organizationId: 'organization_1' },
       payment_intent_data: {
         metadata: { kind: 'top_up', organizationId: 'organization_1', cents: '2000' },
       },
@@ -298,25 +385,18 @@ describe('the real gateway', () => {
 })
 
 describe('planKeyOf', () => {
-  it('reads the plan from the metadata, which never moves', () => {
-    expect(
-      planKeyOf({ lookup_key: 'arrakit_team_yearly', metadata: { plan: 'pro', cycle: 'monthly' } }),
-    ).toBe('pro_monthly')
-  })
-
-  it('falls back to the lookup key without its prefix', () => {
-    expect(planKeyOf({ lookup_key: 'arrakit_pro_yearly', metadata: {} })).toBe('pro_yearly')
-    expect(planKeyOf({ lookup_key: null, metadata: {} })).toBeNull()
+  it('reads the lookup key without its prefix', () => {
+    expect(planKeyOf({ lookup_key: 'arrakit_pro_yearly' })).toBe('pro_yearly')
+    expect(planKeyOf({ lookup_key: null })).toBeNull()
   })
 })
 
 describe('mapStripeEvent', () => {
-  const price = (key: string) => ({ lookup_key: `arrakit_${key}`, metadata: {} })
-  const subscription = (key: string) => ({
+  const subscription = {
     id: 'sub_1',
     metadata: { organizationId: 'organization_1' },
-    items: { data: [{ price: price(key) }] },
-  })
+    items: { data: [{ price: { lookup_key: 'arrakit_pro_yearly' } }] },
+  }
   const invoice = (fields: object) => ({
     id: 'in_1',
     amount_due: 19_200,
@@ -387,26 +467,12 @@ describe('mapStripeEvent', () => {
     expect(mapStripeEvent(event(type, { id: 're_2', payment_intent: null, amount: 1 }))).toBeNull()
   })
 
-  it('names the previous price only when the update moved it', () => {
-    expect(
-      mapStripeEvent(
-        event('customer.subscription.updated', subscription('team_yearly'), {
-          previous_attributes: { items: { data: [{ price: price('pro_yearly') }] } },
-        }),
-      ),
-    ).toEqual({
+  it('reads a subscription change as a subscription event', () => {
+    expect(mapStripeEvent(event('customer.subscription.updated', subscription))).toEqual({
       kind: 'subscription',
       subscriptionId: 'sub_1',
       organizationId: 'organization_1',
-      previousLookupKey: 'pro_yearly',
     })
-    expect(
-      mapStripeEvent(
-        event('customer.subscription.updated', subscription('pro_yearly'), {
-          previous_attributes: { items: { data: [{ price: price('pro_yearly') }] } },
-        }),
-      ),
-    ).toMatchObject({ previousLookupKey: null })
   })
 
   it('reads the invoice events of a subscription', () => {
@@ -435,18 +501,32 @@ describe('mapStripeEvent', () => {
     ).toEqual({
       kind: 'invoice-paid',
       subscriptionId: 'sub_1',
-      invoiceId: 'in_1',
       amount: { amount: 19_200, currency: 'usd' },
-      pdfUrl: 'https://pay.stripe.test/in_1.pdf',
+      invoiceUrl: 'https://pay.stripe.test/in_1.pdf',
     })
   })
 
-  it.each(['subscription_create', 'manual', 'subscription_threshold', 'upcoming'])(
-    'ignores a paid invoice for %s',
+  it.each(['subscription_create', 'subscription_cycle', 'subscription_update'])(
+    'reads a paid invoice for %s, linking the hosted page without a PDF',
     (billing_reason) => {
-      expect(mapStripeEvent(event('invoice.paid', invoice({ billing_reason })))).toBeNull()
+      expect(
+        mapStripeEvent(
+          event(
+            'invoice.paid',
+            invoice({
+              billing_reason,
+              invoice_pdf: null,
+              hosted_invoice_url: 'https://invoice.stripe.test/i/1',
+            }),
+          ),
+        ),
+      ).toMatchObject({ kind: 'invoice-paid', invoiceUrl: 'https://invoice.stripe.test/i/1' })
     },
   )
+
+  it.each(['manual', 'upcoming', null])('ignores a paid invoice for %s', (billing_reason) => {
+    expect(mapStripeEvent(event('invoice.paid', invoice({ billing_reason })))).toBeNull()
+  })
 
   it('ignores invoices without a subscription and unknown events', () => {
     expect(mapStripeEvent(event('invoice.upcoming', invoice({ parent: null })))).toBeNull()

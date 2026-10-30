@@ -6,7 +6,5 @@ export const authProvidersSchema = z.object({ google: z.boolean(), microsoft: z.
 export type AuthProviders = z.infer<typeof authProvidersSchema>
 
 export const authProvidersContract = {
-  get: base
-    .route({ method: 'GET', path: '/auth-providers', tags: ['auth'] })
-    .output(authProvidersSchema),
+  get: base.output(authProvidersSchema),
 }

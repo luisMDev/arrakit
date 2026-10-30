@@ -1,33 +1,18 @@
 export interface StoredFile {
   /** Relative to the organization prefix. */
   path: string
-  size: number
-  /** ISO timestamp. */
-  modifiedAt: string
 }
 
 export interface OrganizationFiles {
-  putUrl(name: string, options?: { contentType?: string; expiresIn?: number }): Promise<string>
-  put(name: string, bytes: Uint8Array, contentType: string): Promise<void>
-  /** FileNotFoundError for a missing key. */
-  get(name: string): Promise<Uint8Array>
-  copy(from: string, to: string): Promise<void>
-  getUrl(name: string, options?: { expiresIn?: number }): Promise<string>
-  /** Missing names are fine. */
-  remove(names: string[]): Promise<void>
+  /** `''` is the whole organization; otherwise the folder ends with exactly one `/`. */
   removePrefix(folder: string): Promise<void>
   list(folder: string): Promise<StoredFile[]>
 }
 
 export interface Storage {
-  readonly kind: 's3' | 'local' | 'memory'
+  readonly kind: 's3' | 'memory'
   forOrganization(organizationId: string): OrganizationFiles
-  /** HeadBucket (S3) or a directory access check; throws when storage is down. */
+  /** HeadBucket on S3; throws when storage is down. */
   probe(signal?: AbortSignal): Promise<void>
   close(): Promise<void>
-  /**
-   * Local and in-memory storages only, when built with URL signing: answers the presigned URLs
-   * they hand out (served by the API at SIGNED_FILES_PATH). S3 serves its own.
-   */
-  serveSigned?(request: Request): Promise<Response>
 }

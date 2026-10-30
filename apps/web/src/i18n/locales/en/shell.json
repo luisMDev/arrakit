@@ -35,9 +35,6 @@
     "goHome": "Go to the app →"
   },
   "unavailable": {
-    "forbiddenTitle": "Your account can't open Arrakit right now.",
-    "forbiddenBody": "Ask your organization's admin to check your access.",
-    "home": "Home",
     "unreachableTitle": "Couldn't reach Arrakit.",
     "unreachableBody": "Nothing is lost. Try again in a moment.",
     "tryAgain": "Try again"

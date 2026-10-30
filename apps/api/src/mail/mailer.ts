@@ -27,7 +27,7 @@ export function mailpitAddress(address: string): MailpitAddress {
 }
 
 export function createMailer(env: MailerEnv, deps: MailerDeps = {}): Mailer {
-  const from = (mail: Mail) => mail.from ?? (env.MAIL_FROM || DEFAULT_FROM)
+  const from = env.MAIL_FROM || DEFAULT_FROM
   const doFetch = deps.fetch ?? fetch
 
   if (env.RESEND_API_KEY) {
@@ -40,10 +40,8 @@ export function createMailer(env: MailerEnv, deps: MailerDeps = {}): Mailer {
             'content-type': 'application/json',
           },
           body: JSON.stringify({
-            from: from(mail),
-            ...(mail.replyTo ? { reply_to: [mail.replyTo] } : {}),
+            from,
             to: [mail.to].flat(),
-            ...(mail.cc?.length ? { cc: mail.cc } : {}),
             subject: mail.subject,
             html: mail.html,
             text: mail.text,
@@ -68,10 +66,8 @@ export function createMailer(env: MailerEnv, deps: MailerDeps = {}): Mailer {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            From: mailpitAddress(from(mail)),
+            From: mailpitAddress(from),
             To: [mail.to].flat().map(mailpitAddress),
-            ...(mail.cc?.length ? { Cc: mail.cc.map(mailpitAddress) } : {}),
-            ...(mail.replyTo ? { ReplyTo: [mailpitAddress(mail.replyTo)] } : {}),
             Subject: mail.subject,
             HTML: mail.html,
             Text: mail.text,
@@ -89,10 +85,8 @@ export function createMailer(env: MailerEnv, deps: MailerDeps = {}): Mailer {
   return {
     async send(mail) {
       const to = [mail.to].flat()
-      const cc = mail.cc?.length ? `, Cc ${mail.cc.join(', ')}` : ''
-      const replyTo = mail.replyTo ? `, Reply-To ${mail.replyTo}` : ''
       log(
-        `Neither RESEND_API_KEY nor MAILPIT_URL is set, so nothing is sent. From ${from(mail)} to ${to.join(', ')}${cc}${replyTo}: ${mail.subject}\n${mail.text}`,
+        `Neither RESEND_API_KEY nor MAILPIT_URL is set, so nothing is sent. From ${from} to ${to.join(', ')}: ${mail.subject}\n${mail.text}`,
       )
     },
   }

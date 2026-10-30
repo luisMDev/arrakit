@@ -20,9 +20,14 @@ import {
   oauthClients,
   oauthConsents,
   organizations,
-  users,
 } from '../schema/index'
-import { type TestData, openTestData } from '../testing'
+import {
+  type TestData,
+  insertMember,
+  insertOrganization,
+  insertUser,
+  openTestData,
+} from '../testing'
 
 describe('organization members', () => {
   let data: TestData
@@ -32,33 +37,26 @@ describe('organization members', () => {
   })
   afterAll(() => data.close())
 
-  const person = async (email: string, name = ''): Promise<string> => {
-    const id = randomUUID()
-    await data.db.insert(users).values({ id, name, email })
-    return id
-  }
-
   const organizationOf = async (tag: string, plan: Plan = 'team') => {
     const ownerEmail = `owner@${tag}.vc`
-    const owner = await person(ownerEmail, `Owner ${tag}`)
-    const [organization] = await data.db
-      .insert(organizations)
-      .values({ name: `Organization ${tag}`, slug: tag, plan })
-      .returning()
-    await data.db
-      .insert(members)
-      .values({ organizationId: organization!.id, userId: owner, role: 'owner' })
+    const owner = await insertUser(data, ownerEmail, `Owner ${tag}`)
+    const organization = await insertOrganization(data, {
+      slug: tag,
+      name: `Organization ${tag}`,
+      plan,
+    })
+    await insertMember(data, organization.id, owner, 'owner')
     return {
-      organization: organization!,
+      organization,
       owner,
       ownerEmail,
-      members: data.forOrganization(organization!.id).members,
+      members: data.forOrganization(organization.id).members,
     }
   }
   type Fixture = Awaited<ReturnType<typeof organizationOf>>
 
   const join = async (f: Fixture, email: string, role: 'admin' | 'member' = 'member') => {
-    const userId = await person(email, email.split('@')[0])
+    const userId = await insertUser(data, email, email.split('@')[0])
     const invitation = await f.members.invite({ email, role, inviterId: f.owner })
     await data.acceptInvitation({ invitationId: invitation.id, userId, email })
     return userId
@@ -102,7 +100,7 @@ describe('organization members', () => {
     expect(invitation.expiresAt.getTime() - invitation.sentAt.getTime()).toBe(7 * 86_400_000)
     expect(await f.members.invitations()).toEqual([invitation])
 
-    const jon = await person('jon@alder.vc', 'Jon')
+    const jon = await insertUser(data, 'jon@alder.vc', 'Jon')
     const membership = await data.acceptInvitation({
       invitationId: invitation.id,
       userId: jon,
@@ -236,7 +234,7 @@ describe('organization members', () => {
     const accept = async (name: string, invitationId: string) =>
       data.acceptInvitation({
         invitationId,
-        userId: await person(`${name}@seatdown.vc`),
+        userId: await insertUser(data, `${name}@seatdown.vc`),
         email: `${name}@seatdown.vc`,
       })
     await accept('ana', sent[0]!.id)
@@ -288,7 +286,7 @@ describe('organization members', () => {
     expect(await f.members.cancel(invitation.id)).toBe(true)
     expect(await f.members.cancel(invitation.id)).toBe(false)
     expect(await f.members.invitations()).toEqual([])
-    const lia = await person('lia@yew.vc')
+    const lia = await insertUser(data, 'lia@yew.vc')
     await expect(
       data.acceptInvitation({ invitationId: invitation.id, userId: lia, email: 'lia@yew.vc' }),
     ).rejects.toBeInstanceOf(InvitationNotFoundError)
@@ -314,8 +312,8 @@ describe('organization members', () => {
       .insert(organizations)
       .values({ name: 'Legacy Larch', slug: 'legacy-larch', plan: 'team' })
       .returning()
-    const a = await person('a@legacy.vc')
-    const b = await person('b@legacy.vc')
+    const a = await insertUser(data, 'a@legacy.vc')
+    const b = await insertUser(data, 'b@legacy.vc')
     for (const userId of [a, b]) {
       await data.db
         .insert(members)
@@ -354,7 +352,7 @@ describe('organization members', () => {
       'njon@organization.com',
     ])('refuses the invitation to %j', async (email) => {
       expect(await data.invitationFor(invitationId, email)).toBeNull()
-      const userId = await person(email)
+      const userId = await insertUser(data, email)
       await expect(data.acceptInvitation({ invitationId, userId, email })).rejects.toBeInstanceOf(
         InvitationNotFoundError,
       )
@@ -384,7 +382,7 @@ describe('organization members', () => {
       const { id } = await f.members.invite({ email, role: 'member', inviterId: f.owner })
       if (state === 'expired') await expire(id)
       else await data.db.update(invitations).set({ status: state }).where(eq(invitations.id, id))
-      const userId = await person(email)
+      const userId = await insertUser(data, email)
       await expect(
         data.acceptInvitation({ invitationId: id, userId, email }),
       ).rejects.toBeInstanceOf(InvitationNotFoundError)
@@ -403,7 +401,7 @@ describe('organization members', () => {
     it('accepts the address written in capitals and spaces, once, as the role invited', async () => {
       const email = 'zoe@organization.com'
       const { id } = await f.members.invite({ email, role: 'admin', inviterId: f.owner })
-      const zoe = await person(email)
+      const zoe = await insertUser(data, email)
       await expect(
         data.acceptInvitation({ invitationId: id, userId: zoe, email: ' ZOE@Organization.com ' }),
       ).resolves.toMatchObject({ role: 'admin' })

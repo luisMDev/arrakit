@@ -1,6 +1,6 @@
 import type { Me } from '@arrakit/contract'
 import { fallbackORPCErrorMessage } from '@orpc/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import {
   RouterProvider,
   createMemoryHistory,
@@ -12,13 +12,28 @@ import { render } from '@testing-library/react'
 import { HttpResponse, http } from 'msw'
 import { setupServer } from 'msw/node'
 import type { ReactNode } from 'react'
-import { vi } from 'vitest'
+import { toast } from 'sonner'
+import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 
 import { Toaster } from '#/components/ui/sonner'
 import '#/i18n'
+import { createQueryClient } from '#/integrations/tanstack-query/root-provider'
 import { orpc } from '#/lib/orpc'
 
 export const api = setupServer()
+
+/** Starts the msw server for the file; after each test: no handlers, no spies, no toasts. */
+export function setupTestApi({
+  onUnhandledFrame = 'bypass',
+}: { onUnhandledFrame?: 'bypass' | 'error' } = {}) {
+  beforeAll(() => api.listen({ onUnhandledFrame }))
+  afterEach(() => {
+    api.resetHandlers()
+    vi.restoreAllMocks()
+    toast.dismiss()
+  })
+  afterAll(() => api.close())
+}
 
 export const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
@@ -87,7 +102,7 @@ export function meAs(overrides: Partial<Me> = {}): Me {
 }
 
 export const testQueryClient = () =>
-  new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  createQueryClient({ queries: { retry: false }, mutations: { retry: false } })
 
 export function withQueries(client = testQueryClient()) {
   return function QueriesWrapper({ children }: { children: ReactNode }) {
@@ -98,7 +113,7 @@ export function withQueries(client = testQueryClient()) {
 const STUBS: [string, string][] = [
   ['/app', 'Home'],
   ['/app/plans', 'Plans'],
-  ['/app/billing', 'Billing'],
+  ['/app/settings', 'Settings'],
   ['/app/checkout', 'Checkout'],
   ['/pricing', 'Pricing'],
   ['/profile', 'Profile'],

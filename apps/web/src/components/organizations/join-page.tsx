@@ -1,7 +1,8 @@
 import { isWorkEmail } from '@arrakit/address'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, Navigate } from '@tanstack/react-router'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -13,14 +14,14 @@ import { Input } from '#/components/ui/input'
 import { Spinner } from '#/components/ui/spinner'
 import { apiMessage, reportError, statusOf } from '#/lib/api-errors'
 import { registerClearing, useClearingForm } from '#/lib/form'
-import { client } from '#/lib/orpc'
+import { client, orpc } from '#/lib/orpc'
 
 const joinForm = (workEmailError: string) =>
   z.object({ email: z.string().trim().refine(isWorkEmail, workEmailError) })
 
-type JoinState = 'joining' | 'signed-out' | 'sent' | 'taken' | 'closed' | 'failed'
+type Refusal = 'signed-out' | 'taken' | 'closed' | 'failed'
 
-function joinStateFor(err: unknown): JoinState {
+function refusalOf(err: unknown): Refusal {
   const status = statusOf(err)
   if (status === 401) return 'signed-out'
   if (status === 409) return 'taken'
@@ -38,27 +39,24 @@ function Heading({ start, end }: { start: string; end: string }) {
 
 export function JoinPage({ invitationId }: { invitationId: string }) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
-  const [state, setState] = useState<JoinState>('joining')
+  const queryClient = useQueryClient()
+  const [sent, setSent] = useState(false)
   const form = useClearingForm({
     resolver: zodResolver(joinForm(t('join.workEmail'))),
     defaultValues: { email: '' },
   })
   const emailError = form.formState.errors.email?.message
-  const started = useRef(false)
-
-  useEffect(() => {
-    if (started.current) return
-    started.current = true
-    client.invitations.accept({ id: invitationId }).then(
-      () => void navigate({ to: '/app', replace: true }),
-      (err: unknown) => {
-        const next = joinStateFor(err)
-        if (next === 'failed') reportError('[join] joining failed', err)
-        setState(next)
-      },
-    )
-  }, [invitationId, navigate])
+  const joining = useQuery({
+    queryKey: ['invitations', 'accept', invitationId],
+    queryFn: async () => {
+      await client.invitations.accept({ id: invitationId })
+      await queryClient.invalidateQueries({ queryKey: orpc.me.get.queryOptions().queryKey })
+      return true
+    },
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+  })
+  const state = sent ? 'sent' : joining.error ? refusalOf(joining.error) : 'joining'
 
   function sendFailure(err: unknown): string {
     if (statusOf(err) === 429) return t('join.tooManyLinks')
@@ -70,7 +68,7 @@ export function JoinPage({ invitationId }: { invitationId: string }) {
 
   async function sendLink({ email }: z.output<ReturnType<typeof joinForm>>) {
     try {
-      if (await sendMagicLink(email, `/join/${encodeURIComponent(invitationId)}`)) setState('sent')
+      if (await sendMagicLink(email, `/join/${encodeURIComponent(invitationId)}`)) setSent(true)
       else form.setError('email', { type: 'send', message: t('join.workEmail') })
     } catch (err) {
       form.setError('email', { type: 'send', message: sendFailure(err) })
@@ -82,6 +80,8 @@ export function JoinPage({ invitationId }: { invitationId: string }) {
       <Link to="/signin">{t('join.signIn')}</Link>
     </Button>
   )
+
+  if (joining.isSuccess) return <Navigate to="/app" replace />
 
   return (
     <main className="flex grow items-center justify-center p-6">

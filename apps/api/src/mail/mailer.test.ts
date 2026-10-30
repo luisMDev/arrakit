@@ -35,23 +35,17 @@ describe('createMailer with RESEND_API_KEY', () => {
     })
   })
 
-  it('sends MAIL_FROM, Reply-To and Cc only when given', async () => {
+  it('sends from MAIL_FROM when given', async () => {
     const fetch = resend()
     const mailer = createMailer(
       { RESEND_API_KEY: 're_test', MAIL_FROM: 'Team <team@acme.com>' },
       { fetch },
     )
-    await mailer.send({ ...mail, to: ['a@acme.com', 'b@acme.com'], cc: [], replyTo: '' })
-    await mailer.send({ ...mail, cc: ['c@acme.com'], replyTo: 'billing@acme.com' })
+    await mailer.send({ ...mail, to: ['a@acme.com', 'b@acme.com'] })
 
     const first = JSON.parse(String(fetch.mock.calls[0]![1]?.body))
     expect(first.from).toBe('Team <team@acme.com>')
     expect(first.to).toEqual(['a@acme.com', 'b@acme.com'])
-    expect(first).not.toHaveProperty('cc')
-    expect(first).not.toHaveProperty('reply_to')
-    const second = JSON.parse(String(fetch.mock.calls[1]![1]?.body))
-    expect(second.cc).toEqual(['c@acme.com'])
-    expect(second.reply_to).toEqual(['billing@acme.com'])
   })
 
   it('throws when Resend refuses, without the subject or the recipients', async () => {
@@ -73,11 +67,11 @@ describe('createMailer with MAILPIT_URL', () => {
   const mailpit = (status = 200, body = '{"ID":"1"}') =>
     vi.fn<typeof fetch>(async () => new Response(body, { status }))
 
-  it('posts the email to Mailpit with the sender, Cc and Reply-To', async () => {
+  it('posts the email to Mailpit with the sender', async () => {
     const fetch = mailpit()
     const mailer = createMailer({ MAILPIT_URL: 'http://localhost:5025' }, { fetch })
 
-    await mailer.send({ ...mail, cc: ['c@acme.com'], replyTo: 'r@acme.com' })
+    await mailer.send(mail)
 
     const [url, init] = fetch.mock.calls[0]!
     expect(url).toBe('http://localhost:5025/api/v1/send')
@@ -85,8 +79,6 @@ describe('createMailer with MAILPIT_URL', () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       From: { Email: 'hello@example.com', Name: 'Arrakit' },
       To: [{ Email: 'ana@acme.com' }],
-      Cc: [{ Email: 'c@acme.com' }],
-      ReplyTo: [{ Email: 'r@acme.com' }],
       Subject: mail.subject,
       HTML: mail.html,
       Text: mail.text,
@@ -146,11 +138,11 @@ describe('createMailer without RESEND_API_KEY or MAILPIT_URL', () => {
     const log = vi.fn()
     const mailer = createMailer({ RESEND_API_KEY: '' }, { log })
 
-    await mailer.send({ ...mail, cc: ['c@acme.com'], replyTo: 'r@acme.com' })
+    await mailer.send(mail)
 
     expect(log).toHaveBeenCalledTimes(1)
     expect(log.mock.calls[0]![0]).toBe(
-      `Neither RESEND_API_KEY nor MAILPIT_URL is set, so nothing is sent. From Arrakit <hello@example.com> to ana@acme.com, Cc c@acme.com, Reply-To r@acme.com: ${mail.subject}\n${mail.text}`,
+      `Neither RESEND_API_KEY nor MAILPIT_URL is set, so nothing is sent. From Arrakit <hello@example.com> to ana@acme.com: ${mail.subject}\n${mail.text}`,
     )
   })
 

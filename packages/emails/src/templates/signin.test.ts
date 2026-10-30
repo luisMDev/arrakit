@@ -9,7 +9,6 @@ describe('signinEmail (MailSignin)', () => {
   it('sends a one-time link that expires', () => {
     const email = signinEmail({ minutes: 15, links: { signIn: `${app}/auth/link?t=abc&x=1` } })
 
-    expect(email.replyTo).toBeNull()
     expect(email.subject).toBe(`Your link to sign in to ${APP_NAME}`)
     expect(email.text).toContain(`Sign in to ${APP_NAME}.`)
     expect(email.text).toContain('The link works once, for 15 minutes.')

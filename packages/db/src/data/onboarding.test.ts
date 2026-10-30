@@ -96,9 +96,9 @@ describe('createOrganization (PGlite)', () => {
     expect(await data.organizationOf(userId)).toBeNull()
   })
 
-  it('creates a bare organization without an admin, found by slug', async () => {
+  it('creates a bare organization without an admin', async () => {
     const org = await data.createOrganization('Juniper')
-    expect(await data.organizationBySlug('juniper')).toBe(org.id)
+    expect(org.slug).toBe('juniper')
     const rows = await data.db.select().from(members).where(eq(members.organizationId, org.id))
     expect(rows).toHaveLength(0)
   })

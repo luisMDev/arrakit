@@ -47,26 +47,14 @@ export type ChangePreview = z.infer<typeof changePreviewSchema>
 
 export const billingContract = {
   checkout: base
-    .route({ method: 'POST', path: '/billing/checkout', tags: ['billing'] })
     .input(paidChoiceSchema)
     .output(z.object({ clientSecret: z.string(), publishableKey: z.string() })),
-  get: base.route({ method: 'GET', path: '/billing', tags: ['billing'] }).output(billingSchema),
-  previewChange: base
-    .route({ method: 'POST', path: '/billing/change/preview', tags: ['billing'] })
-    .input(paidChoiceSchema)
-    .output(changePreviewSchema),
-  change: base
-    .route({ method: 'POST', path: '/billing/change', tags: ['billing'] })
-    .input(paidChoiceSchema)
-    .output(billingSchema),
-  cancel: base
-    .route({ method: 'POST', path: '/billing/cancel', tags: ['billing'] })
-    .output(billingSchema),
-  resume: base
-    .route({ method: 'POST', path: '/billing/resume', tags: ['billing'] })
-    .output(billingSchema),
+  get: base.output(billingSchema),
+  previewChange: base.input(paidChoiceSchema).output(changePreviewSchema),
+  change: base.input(paidChoiceSchema).output(billingSchema),
+  cancel: base.output(billingSchema),
+  resume: base.output(billingSchema),
   portal: base
-    .route({ method: 'POST', path: '/billing/portal', tags: ['billing'] })
     .input(z.object({ to: z.enum(['payment', 'details']) }))
     .output(z.object({ url: z.string() })),
 }

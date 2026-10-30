@@ -74,15 +74,14 @@ describe('members and invitations', () => {
     expect(t.sent.length).toBe(sent)
   })
 
-  it('refuses invites from a foreign or missing Origin', async () => {
+  it('refuses invites from a foreign Origin', async () => {
     const owner = await ownerOf(t, 'owner@cedar.vc')
-    for (const origin of [null, 'null', 'https://evil.example']) {
+    for (const origin of ['null', 'https://evil.example']) {
       const headers = new Headers(owner.headers)
-      if (origin === null) headers.delete('origin')
-      else headers.set('origin', origin)
+      headers.set('origin', origin)
       await expect(
         t.client(headers).invitations.invite({ email: 'x@cedar.vc', role: 'member' }),
-      ).rejects.toMatchObject({ status: 403, message: 'Invite from the app.' })
+      ).rejects.toMatchObject({ status: 403, message: 'Use the app.' })
     }
     expect(await t.client(owner.headers).invitations.list()).toEqual([])
   })

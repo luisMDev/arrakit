@@ -9,16 +9,8 @@ function usablePath(path: string): boolean {
   return path.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..')
 }
 
-export function toFileKey(organizationId: string, name: string): string {
-  const key = `${toOrganizationId(organizationId)}/${name}`
-  if (!usablePath(name) || Buffer.byteLength(key, 'utf8') > MAX_KEY_BYTES) {
-    throw new Error(`[data] not a usable file name: ${JSON.stringify(name)}`)
-  }
-  return key
-}
-
 /** `''` is the whole organization; otherwise the folder must end with exactly one `/`. */
-export function toFolderPrefix(organizationId: string, folder: string): string {
+export function folderPrefix(organizationId: string, folder: string): string {
   const prefix = `${toOrganizationId(organizationId)}/`
   if (folder === '') return prefix
   const key = prefix + folder

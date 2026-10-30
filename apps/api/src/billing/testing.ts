@@ -62,6 +62,7 @@ export async function paying(
     organizationId: person.organizationId,
     status: 'active',
     lookupKey,
+    ...(snapshot.subscription && { periodEnd: snapshot.subscription.periodEnd }),
   })
   return { ...person, customerId, subscriptionId }
 }

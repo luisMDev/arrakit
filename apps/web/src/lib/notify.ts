@@ -1,6 +1,6 @@
 import { toast } from 'sonner'
 
-type NotifyLevel = 'success' | 'info' | 'warning' | 'error'
+type NotifyLevel = 'success' | 'warning' | 'error'
 
 interface NotifyOptions {
   description?: string
@@ -17,7 +17,6 @@ function show(level: NotifyLevel, message: string, options: NotifyOptions = {}):
 
 export const notify = {
   success: (message: string, options?: NotifyOptions) => show('success', message, options),
-  info: (message: string, options?: NotifyOptions) => show('info', message, options),
   warning: (message: string, options?: NotifyOptions) => show('warning', message, options),
   error: (message: string, options?: NotifyOptions) => show('error', message, options),
 }

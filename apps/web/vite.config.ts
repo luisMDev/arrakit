@@ -17,9 +17,6 @@ export default defineConfig({
   server: {
     port: 5200,
     strictPort: true,
-    // Playwright sets E2E=1: a client that aborts mid-upload makes Nitro's dev middleware report
-    // "Internal server error: aborted", and Vite's error overlay would then cover the page.
-    hmr: { overlay: process.env.E2E !== '1' },
   },
   preview: { port: 5200, strictPort: true },
   plugins: [

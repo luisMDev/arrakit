@@ -10,11 +10,9 @@ import { organizationsData } from './data/organizations'
 import { health } from './health'
 import { inProcessJobs } from './jobs/in-process'
 import { pgBossJobs } from './jobs/pg-boss'
-import { transactionWithJobs } from './jobs/transaction'
-import type { JobsRuntime, TransactionWithJobs } from './jobs/types'
+import type { JobsRuntime } from './jobs/types'
 import { forOrganization } from './organization/index'
 import { type DataLog, consoleLog } from './log'
-import { localStorage } from './storage/local'
 import { memoryStorage } from './storage/memory'
 import { s3Storage } from './storage/s3'
 import type { Storage } from './storage/types'
@@ -38,9 +36,7 @@ function buildData(ctx: DataContext, close: () => Promise<void>, driver: 'postgr
     ...invitationsData(ctx),
     ...accountData(ctx),
     forOrganization: (id: string) => forOrganization(ctx, id),
-    jobs: ctx.jobs as JobsRuntime,
-    /** The storage fallback's presigned URLs (undefined on S3, which serves its own). */
-    serveSignedFile: ctx.storage.serveSigned?.bind(ctx.storage),
+    jobs: ctx.jobs,
     authDatabase: authDatabase(ctx.db),
     health: () => health(ctx),
     close,
@@ -57,7 +53,6 @@ export type ScopedData = ReturnType<typeof buildData>
 export type Data = ScopedData & {
   db: DataContext['db']
   storage: Storage
-  transactionWithJobs: TransactionWithJobs
 }
 
 export async function openData(config: DataConfig, options: OpenDataOptions = {}): Promise<Data> {
@@ -70,13 +65,7 @@ export async function openData(config: DataConfig, options: OpenDataOptions = {}
     throw err
   }
 
-  const storage =
-    options.storage ??
-    (config.s3
-      ? s3Storage(config.s3)
-      : config.storageDir
-        ? localStorage(config.storageDir, { signing: config.storageSigning })
-        : memoryStorage())
+  const storage = options.storage ?? (config.s3 ? s3Storage(config.s3) : memoryStorage())
 
   let jobs: JobsRuntime
   try {
@@ -104,11 +93,10 @@ export async function openData(config: DataConfig, options: OpenDataOptions = {}
     return closing
   }
 
-  const withJobs = transactionWithJobs(connection.db, jobs)
   const data = buildData(
     { db: connection.db, jobs, storage, now: options.now ?? (() => new Date()), log },
     close,
     connection.driver,
   )
-  return { ...data, db: connection.db, storage, transactionWithJobs: withJobs }
+  return { ...data, db: connection.db, storage }
 }

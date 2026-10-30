@@ -3,7 +3,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 declare const brand: unique symbol
 export type OrganizationId = string & { readonly [brand]: 'OrganizationId' }
 
-export function isUuid(value: unknown): value is string {
+function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID.test(value)
 }
 

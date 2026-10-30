@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { withQueries } from '#/test/rpc'
+import { testQueryClient, withQueries } from '#/test/rpc'
 
 import { useApiMutation } from './use-api-mutation'
 
@@ -21,10 +21,11 @@ describe('useApiMutation', () => {
     const onSuccess = vi.fn()
     const { result } = renderHook(
       () =>
-        useApiMutation(
-          { mutationFn: (n: number) => Promise.resolve(n * 3), onSuccess },
-          { context: '[test] failed', failure: 'Failed' },
-        ),
+        useApiMutation({
+          mutationFn: (n: number) => Promise.resolve(n * 3),
+          onSuccess,
+          meta: { failure: 'Failed' },
+        }),
       { wrapper: withQueries() },
     )
     let value: number | undefined
@@ -36,15 +37,17 @@ describe('useApiMutation', () => {
     expect(toast.error).not.toHaveBeenCalled()
   })
 
-  it("toasts the API's own message, then runs the caller's onError", async () => {
+  it("toasts the API's own message and runs the caller's onError", async () => {
     const err = new ORPCError('BAD_REQUEST', { message: 'Pick another name.' })
     const onError = vi.fn()
     const { result } = renderHook(
       () =>
-        useApiMutation(
-          { mutationFn: () => Promise.reject(err), onError },
-          { context: '[test] failed', failure: 'Failed' },
-        ),
+        useApiMutation({
+          mutationKey: ['test'],
+          mutationFn: () => Promise.reject(err),
+          onError,
+          meta: { failure: 'Failed' },
+        }),
       { wrapper: withQueries() },
     )
     let value: unknown = 'unset'
@@ -64,10 +67,10 @@ describe('useApiMutation', () => {
     const failures = [new ORPCError('INTERNAL_SERVER_ERROR'), new TypeError('offline')]
     const { result } = renderHook(
       () =>
-        useApiMutation(
-          { mutationFn: (_email: string) => Promise.reject(failures.shift()) },
-          { context: '[test] failed', failure: (email) => `${email} not invited` },
-        ),
+        useApiMutation({
+          mutationFn: (_email: string) => Promise.reject(failures.shift()),
+          meta: { failure: (email: string) => `${email} not invited` },
+        }),
       { wrapper: withQueries() },
     )
     await act(async () => {
@@ -80,11 +83,7 @@ describe('useApiMutation', () => {
   it("toasts the API's own message for a conflict too", async () => {
     const err = new ORPCError('CONFLICT', { status: 409, message: 'Already a member.' })
     const { result } = renderHook(
-      () =>
-        useApiMutation(
-          { mutationFn: () => Promise.reject(err) },
-          { context: '[test] failed', failure: 'Failed' },
-        ),
+      () => useApiMutation({ mutationFn: () => Promise.reject(err), meta: { failure: 'Failed' } }),
       { wrapper: withQueries() },
     )
     await act(async () => {
@@ -96,10 +95,7 @@ describe('useApiMutation', () => {
   it('sends one request for a double run', async () => {
     const pending: (() => void)[] = []
     const mutationFn = vi.fn(() => new Promise<void>((resolve) => pending.push(resolve)))
-    const { result } = renderHook(
-      () => useApiMutation({ mutationFn }, { context: '[test] failed', failure: 'Failed' }),
-      { wrapper: withQueries() },
-    )
+    const { result } = renderHook(() => useApiMutation({ mutationFn }), { wrapper: withQueries() })
     let first: Promise<void | undefined> = Promise.resolve()
     let second: Promise<void | undefined> = Promise.resolve()
     act(() => {
@@ -124,5 +120,29 @@ describe('useApiMutation', () => {
       await again
     })
     expect(mutationFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('is busy while running and once it succeeded', async () => {
+    const { result } = renderHook(() => useApiMutation({ mutationFn: () => Promise.resolve() }), {
+      wrapper: withQueries(),
+    })
+    expect(result.current.busy).toBe(false)
+    await act(async () => {
+      await result.current.run()
+    })
+    await waitFor(() => expect(result.current.busy).toBe(true))
+  })
+
+  it('reports a failed query and toasts its meta.failure, but not a 401', async () => {
+    const client = testQueryClient()
+    const fail = (status: number) => () => Promise.reject(new ORPCError('X', { status }))
+    await expect(
+      client.fetchQuery({ queryKey: ['test'], queryFn: fail(503), meta: { failure: 'No load' } }),
+    ).rejects.toThrow()
+    await expect(
+      client.fetchQuery({ queryKey: ['me'], queryFn: fail(401), meta: { failure: 'Gone' } }),
+    ).rejects.toThrow()
+    expect(toasts()).toEqual(['No load'])
+    expect(console.error).toHaveBeenCalledTimes(1)
   })
 })

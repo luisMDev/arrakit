@@ -25,7 +25,6 @@
       "title": "General",
       "organizationName": "Nombre de la organización",
       "notSaved": "No se han podido guardar los ajustes de la organización. Inténtalo de nuevo.",
-      "notLoaded": "No se han podido cargar los ajustes de tu organización. Recarga la página.",
       "slug": "Slug: {{slug}}"
     },
     "securitySettings": {

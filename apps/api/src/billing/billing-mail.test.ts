@@ -1,17 +1,15 @@
-import { describe, expect, it } from 'vitest'
-import { failedEmail, receiptEmail } from '@arrakit/emails'
+import { receiptEmail } from '@arrakit/emails'
+import { describe, expect, it, vi } from 'vitest'
+
 import {
   adminsOf,
+  billingLink,
   chargeOf,
-  cycleReceiptDue,
-  downgradeDue,
-  downgradedMails,
-  failedMails,
-  receiptMails,
-  recipients,
-  renewMails,
   daysUntil,
-  shouldSendReceipt,
+  downgradeDue,
+  mailsOf,
+  recipients,
+  sendMails,
 } from './billing-mail'
 
 describe('recipients', () => {
@@ -43,101 +41,6 @@ describe('chargeOf', () => {
   })
 })
 
-describe('receiptMails', () => {
-  const input = {
-    plan: 'Pro',
-    cycle: 'yearly' as const,
-    charge: { amount: '$1,430', card: 'Visa ending 4242' },
-    renewsOn: '2027-01-01',
-    invoiceUrl: 'https://pay.stripe.com/invoice/in_1/pdf',
-    webOrigin: 'https://app.example.com',
-  }
-
-  it('sends the receipt to each recipient, with the plan link', () => {
-    const mails = receiptMails({ ...input, to: ['ana@cierzo.vc', 'bill@cierzo.vc'] })
-    const email = receiptEmail({
-      plan: 'Pro',
-      billing: 'yearly',
-      charge: input.charge,
-      renewsOn: input.renewsOn,
-      links: { invoice: input.invoiceUrl, billing: 'https://app.example.com/app/billing' },
-    })
-
-    expect(mails.map((mail) => mail.to)).toEqual(['ana@cierzo.vc', 'bill@cierzo.vc'])
-    for (const mail of mails) {
-      expect(mail).toMatchObject({ subject: email.subject, html: email.html, text: email.text })
-    }
-    expect(email.text).toContain('https://app.example.com/app/billing')
-  })
-})
-
-describe('shouldSendReceipt', () => {
-  it.each([
-    ['free to pro_monthly', null, 'free', 'pro', 'pro_monthly', null, true],
-    [
-      'pro_yearly to team_monthly',
-      'pro_yearly',
-      'team',
-      'team',
-      'team_monthly',
-      'pro_yearly',
-      true,
-    ],
-    ['pro_monthly to pro_yearly', 'pro_monthly', 'pro', 'pro', 'pro_yearly', 'pro_monthly', false],
-    [
-      'pro_monthly to team_yearly',
-      'pro_monthly',
-      'pro',
-      'team',
-      'team_yearly',
-      'pro_monthly',
-      true,
-    ],
-    ['free to pro_yearly', null, 'free', 'pro', 'pro_yearly', null, true],
-    ['team_yearly to pro_yearly', 'team_yearly', 'team', 'pro', 'pro_yearly', 'team_yearly', false],
-    ['a monthly renewal', 'pro_monthly', 'pro', 'pro', 'pro_monthly', null, false],
-    ['a yearly renewal', 'pro_yearly', 'pro', 'pro', 'pro_yearly', null, false],
-    ['pro_yearly to pro_monthly', 'pro_yearly', 'pro', 'pro', 'pro_monthly', 'pro_yearly', false],
-    [
-      'a replay of the move to pro_yearly',
-      'pro_monthly',
-      'pro',
-      'pro',
-      'pro_yearly',
-      'pro_yearly',
-      false,
-    ],
-    ['a replay of the first payment', null, 'free', 'pro', 'pro_yearly', 'pro_yearly', false],
-    [
-      'no previous price on an organization already on pro',
-      null,
-      'pro',
-      'pro',
-      'pro_yearly',
-      null,
-      false,
-    ],
-    ['a subscription with no price', null, 'free', 'pro', null, null, false],
-    ['a cancelled subscription', null, 'pro', 'free', 'pro_yearly', null, false],
-  ] as const)('%s', (_, previousLookupKey, previousPlan, plan, lookupKey, receiptFor, expected) => {
-    expect(
-      shouldSendReceipt({ previousLookupKey, previousPlan, plan, lookupKey, receiptFor }),
-    ).toBe(expected)
-  })
-})
-
-describe('cycleReceiptDue', () => {
-  it.each([
-    ['the yearly invoice of a move from pro_monthly', 'pro_monthly', 'pro_yearly', true],
-    ['a yearly renewal', 'pro_yearly', 'pro_yearly', false],
-    ['a subscription never settled', null, 'pro_yearly', false],
-    ['another plan settled before', 'team_monthly', 'pro_yearly', false],
-    ['a monthly renewal', 'pro_monthly', 'pro_monthly', false],
-  ] as const)('%s', (_, receiptFor, lookupKey, expected) => {
-    expect(cycleReceiptDue({ lookupKey, receiptFor })).toBe(expected)
-  })
-})
-
 describe('daysUntil', () => {
   const now = Date.UTC(2026, 9, 19, 12)
   const at = (ms: number) => Math.floor(ms / 1000)
@@ -163,51 +66,6 @@ describe('adminsOf', () => {
   })
 })
 
-describe('failedMails', () => {
-  it('sends the failed payment to each recipient, with the amount, the card, the days and the billing link', () => {
-    const mails = failedMails({
-      charge: { amount: '$1,430', card: 'Visa ending 4242' },
-      retryInDays: 3,
-      to: ['bill@cierzo.vc', 'ana@cierzo.vc'],
-      webOrigin: 'https://app.example.com',
-    })
-    const email = failedEmail({
-      charge: { amount: '$1,430', card: 'Visa ending 4242' },
-      retryInDays: 3,
-      links: { billing: 'https://app.example.com/app/billing' },
-    })
-
-    expect(mails.map((mail) => mail.to)).toEqual(['bill@cierzo.vc', 'ana@cierzo.vc'])
-    for (const mail of mails) {
-      expect(mail).toMatchObject({ subject: email.subject, html: email.html, text: email.text })
-    }
-    expect(email.text).toContain('$1,430')
-    expect(email.text).toContain('Visa ending 4242')
-    expect(email.text).toContain('3 days')
-    expect(email.text).toContain('https://app.example.com/app/billing')
-  })
-})
-
-describe('renewMails', () => {
-  it('sends the renewal notice with the renewal day, the amount and the plan link', () => {
-    const mails = renewMails({
-      plan: 'Pro',
-      charge: { amount: '$1,430', card: 'Visa ending 4242' },
-      renewsOn: '2027-10-04',
-      daysLeft: 7,
-      to: ['bill@cierzo.vc'],
-      webOrigin: 'https://app.example.com',
-    })
-
-    expect(mails.map((mail) => mail.to)).toEqual(['bill@cierzo.vc'])
-    const text = mails[0]?.text ?? ''
-    expect(text).toContain('$1,430')
-    expect(text).toContain('7 days')
-    expect(text).toContain('Oct 4, 2027')
-    expect(text).toContain('https://app.example.com/app/billing')
-  })
-})
-
 describe('downgradeDue', () => {
   it.each([
     ['Pro dropped to Free after the failed retries', 'pro', 'free', 'payment_failed', true],
@@ -224,20 +82,41 @@ describe('downgradeDue', () => {
   })
 })
 
-describe('downgradedMails', () => {
-  it('tells each recipient the organization is back on Free, with the plan that ended and the billing link', () => {
-    const mails = downgradedMails({
-      organization: { name: 'Cierzo Ventures' },
+describe('mailsOf', () => {
+  it('addresses one copy of the email to each recipient', () => {
+    const email = receiptEmail({
       plan: 'Pro',
-      to: ['bill@cierzo.vc', 'ana@cierzo.vc'],
-      webOrigin: 'https://app.example.com',
+      billing: 'yearly',
+      charge: { amount: '$1,430', card: 'Visa ending 4242' },
+      renewsOn: '2027-01-01',
+      links: {
+        invoice: 'https://pay.stripe.com/invoice/in_1/pdf',
+        billing: billingLink('https://app.example.com'),
+      },
     })
-
-    expect(mails.map((mail) => mail.to)).toEqual(['bill@cierzo.vc', 'ana@cierzo.vc'])
+    const mails = mailsOf(email, ['ana@cierzo.vc', 'bill@cierzo.vc'])
+    expect(mails.map((mail) => mail.to)).toEqual(['ana@cierzo.vc', 'bill@cierzo.vc'])
     for (const mail of mails) {
-      expect(mail.subject).toBe('Cierzo Ventures is back on Free')
-      expect(mail.text).toContain('Pro ended.')
-      expect(mail.text).toContain('https://app.example.com/app/billing')
+      expect(mail).toMatchObject({ subject: email.subject, html: email.html, text: email.text })
     }
+    expect(email.text).toContain('https://app.example.com/app/billing')
+  })
+})
+
+describe('sendMails', () => {
+  it('sends every mail and reports each failure without stopping the others', async () => {
+    const down = new Error('mail down')
+    const send = vi.fn(async (mail: { to: string | string[] }) => {
+      if (mail.to === 'b@cierzo.vc') throw down
+    })
+    const onFailure = vi.fn()
+    const mail = { subject: 's', html: 'h', text: 't' }
+    await sendMails(
+      { send },
+      ['a@cierzo.vc', 'b@cierzo.vc', 'c@cierzo.vc'].map((to) => ({ ...mail, to })),
+      onFailure,
+    )
+    expect(send).toHaveBeenCalledTimes(3)
+    expect(onFailure).toHaveBeenCalledExactlyOnceWith(down)
   })
 })

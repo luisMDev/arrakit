@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { WEB_ORIGIN } from './origins'
+
 test('the web app renders and reaches the API through the /api proxy', async ({
   page,
   request,
@@ -10,10 +12,10 @@ test('the web app renders and reaches the API through the /api proxy', async ({
   await expect(page.getByRole('heading', { name: 'Where should we write to you?' })).toBeVisible()
   await expect(page).toHaveTitle('Arrakit · Sign in')
 
-  const openapi = await request.get('/api/openapi.json')
-  expect(openapi.ok()).toBe(true)
-
-  const providers = await request.post('/api/rpc/authProviders/get', { data: {} })
+  const providers = await request.post('/api/rpc/authProviders/get', {
+    data: {},
+    headers: { origin: WEB_ORIGIN },
+  })
   expect(providers.ok()).toBe(true)
   expect(await providers.json()).toEqual({ json: { google: false, microsoft: false } })
 })

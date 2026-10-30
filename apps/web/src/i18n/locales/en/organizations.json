@@ -25,7 +25,6 @@
       "title": "General",
       "organizationName": "Organization name",
       "notSaved": "Couldn't save the organization's settings. Try again.",
-      "notLoaded": "Couldn't load your organization's settings. Reload the page.",
       "slug": "Slug: {{slug}}"
     },
     "securitySettings": {

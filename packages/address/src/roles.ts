@@ -15,5 +15,12 @@ export const isOrganizationRole = (role: unknown): role is OrganizationRole =>
 export const toOrganizationRole = (role: string): OrganizationRole =>
   isOrganizationRole(role) ? role : 'member'
 
+/** Any stored role other than exactly 'admin' reads as 'member'. */
+export const toAssignableRole = (role: string | null): AssignableRole =>
+  role === 'admin' ? 'admin' : 'member'
+
 export const ACCOUNT_LANGUAGES = ['en', 'es'] as const
 export type AccountLanguage = (typeof ACCOUNT_LANGUAGES)[number]
+
+export const isAccountLanguage = (value: unknown): value is AccountLanguage =>
+  (ACCOUNT_LANGUAGES as readonly unknown[]).includes(value)

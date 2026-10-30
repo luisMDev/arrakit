@@ -1,18 +1,12 @@
-import { isAdminRole } from '@arrakit/address'
+import { isAdminRole, personName } from '@arrakit/address'
 import type { Me } from '@arrakit/contract'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
-import { reportError } from '#/lib/api-errors'
+import { statusOf } from '#/lib/api-errors'
 import { orpc } from '#/lib/orpc'
 
 export type Role = NonNullable<Me['role']>
-
-/** The trimmed name, or the email's local part when the name is blank. */
-export function displayName(person: Pick<Me, 'name' | 'email'>): string {
-  const name = person.name.trim()
-  return name !== '' ? name : (person.email.split('@')[0] ?? person.email)
-}
 
 /** First character of a trimmed name, uppercased ("Ana Ruiz" -> "A"). */
 export function initialOf(name: string): string {
@@ -24,28 +18,32 @@ export function roleFlags(role: Role | null): { isAdmin: boolean; isOwner: boole
   return { isAdmin: isAdminRole(role), isOwner: role === 'owner' }
 }
 
+/** The signed-in person, or `null` when signed out (a 401); any other failure throws. */
+export async function loadMe(queryClient: QueryClient): Promise<Me | null> {
+  try {
+    return await queryClient.fetchQuery(orpc.me.get.queryOptions())
+  } catch (err) {
+    if (statusOf(err) === 401) return null
+    throw err
+  }
+}
+
 export function useCurrentUser() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const options = orpc.me.get.queryOptions()
-  const { data } = useQuery({ ...options, staleTime: Number.POSITIVE_INFINITY })
+  const { queryKey } = orpc.me.get.queryOptions()
+  const { data } = useQuery(orpc.me.get.queryOptions())
   const user: Me | null = data ?? null
   const role = user?.role ?? null
   return {
     user,
-    name: user ? displayName(user) : '',
+    name: user ? personName(user.name, user.email) : '',
     role,
     ...roleFlags(role),
     planLabel: user?.plan ? t(`pricing.plan.${user.plan}`) : '',
-    reload: async () => {
-      try {
-        await queryClient.fetchQuery({ ...options, staleTime: 0 })
-      } catch (err) {
-        reportError('[currentUser] reloading the signed-in person failed', err)
-      }
-    },
     patch: (fn: (me: Me) => Me) =>
-      queryClient.setQueryData<Me>(options.queryKey, (me) => (me ? fn(me) : me)),
-    signedOut: () => queryClient.removeQueries({ queryKey: options.queryKey }),
+      queryClient.setQueryData<Me>(queryKey, (me) => (me ? fn(me) : me)),
+    refresh: () => queryClient.invalidateQueries({ queryKey }),
+    signedOut: () => queryClient.removeQueries({ queryKey }),
   }
 }

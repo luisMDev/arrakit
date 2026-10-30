@@ -1,5 +1,5 @@
 import type { ChangePreview, PaidChoice, PlanOfferView } from '@arrakit/contract'
-import type { BillingCycle, Plan } from '@arrakit/plans'
+import { type BillingCycle, type Plan, isPaidPlan, soldOffers } from '@arrakit/plans'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
@@ -15,15 +15,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '#/components/ui/dialog'
-import { Skeleton } from '#/components/ui/skeleton'
 import { useCurrentUser } from '#/lib/current-user'
 import { money } from '#/lib/format'
 import { orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
-import { useFailureToast } from '#/lib/use-failure-toast'
 
 import { BillingCycleSwitch } from './billing-cycle-switch'
-import { isPaying, plansAbove } from './plan-access'
 import { FeatureList, PlanCard } from './plan-card'
 import {
   leastYearlySaving,
@@ -37,6 +34,8 @@ import {
 
 type PaidOffer = PlanOfferView & { plan: PaidChoice['plan'] }
 
+const OFFERS = soldOffers()
+
 interface PendingSwitch {
   choice: PaidChoice
   preview: ChangePreview
@@ -46,45 +45,44 @@ export function PlansPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { user, isAdmin, reload } = useCurrentUser()
+  const { user, isAdmin, patch } = useCurrentUser()
   const current: Plan | null = user?.plan ?? null
   const [chosenCycle, setCycle] = useState<BillingCycle | null>(null)
   const [annualOffer, setAnnualOffer] = useState<PaidOffer | null>(null)
   const [pending, setPending] = useState<PendingSwitch | null>(null)
 
-  const offers = useQuery(orpc.plans.list.queryOptions({ staleTime: Infinity }))
-  const wantsBilling = isAdmin && isPaying(current)
-  const billingQuery = orpc.billing.get.queryOptions()
+  const wantsBilling = isAdmin && isPaidPlan(current)
+  const billingQuery = orpc.billing.get.queryOptions({
+    meta: { failure: t('plans.billingLoadFailed') },
+  })
   const billing = useQuery({ ...billingQuery, enabled: wantsBilling })
   // Only a known cycle on a paid plan counts as paying (as saas-base): otherwise no switch is offered.
   const paying =
-    wantsBilling && billing.data?.cycle && isPaying(billing.data.plan)
+    wantsBilling && billing.data?.cycle && isPaidPlan(billing.data.plan)
       ? { ...billing.data, cycle: billing.data.cycle }
       : null
   const cycle: BillingCycle = chosenCycle ?? paying?.cycle ?? 'yearly'
 
-  useFailureToast(offers.error, '[plans] plans.list failed', t('plans.loadFailed'))
-  useFailureToast(billing.error, '[plans] billing.get failed', t('plans.billingLoadFailed'))
-
-  const preview = useApiMutation(
-    {
-      ...orpc.billing.previewChange.mutationOptions(),
-      onSuccess: (result, choice) => setPending({ choice, preview: result }),
+  const preview = useApiMutation({
+    ...orpc.billing.previewChange.mutationOptions(),
+    onSuccess: (result, choice) => setPending({ choice, preview: result }),
+    meta: { failure: t('plans.priceFailed') },
+  })
+  const change = useApiMutation({
+    ...orpc.billing.change.mutationOptions(),
+    onSuccess: async (next) => {
+      queryClient.setQueryData(billingQuery.queryKey, next)
+      patch((me) => ({
+        ...me,
+        plan: next.plan,
+        seats: next.seats,
+        organization: me.organization && { ...me.organization, plan: next.plan },
+      }))
+      setPending(null)
+      await navigate({ to: '/app/settings', search: { section: 'billing' } })
     },
-    { context: '[plans] preview failed', failure: t('plans.priceFailed') },
-  )
-  const change = useApiMutation(
-    {
-      ...orpc.billing.change.mutationOptions(),
-      onSuccess: async (next) => {
-        queryClient.setQueryData(billingQuery.queryKey, next)
-        setPending(null)
-        await reload()
-        await navigate({ to: '/app/billing' })
-      },
-    },
-    { context: '[plans] switch failed', failure: t('plans.switchFailed') },
-  )
+    meta: { failure: t('plans.switchFailed') },
+  })
 
   const goToCheckout = (choice: PaidChoice) =>
     navigate({ to: '/app/checkout', search: { plan: choice.plan, cycle: choice.cycle } })
@@ -94,7 +92,6 @@ export function PlansPage() {
     else setAnnualOffer(offer)
   }
 
-  const above = current ? plansAbove(current) : []
   const busy = preview.isPending || change.isPending
 
   function actionFor(offer: PlanOfferView, isCurrent: boolean) {
@@ -105,9 +102,9 @@ export function PlansPage() {
         </Button>
       )
     }
-    if (!isAdmin || offer.plan === 'free' || offer.plan === 'internal') return null
+    if (!isAdmin || !isPaidPlan(offer.plan)) return null
     const paid = offer as PaidOffer
-    if (current === 'free' && above.includes(offer.plan)) {
+    if (current === 'free') {
       return (
         <Button
           className="w-full"
@@ -141,35 +138,29 @@ export function PlansPage() {
         </h1>
         <p className="text-muted-foreground">{t('plans.subtitle')}</p>
       </div>
-      <BillingCycleSwitch
-        cycle={cycle}
-        saving={offers.data ? leastYearlySaving(offers.data) : null}
-        onChange={setCycle}
-      />
+      <BillingCycleSwitch cycle={cycle} saving={leastYearlySaving(OFFERS)} onChange={setCycle} />
       <div className="grid w-full gap-6 md:grid-cols-3">
-        {offers.data
-          ? offers.data.map((offer) => {
-              const paid = offer.monthly.amount > 0
-              const isCurrent = offer.plan === current && (!paying || paying.cycle === cycle)
-              return (
-                <PlanCard
-                  key={offer.plan}
-                  offer={offer}
-                  cycle={cycle}
-                  highlighted={offer.plan === 'team'}
-                  badge={offer.plan === 'team' ? t('plans.recommended') : undefined}
-                  priceNote={
-                    paid
-                      ? t('plans.perMonthBilled', { billed: t(`pricing.billedLower.${cycle}`) })
-                      : null
-                  }
-                  action={actionFor(offer, isCurrent)}
-                >
-                  <FeatureList items={[seatsLine(offer.seats), ...planFeatures(offer.plan)]} />
-                </PlanCard>
-              )
-            })
-          : [0, 1, 2].map((key) => <Skeleton key={key} className="h-80 w-full" />)}
+        {OFFERS.map((offer) => {
+          const paid = offer.monthly.amount > 0
+          const isCurrent = offer.plan === current && (!paying || paying.cycle === cycle)
+          return (
+            <PlanCard
+              key={offer.plan}
+              offer={offer}
+              cycle={cycle}
+              highlighted={offer.plan === 'team'}
+              badge={offer.plan === 'team' ? t('plans.recommended') : undefined}
+              priceNote={
+                paid
+                  ? t('plans.perMonthBilled', { billed: t(`pricing.billedLower.${cycle}`) })
+                  : null
+              }
+              action={actionFor(offer, isCurrent)}
+            >
+              <FeatureList items={[seatsLine(offer.seats), ...planFeatures(offer.plan)]} />
+            </PlanCard>
+          )
+        })}
       </div>
       {user && !isAdmin && <p className="text-muted-foreground text-sm">{t('plans.onlyAdmin')}</p>}
       <nav className="flex gap-4 text-sm">

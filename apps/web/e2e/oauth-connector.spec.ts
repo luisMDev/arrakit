@@ -4,23 +4,26 @@ import { type Page, expect, test } from '@playwright/test'
 
 import { clearMailFor, magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
-import { createOrganization, signIn, uniqueEmail } from './session'
+import { signedInOwner } from './session'
 const MCP_URL = `${WEB_ORIGIN}/api/mcp`
 const CALLBACK = 'https://claude.ai/api/mcp/auth_callback'
 
-async function ownerWithOrganization(page: Page, email: string, organization: string) {
-  await signIn(page, email, `${WEB_ORIGIN}/profile`)
-  await createOrganization(page, organization)
+async function ownerWithOrganization(page: Page, organization: string) {
+  const { email } = await signedInOwner(page, {
+    who: 'connector',
+    organization,
+    callbackURL: `${WEB_ORIGIN}/profile`,
+  })
   await clearMailFor(page.request, email)
   await page.context().clearCookies()
+  return email
 }
 
 test('Claude connects by magic link and consent, then calls whoami on /api/mcp', async ({
   page,
   request,
 }) => {
-  const email = uniqueEmail('connector')
-  await ownerWithOrganization(page, email, 'Connector Ventures')
+  const email = await ownerWithOrganization(page, 'Connector Ventures')
 
   const registered = await request.post('/api/auth/oauth2/register', {
     data: {

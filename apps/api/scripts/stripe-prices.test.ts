@@ -57,7 +57,6 @@ describe('syncPrices', () => {
       unit_amount: 19_200,
       recurring: { interval: 'year' },
       transfer_lookup_key: true,
-      metadata: { plan: 'pro', cycle: 'yearly' },
     })
     expect(account.created[4]).toMatchObject({
       custom_unit_amount: { enabled: true, minimum: 1_000, maximum: 50_000, preset: 2_000 },
@@ -86,9 +85,6 @@ describe('syncPrices', () => {
     ])
     await syncPrices(account.client, () => undefined)
     expect(account.created.map((price) => price.lookup_key)).not.toContain('arrakit_pro_yearly')
-    expect(account.updated).toEqual([
-      { id: 'price_old', params: { active: false } },
-      { id: 'price_same', params: { metadata: { plan: 'pro', cycle: 'yearly' } } },
-    ])
+    expect(account.updated).toEqual([{ id: 'price_old', params: { active: false } }])
   })
 })

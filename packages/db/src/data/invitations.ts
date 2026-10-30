@@ -1,8 +1,8 @@
-import { normalizeEmail } from '@arrakit/address'
+import { normalizeEmail, toAssignableRole } from '@arrakit/address'
 import { PLAN_OFFERS } from '@arrakit/plans'
 import { and, eq } from 'drizzle-orm'
 
-import type { Database } from '../connection'
+import { transaction } from '../connection'
 import type { DataContext } from '../context'
 import { InvitationNotFoundError, PersonHasOrganizationError } from '../errors'
 import {
@@ -11,7 +11,6 @@ import {
   lockedPlan,
   memberCount,
   seatLimitError,
-  toAssignableRole,
 } from '../organization/members'
 import type { OrganizationRow } from '../organization/organization'
 import { invitations, members, organizations, users } from '../schema/index'
@@ -66,8 +65,7 @@ export function invitationsData(ctx: DataContext) {
     }): Promise<Membership> {
       const { invitationId, userId, email } = input
       if (!usableId(invitationId)) throw new InvitationNotFoundError()
-      return ctx.db.transaction(async (rawTx) => {
-        const tx = rawTx as unknown as Database
+      return transaction(ctx.db, async (tx) => {
         const [person] = await tx
           .select({ id: users.id })
           .from(users)

@@ -114,11 +114,7 @@ describe('POST /api/webhooks/stripe: emails', () => {
   afterAll(() => t.close())
   afterEach(() => vi.restoreAllMocks())
 
-  async function organizationPaying(
-    domain: string,
-    lookupKey: string,
-    requestedBy: string | null = `admin@${domain}`,
-  ) {
+  async function organizationPaying(domain: string, lookupKey: string) {
     const person = await ownerOf(t, `owner@${domain}`, 'free')
     const subscriptionId = `sub_${domain}`
     const customerId = `cus_${domain}`
@@ -128,7 +124,7 @@ describe('POST /api/webhooks/stripe: emails', () => {
       organizationId: person.organizationId,
       status: 'active',
       lookupKey,
-      requestedBy,
+      periodEnd: Date.UTC(2027, 9, 4) / 1000,
     })
     stripe.bill(customerId, {
       subscription: {
@@ -155,11 +151,7 @@ describe('POST /api/webhooks/stripe: emails', () => {
         },
       ],
     })
-    const event = (previousLookupKey?: string) => ({
-      subscriptionId,
-      organizationId: person.organizationId,
-      previousLookupKey,
-    })
+    const event = () => ({ subscriptionId, organizationId: person.organizationId })
     const moveTo = (key: string) => {
       const held = stripe.subscriptions.get(subscriptionId)!
       stripe.subscribe({ ...held, lookupKey: key })
@@ -173,16 +165,15 @@ describe('POST /api/webhooks/stripe: emails', () => {
     return () => t.sent.slice(from)
   }
 
-  const yearlyPaid = (subscriptionId: string) => ({
+  const paidInvoice = (subscriptionId: string) => ({
     kind: 'invoice-paid',
     subscriptionId,
-    invoiceId: 'in_3',
     amount: { amount: 143_000, currency: 'usd' },
-    pdfUrl: 'https://pay.stripe.test/in_3.pdf',
+    invoiceUrl: 'https://pay.stripe.test/in_3.pdf',
   })
 
   async function organizationWithTeam(domain: string) {
-    const organization = await organizationPaying(domain, 'pro_yearly', null)
+    const organization = await organizationPaying(domain, 'pro_yearly')
     await t.webhook(organization.event())
     await joinAs(t, organization.organizationId, `admin@${domain}`, 'admin')
     await joinAs(t, organization.organizationId, `member@${domain}`, 'member')
@@ -190,145 +181,59 @@ describe('POST /api/webhooks/stripe: emails', () => {
   }
 
   describe('the receipt', () => {
-    it('goes to the admin who paid and the billing email when an organization first pays', async () => {
+    it('goes to the billing email once an invoice of the subscription is paid', async () => {
       const organization = await organizationPaying('ash.vc', 'pro_yearly')
       const mails = mailsAfter()
-      expect((await t.webhook(organization.event())).status).toBe(204)
-      expect(mails().map((mail) => mail.to)).toEqual(['admin@ash.vc', 'bill@ash.vc'])
-      for (const mail of mails()) {
-        expect(mail.subject).toBe(`You're on ${APP_NAME} Pro`)
-        expect(mail.text).toContain('Pro · yearly')
-        expect(mail.text).toContain('$1,430 · Visa ending 4242')
-        expect(mail.text).toContain('https://pay.stripe.test/in_2.pdf')
-      }
-      expect(stripe.subscriptions.get(organization.subscriptionId)?.receiptFor).toBe('pro_yearly')
+      expect((await t.webhook(paidInvoice(organization.subscriptionId))).status).toBe(204)
+      expect(mails().map((mail) => mail.to)).toEqual(['bill@ash.vc'])
+      const [mail] = mails()
+      expect(mail?.subject).toBe(`You're on ${APP_NAME} Pro`)
+      expect(mail?.text).toContain('Pro · yearly')
+      expect(mail?.text).toContain('$1,430 · Visa ending 4242')
+      expect(mail?.text).toContain('https://pay.stripe.test/in_3.pdf')
     })
 
-    it('is not sent twice when Stripe delivers the payment again', async () => {
-      const organization = await organizationPaying('birch.vc', 'pro_yearly')
-      await t.webhook(organization.event())
-      const mails = mailsAfter()
-      expect((await t.webhook(organization.event())).status).toBe(204)
-      expect(mails()).toEqual([])
-    })
-
-    it('is sent when an organization moves up from Pro to Team', async () => {
+    it('names the plan the subscription is on now, after a move', async () => {
       const organization = await organizationPaying('cedar.vc', 'pro_yearly')
-      await t.webhook(organization.event())
       organization.moveTo('team_yearly')
-      await t.data.forOrganization(organization.organizationId).setPlan('team')
       const mails = mailsAfter()
-      expect((await t.webhook(organization.event('pro_yearly'))).status).toBe(204)
-      expect(mails().map((mail) => [mail.to, mail.subject])).toEqual([
-        ['admin@cedar.vc', `You're on ${APP_NAME} Team`],
-        ['bill@cedar.vc', `You're on ${APP_NAME} Team`],
-      ])
+      expect((await t.webhook(paidInvoice(organization.subscriptionId))).status).toBe(204)
+      expect(mails().map((mail) => mail.subject)).toEqual([`You're on ${APP_NAME} Team`])
     })
 
-    it('is sent for a move up whose event arrives after another update', async () => {
-      const organization = await organizationPaying('juniper.vc', 'pro_yearly')
-      await t.webhook(organization.event())
-      organization.moveTo('team_yearly')
-      await t.data.forOrganization(organization.organizationId).setPlan('team')
+    it('links the billing page when the invoice has no page of its own', async () => {
+      const organization = await organizationPaying('fir.vc', 'pro_monthly')
       const mails = mailsAfter()
-      expect((await t.webhook(organization.event())).status).toBe(204)
-      expect((await t.webhook(organization.event('pro_yearly'))).status).toBe(204)
-      expect(mails()).toHaveLength(2)
+      const invoice = { ...paidInvoice(organization.subscriptionId), invoiceUrl: null }
+      expect((await t.webhook(invoice)).status).toBe(204)
+      expect(mails()[0]?.text).toContain(`${WEB}/app/billing`)
     })
 
-    it('of a move from monthly to yearly waits for the yearly invoice, once', async () => {
-      const organization = await organizationPaying('dogwood.vc', 'pro_monthly')
-      await t.webhook(organization.event())
-      organization.moveTo('pro_yearly')
-      const mails = mailsAfter()
-      expect((await t.webhook(organization.event('pro_monthly'))).status).toBe(204)
-      expect(mails()).toEqual([])
-      expect(stripe.subscriptions.get(organization.subscriptionId)?.receiptFor).toBe('pro_monthly')
-      expect((await t.webhook(yearlyPaid(organization.subscriptionId))).status).toBe(204)
-      expect(mails().map((mail) => mail.to)).toEqual(['admin@dogwood.vc', 'bill@dogwood.vc'])
-      for (const mail of mails()) {
-        expect(mail.text).toContain('Pro · yearly')
-        expect(mail.text).toContain('$1,430 · Visa ending 4242')
-        expect(mail.text).toContain('https://pay.stripe.test/in_3.pdf')
-        expect(mail.text).not.toContain('in_2.pdf')
-      }
-      expect((await t.webhook(yearlyPaid(organization.subscriptionId))).status).toBe(204)
-      expect((await t.webhook(organization.event('pro_monthly'))).status).toBe(204)
-      expect(mails()).toHaveLength(2)
-    })
-
-    it('of the move to yearly is sent once when its invoice is paid before the update', async () => {
-      const organization = await organizationPaying('linden.vc', 'pro_monthly')
-      await t.webhook(organization.event())
-      organization.moveTo('pro_yearly')
-      const mails = mailsAfter()
-      expect((await t.webhook(yearlyPaid(organization.subscriptionId))).status).toBe(204)
-      expect((await t.webhook(organization.event('pro_monthly'))).status).toBe(204)
-      expect(mails()).toHaveLength(2)
-    })
-
-    it('of the move to yearly is sent for a subscription settled before receipts existed', async () => {
-      const organization = await organizationPaying('aspen.vc', 'pro_monthly')
-      organization.moveTo('pro_yearly')
-      const mails = mailsAfter()
-      expect((await t.webhook(organization.event('pro_monthly'))).status).toBe(204)
-      expect((await t.webhook(yearlyPaid(organization.subscriptionId))).status).toBe(204)
-      expect(mails()).toHaveLength(2)
-    })
-
-    it('is not sent for the paid invoice of a yearly or monthly renewal', async () => {
-      const yearly = await organizationPaying('willow.vc', 'pro_yearly')
-      await t.webhook(yearly.event())
-      const monthly = await organizationPaying('yew.vc', 'pro_monthly')
-      await t.webhook(monthly.event())
-      const mails = mailsAfter()
-      expect((await t.webhook(yearlyPaid(yearly.subscriptionId))).status).toBe(204)
-      expect((await t.webhook(yearlyPaid(monthly.subscriptionId))).status).toBe(204)
-      expect(mails()).toEqual([])
-    })
-
-    it('is not sent for a move down or a renewal', async () => {
+    it('is not sent for a subscription change or a paid invoice of nothing', async () => {
       const organization = await organizationPaying('elm.vc', 'team_yearly')
-      await t.webhook(organization.event())
       const mails = mailsAfter()
-      organization.moveTo('pro_yearly')
-      expect((await t.webhook(organization.event('team_yearly'))).status).toBe(204)
-      expect((await t.webhook(organization.event('pro_yearly'))).status).toBe(204)
       expect((await t.webhook(organization.event())).status).toBe(204)
+      const free = {
+        ...paidInvoice(organization.subscriptionId),
+        amount: { amount: 0, currency: 'usd' },
+      }
+      expect((await t.webhook(free)).status).toBe(204)
       expect(mails()).toEqual([])
-    })
-
-    it('goes to the billing email alone when no admin is recorded as paying', async () => {
-      const organization = await organizationPaying('fir.vc', 'pro_yearly', null)
-      const mails = mailsAfter()
-      await t.webhook(organization.event())
-      expect(mails().map((mail) => mail.to)).toEqual(['bill@fir.vc'])
-    })
-
-    it('is sent once when the admin who paid is the billing email', async () => {
-      const organization = await organizationPaying('hazel.vc', 'pro_yearly', 'Bill@Hazel.vc')
-      const mails = mailsAfter()
-      await t.webhook(organization.event())
-      expect(mails().map((mail) => mail.to)).toEqual(['Bill@Hazel.vc'])
     })
 
     it('failing to send still answers 204, logging the organization but no address or body', async () => {
       const organization = await organizationPaying('ivy.vc', 'pro_yearly')
       const lines = failingMail(t)
-      expect((await t.webhook(organization.event())).status).toBe(204)
-      expect(lines()).toHaveLength(2)
-      for (const entry of lines()) {
-        expect(entry).toMatchObject({
-          msg: 'billing email not sent',
-          organizationId: organization.organizationId,
-          mail: 'receipt',
-        })
-        const line = JSON.stringify(entry)
-        expect(line).not.toContain('ivy.vc')
-        expect(line).not.toContain('<html')
-      }
-      vi.restoreAllMocks()
-      expect(await organization.plan()).toBe('pro')
+      expect((await t.webhook(paidInvoice(organization.subscriptionId))).status).toBe(204)
+      expect(lines()).toHaveLength(1)
+      expect(lines()[0]).toMatchObject({
+        msg: 'billing email not sent',
+        organizationId: organization.organizationId,
+        mail: 'receipt',
+      })
+      const line = JSON.stringify(lines()[0])
+      expect(line).not.toContain('ivy.vc')
+      expect(line).not.toContain('<html')
     })
   })
 
@@ -343,7 +248,6 @@ describe('POST /api/webhooks/stripe: emails', () => {
 
     it('emails the billing email, the owner and the admins, never a member, the plan untouched', async () => {
       const organization = await organizationWithTeam('larch.vc')
-      const receiptFor = stripe.subscriptions.get(organization.subscriptionId)?.receiptFor
       const mails = mailsAfter()
       expect((await t.webhook(failed(organization.subscriptionId, inThreeDays()))).status).toBe(204)
       expect(mails().map((mail) => mail.to)).toEqual([
@@ -359,7 +263,6 @@ describe('POST /api/webhooks/stripe: emails', () => {
         expect(mail.text).toContain(`${WEB}/app/billing`)
       }
       expect(await organization.plan()).toBe('pro')
-      expect(stripe.subscriptions.get(organization.subscriptionId)?.receiptFor).toBe(receiptFor)
     })
 
     it('emails the owner once when the owner is the billing email', async () => {
@@ -476,7 +379,6 @@ describe('POST /api/webhooks/stripe: emails', () => {
 
     it('emails the billing email alone, the plan untouched', async () => {
       const organization = await renewing('poplar.vc', 'pro_yearly')
-      const receiptFor = stripe.subscriptions.get(organization.subscriptionId)?.receiptFor
       const mails = mailsAfter()
       expect((await t.webhook(upcoming(organization.subscriptionId))).status).toBe(204)
       expect(mails().map((mail) => mail.to)).toEqual(['bill@poplar.vc'])
@@ -484,7 +386,6 @@ describe('POST /api/webhooks/stripe: emails', () => {
       expect(mails()[0]?.text).toContain('$1,430 on Oct 4, 2027, to Visa ending 4242')
       expect(mails()[0]?.text).toContain(`${WEB}/app/billing`)
       expect(await organization.plan()).toBe('pro')
-      expect(stripe.subscriptions.get(organization.subscriptionId)?.receiptFor).toBe(receiptFor)
     })
 
     it('sends nothing on a monthly price', async () => {
@@ -581,7 +482,7 @@ describe('POST /api/webhooks/stripe without Stripe set up', () => {
   let t: TestApp
 
   beforeAll(async () => {
-    t = await createTestApp({ stripe: null })
+    t = await createTestApp()
   })
   afterAll(() => t.close())
 

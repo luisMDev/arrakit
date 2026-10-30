@@ -32,6 +32,6 @@ export function receiptEmail(input: ReceiptEmailInput): RenderedEmail {
         { label: 'Manage plan', href: input.links.billing },
       ),
     ],
-    footer: 'Sent to you and the billing email.',
+    footer: 'Sent to the billing email.',
   })
 }

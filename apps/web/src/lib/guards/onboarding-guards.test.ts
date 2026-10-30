@@ -1,21 +1,12 @@
 import type { Me } from '@arrakit/contract'
-import { QueryClient } from '@tanstack/react-query'
-import { type ParsedLocation, isRedirect } from '@tanstack/react-router'
+import { isRedirect } from '@tanstack/react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import '#/i18n'
-import { reportError } from '#/lib/api-errors'
+import { testQueryClient } from '#/test/rpc'
 
 import { requireAccount } from './require-account'
 import { skipWhenSignedIn } from './skip-when-signed-in'
-
-const toastError = vi.fn()
-vi.mock('sonner', () => ({ toast: { error: (message: string) => toastError(message) } }))
-vi.mock('#/lib/api-errors', async (original) => ({
-  ...(await original<typeof import('#/lib/api-errors')>()),
-  reportError: vi.fn(),
-}))
-const reported = vi.mocked(reportError)
 
 const ORG: NonNullable<Me['organization']> = {
   id: '0f8fad5b-d9cb-469f-a165-70867728950e',
@@ -63,29 +54,29 @@ async function outcome(run: () => Promise<unknown>) {
   }
 }
 
-const skip = (search: Record<string, string> = {}) =>
-  outcome(() => skipWhenSignedIn({ context: { queryClient: new QueryClient() }, search }))
+const skip = (search: Record<string, string> = {}, href = '/signin') =>
+  outcome(() =>
+    skipWhenSignedIn({ context: { queryClient: testQueryClient() }, location: { href }, search }),
+  )
 
 const account = (search: Record<string, string> = {}, href = '/profile') =>
   outcome(() =>
-    requireAccount({
-      context: { queryClient: new QueryClient() },
-      location: { href } as ParsedLocation,
-      search,
-    }),
+    requireAccount({ context: { queryClient: testQueryClient() }, location: { href }, search }),
   )
 
+let reported: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
-  toastError.mockReset()
-  reported.mockReset()
+  reported = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
 
 describe('skipWhenSignedIn (/signup, /signin)', () => {
-  it('renders the page for a visitor', async () => {
+  it('renders the page for a visitor, reporting nothing', async () => {
     api(visitor)
     expect(await skip()).toBe('render')
-    expect(toastError).not.toHaveBeenCalled()
     expect(reported).not.toHaveBeenCalled()
   })
 
@@ -109,78 +100,6 @@ describe('skipWhenSignedIn (/signup, /signin)', () => {
       to: '/app/checkout',
       search: { plan: 'pro', cycle: 'yearly' },
     })
-  })
-
-  it.each([
-    ['a network failure', 'network' as const],
-    ['a 503', { status: 503 }],
-  ])('renders with the unreachable toast on %s', async (_, answer) => {
-    api(answer)
-    expect(await skip()).toBe('render')
-    expect(toastError).toHaveBeenCalledWith(
-      "Couldn't reach Arrakit. Check your connection and reload.",
-    )
-    expect(reported).toHaveBeenCalledWith('[skipWhenSignedIn] the guard failed', expect.anything())
-  })
-
-  it('renders with the failed toast on another error', async () => {
-    api({ status: 403 })
-    expect(await skip()).toBe('render')
-    expect(toastError).toHaveBeenCalledWith('Something went wrong. Reload and try again.')
-  })
-
-  it('renders with the unreachable toast when a proxy answers the me call with a 502 page', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        async () =>
-          new Response('<html>Bad gateway</html>', {
-            status: 502,
-            headers: { 'content-type': 'text/html' },
-          }),
-      ),
-    )
-    expect(await skip()).toBe('render')
-    expect(toastError).toHaveBeenCalledWith(
-      "Couldn't reach Arrakit. Check your connection and reload.",
-    )
-  })
-
-  it.each([
-    ['a plain Error from the me call', () => Promise.reject(new Error('bug'))],
-    [
-      'a me answer that is not JSON',
-      async () => new Response('<html>', { status: 200, headers: { 'content-type': 'text/html' } }),
-    ],
-    [
-      'a TypeError from a bug',
-      () => Promise.reject(new TypeError("Cannot read properties of undefined (reading 'x')")),
-    ],
-    [
-      'a TypeError that only mentions fetch',
-      () => Promise.reject(new TypeError('fetchQuery is not a function')),
-    ],
-  ])('does not blame the connection on %s, logs it and renders', async (_, answer) => {
-    vi.stubGlobal('fetch', vi.fn(answer))
-    expect(await skip()).toBe('render')
-    expect(toastError).toHaveBeenCalledWith('Something went wrong. Reload and try again.')
-    expect(toastError).not.toHaveBeenCalledWith(
-      "Couldn't reach Arrakit. Check your connection and reload.",
-    )
-    expect(reported).toHaveBeenCalledWith('[skipWhenSignedIn] the guard failed', expect.anything())
-  })
-
-  it('shows no toast while a link to the page is only preloaded', async () => {
-    api('network')
-    const result = await outcome(() =>
-      skipWhenSignedIn({
-        context: { queryClient: new QueryClient() },
-        search: {},
-        cause: 'preload',
-      }),
-    )
-    expect(result).toBe('render')
-    expect(toastError).not.toHaveBeenCalled()
   })
 
   it('sends a member who lands on a refused sign-in URL to /app, and lets a visitor see it', async () => {
@@ -212,21 +131,23 @@ describe('requireAccount (/profile)', () => {
       search: { plan: 'team', cycle: 'monthly' },
     })
   })
+})
 
-  it('sends a 403 to Unavailable forbidden', async () => {
-    api({ status: 403 })
-    expect(await account()).toEqual({ to: '/unavailable', search: { reason: 'forbidden' } })
-    expect(reported).toHaveBeenCalledWith('[requireAccount] the guard failed', expect.anything())
-  })
-
+describe('any failure but a 401', () => {
   it.each([
     ['a network failure', 'network' as const],
+    ['a 403', { status: 403 }],
     ['a 503', { status: 503 }],
-  ])('sends %s to Unavailable with next', async (_, answer) => {
+  ])('sends %s to Unavailable with next, and reports it', async (_, answer) => {
     api(answer)
     expect(await account({}, '/profile?plan=team&cycle=monthly')).toEqual({
       to: '/unavailable',
       search: { next: '/profile?plan=team&cycle=monthly' },
     })
+    expect(await skip({}, '/signin?plan=pro')).toEqual({
+      to: '/unavailable',
+      search: { next: '/signin?plan=pro' },
+    })
+    expect(reported).toHaveBeenCalledWith('[me.get] failed', expect.anything())
   })
 })

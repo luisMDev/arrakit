@@ -1,9 +1,9 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { sendMagicLink } from '#/components/auth/auth-api'
-import { answer, api, quiet, renderAt } from '#/test/rpc'
+import { answer, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
 import { JoinPage } from './join-page'
 
@@ -14,16 +14,11 @@ vi.mock('#/components/auth/auth-api', async (original) => ({
 
 const sendLink = vi.mocked(sendMagicLink)
 
-beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
+setupTestApi()
 beforeEach(() => {
   sendLink.mockReset().mockResolvedValue(true)
   quiet()
 })
-afterEach(() => {
-  api.resetHandlers()
-  vi.restoreAllMocks()
-})
-afterAll(() => api.close())
 
 const setup = () => renderAt(<JoinPage invitationId="inv/1" />, { me: null, url: '/join/inv-1' })
 

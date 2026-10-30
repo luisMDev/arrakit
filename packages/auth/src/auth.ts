@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { ACCOUNT_LANGUAGES } from '@arrakit/address'
 import { APP_NAME } from '@arrakit/emails'
 import { betterAuth } from 'better-auth'
-import { jwt, magicLink, organization, testUtils } from 'better-auth/plugins'
+import { jwt, magicLink, testUtils } from 'better-auth/plugins'
 
 import { AUTH_BASE_PATH, COOKIE_PREFIX, MAGIC_LINK_MINUTES, oauthIssuer } from './config'
 import type { AuthDeps } from './deps'
@@ -11,14 +11,6 @@ import { beforeHook } from './hooks'
 import { magicLinkSender } from './magic-link'
 import { connectorProvider } from './oauth'
 import { socialProviders, validateUserInfo } from './social'
-
-const ORGANIZATION_SCHEMA = {
-  member: {
-    additionalFields: {
-      termsAcceptedAt: { type: 'date', required: false, input: false },
-    },
-  },
-} as const
 
 export function createAuth(deps: AuthDeps) {
   const { config } = deps
@@ -40,6 +32,7 @@ export function createAuth(deps: AuthDeps) {
       // endpoint context, so tests that configure Microsoft create users through the API instead.
       ...(config.microsoft ? { validateUserInfo } : {}),
     },
+    session: { cookieCache: { enabled: true, maxAge: 300 } },
     account: { encryptOAuthTokens: true, accountLinking: { trustedProviders: [] } },
     telemetry: { enabled: false },
     ...(deps.logger ? { logger: deps.logger } : {}),
@@ -48,7 +41,6 @@ export function createAuth(deps: AuthDeps) {
       // Spelled out: Better Auth skips origin checks when NODE_ENV=test; tests run the real checks.
       disableOriginCheck: false,
       ipAddress: { ipAddressHeaders: ['x-real-ip', 'x-forwarded-for'] },
-      // Organization ids are UUIDs (the organizations.id column is uuid); every id is a UUID string.
       database: { generateId: () => randomUUID() },
     },
     hooks: { before: beforeHook(config) },
@@ -58,7 +50,6 @@ export function createAuth(deps: AuthDeps) {
         storeToken: 'hashed',
         sendMagicLink: magicLinkSender(deps),
       }),
-      organization({ schema: ORGANIZATION_SCHEMA, creatorRole: 'owner' }),
       jwt({ disableSettingJwtHeader: true, jwt: { issuer: oauthIssuer(config.baseURL) } }),
       connectorProvider(deps),
       ...(deps.testing ? [testUtils({ captureOTP: true })] : []),

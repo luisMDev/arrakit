@@ -54,7 +54,7 @@ export default defineConfig({
       url: WEB_ORIGIN,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
-      env: { API_ORIGIN: API_ORIGIN, E2E: '1' },
+      env: { API_ORIGIN: API_ORIGIN },
     },
   ],
 })

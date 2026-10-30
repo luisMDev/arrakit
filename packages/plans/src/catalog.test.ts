@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import { PAID_PLANS, PLANS, PLAN_LABELS, PLAN_OFFERS, isPlan } from './catalog'
+import {
+  PAID_PLANS,
+  PLANS,
+  PLAN_LABELS,
+  PLAN_OFFERS,
+  SOLD_PLANS,
+  isBillingCycle,
+  isPaidPlan,
+  isPlan,
+  soldOffers,
+} from './catalog'
 
 describe('plans catalog', () => {
   it('ranks the sold plans cheapest first, Internal last above Team', () => {
@@ -41,4 +51,22 @@ describe('plans catalog', () => {
       expect(isPlan(value)).toBe(false)
     },
   )
+
+  it('offers every plan but Internal, with its prices and seats', () => {
+    expect(SOLD_PLANS).toEqual(['free', 'pro', 'team'])
+    expect(soldOffers()[1]).toEqual({
+      plan: 'pro',
+      monthly: { amount: 2_000, currency: 'usd' },
+      yearly: { amount: 19_200, currency: 'usd' },
+      seats: 3,
+    })
+  })
+
+  it('tells paid plans and billing cycles apart', () => {
+    expect(isPaidPlan('pro')).toBe(true)
+    expect(isPaidPlan('free')).toBe(false)
+    expect(isPaidPlan(undefined)).toBe(false)
+    expect(isBillingCycle('yearly')).toBe(true)
+    expect(isBillingCycle('weekly')).toBe(false)
+  })
 })

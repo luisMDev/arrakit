@@ -87,82 +87,43 @@ describe.each(targets)('pgBossJobs on $name', (target) => {
     await expect(jobs.probe()).resolves.toBeUndefined()
   })
 
+  const jobsOn = async (queue: string) =>
+    (await sql('SELECT id, state, data FROM pgboss.job WHERE name = $1', [queue])) as {
+      id: string
+      state: string
+      data: object
+    }[]
+  const stateOf = async (queue: string, id: string) =>
+    (await jobsOn(queue)).find((job) => job.id === id)?.state
+
   it('retries a failing job, then dead-letters its payload', async () => {
     const queue = queueName()
     await jobs.defineQueue(queue, { retryLimit: 1, retryDelay: 1, retryBackoff: false })
     let attempts = 0
-    await jobs.work(
-      queue,
-      async () => {
-        attempts += 1
-        throw new Error('boom')
-      },
-      { pollingIntervalSeconds: 0.5 },
-    )
+    await jobs.work(queue, async () => {
+      attempts += 1
+      throw new Error('boom')
+    })
     const id = await jobs.send(queue, { n: 1 })
-    await waitFor(async () => (await jobs.find(queue, { id }))[0]?.state === 'failed')
+    await waitFor(async () => (await stateOf(queue, id)) === 'failed')
     expect(attempts).toBe(2)
-    await waitFor(async () => (await jobs.find(deadLetterOf(queue))).length > 0)
-    expect((await jobs.find(deadLetterOf(queue))).map((job) => job.data)).toEqual([{ n: 1 }])
+    await waitFor(async () => (await jobsOn(deadLetterOf(queue))).length > 0)
+    expect((await jobsOn(deadLetterOf(queue))).map((job) => job.data)).toEqual([{ n: 1 }])
   }, 30_000)
 
   it('completes a job that fails once and then succeeds, and dead-letters nothing', async () => {
     const queue = queueName()
     await jobs.defineQueue(queue, { retryLimit: 2, retryDelay: 1, retryBackoff: true })
     let attempts = 0
-    await jobs.work(
-      queue,
-      async () => {
-        attempts += 1
-        if (attempts === 1) throw new Error('once')
-      },
-      { pollingIntervalSeconds: 0.5 },
-    )
+    await jobs.work(queue, async () => {
+      attempts += 1
+      if (attempts === 1) throw new Error('once')
+    })
     const id = await jobs.send(queue, { n: 2 })
-    await waitFor(async () => (await jobs.find(queue, { id }))[0]?.state === 'completed')
+    await waitFor(async () => (await stateOf(queue, id)) === 'completed')
     expect(attempts).toBe(2)
-    expect(await jobs.find(deadLetterOf(queue))).toEqual([])
+    expect(await jobsOn(deadLetterOf(queue))).toEqual([])
   }, 30_000)
-
-  it('holds a job sent with startAfter until then', async () => {
-    const queue = queueName()
-    await jobs.defineQueue(queue, { retryLimit: 0, retryDelay: 1, retryBackoff: false })
-    const seen: object[] = []
-    await jobs.work(queue, async (data) => void seen.push(data), { pollingIntervalSeconds: 0.5 })
-    await jobs.send(queue, { later: true }, { startAfter: new Date(Date.now() + 60 * 60_000) })
-    const now = await jobs.send(queue, { later: false })
-    await waitFor(async () => (await jobs.find(queue, { id: now }))[0]?.state === 'completed')
-    expect(seen).toEqual([{ later: false }])
-    const held = (await jobs.find(queue)).find((job) => (job.data as { later: boolean }).later)
-    expect(held?.state).toBe('created')
-  }, 30_000)
-
-  it('queues one job per key on an exclusive queue while it waits', async () => {
-    const queue = queueName()
-    await jobs.defineQueue(
-      queue,
-      { retryLimit: 0, retryDelay: 1, retryBackoff: false },
-      { exclusive: true },
-    )
-    expect(await jobs.sendOnce(queue, { org: 'a' }, 'a')).toBe(true)
-    expect(await jobs.sendOnce(queue, { org: 'a' }, 'a')).toBe(false)
-    expect(await jobs.sendOnce(queue, { org: 'b' }, 'b')).toBe(true)
-    await jobs.work(queue, async () => {}, { pollingIntervalSeconds: 0.5 })
-    await waitFor(async () => (await jobs.find(queue)).every((job) => job.state === 'completed'))
-    expect(await jobs.sendOnce(queue, { org: 'a' }, 'a')).toBe(true)
-  }, 30_000)
-
-  it('refuses to define as exclusive a queue that exists with another policy', async () => {
-    const queue = queueName()
-    await jobs.defineQueue(queue, { retryLimit: 0, retryDelay: 1, retryBackoff: false })
-    await expect(
-      jobs.defineQueue(
-        queue,
-        { retryLimit: 0, retryDelay: 1, retryBackoff: false },
-        { exclusive: true },
-      ),
-    ).rejects.toThrow(`[data] queue ${queue} exists with policy standard, not exclusive`)
-  })
 
   it('keeps the policy a queue was created with when it is defined again', async () => {
     const queue = queueName()
@@ -173,38 +134,16 @@ describe.each(targets)('pgBossJobs on $name', (target) => {
       expireInSeconds: 120,
     })
     await jobs.defineQueue(queue, { retryLimit: 1, retryDelay: 2, retryBackoff: false })
-    expect(await jobs.queuePolicy(queue)).toEqual({
-      retryLimit: 5,
-      retryDelay: 30,
-      retryBackoff: true,
-      expireInSeconds: 120,
-    })
-  })
-
-  it('gives a queue defined with no expiry 900 s, and no policy for an unknown queue', async () => {
-    const queue = queueName()
-    await jobs.defineQueue(queue, { retryLimit: 5, retryDelay: 30, retryBackoff: true })
-    expect((await jobs.queuePolicy(queue))?.expireInSeconds).toBe(900)
-    expect(await jobs.queuePolicy(queueName())).toBeUndefined()
-  })
-
-  it('schedules a queue on a cron in UTC, catching up one missed tick, replacing the schedule', async () => {
-    const queue = queueName()
-    await jobs.defineQueue(queue, { retryLimit: 0, retryDelay: 1, retryBackoff: false })
-    await jobs.schedule(queue, '0 3 1 * *', { month: 'previous' })
-    await jobs.schedule(queue, '0 2 1 * *', { month: 'previous' })
-    const rows = (await sql('SELECT * FROM pgboss.schedule WHERE name = $1', [queue])) as {
-      cron: string
-      timezone: string
-      data: object
-      options: object
-    }[]
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({
-      cron: '0 2 1 * *',
-      timezone: 'UTC',
-      data: { month: 'previous' },
-      options: { tz: 'UTC', missed: 'once' },
+    const [row] = (await sql(
+      'SELECT retry_limit, retry_delay, retry_backoff, expire_seconds, dead_letter FROM pgboss.queue WHERE name = $1',
+      [queue],
+    )) as Record<string, unknown>[]
+    expect(row).toEqual({
+      retry_limit: 5,
+      retry_delay: 30,
+      retry_backoff: true,
+      expire_seconds: 120,
+      dead_letter: deadLetterOf(queue),
     })
   })
 

@@ -1,7 +1,6 @@
 import { meContract } from './account'
 import { authProvidersContract } from './auth'
 import { billingContract } from './billing'
-import { healthContract } from './health'
 import { invitationsContract } from './invitations'
 import { membersContract } from './members'
 import { onboardingContract } from './onboarding'
@@ -11,7 +10,6 @@ import { topUpContract } from './top-up'
 import { usageContract } from './usage'
 
 export const contract = {
-  health: healthContract,
   authProviders: authProvidersContract,
   me: meContract,
   organizations: { ...onboardingContract, ...organizationsContract },
@@ -28,7 +26,6 @@ export * from './common'
 export * from './account'
 export * from './auth'
 export * from './billing'
-export * from './health'
 export * from './invitations'
 export * from './members'
 export * from './onboarding'

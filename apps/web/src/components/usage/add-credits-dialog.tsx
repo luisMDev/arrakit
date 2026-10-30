@@ -1,6 +1,6 @@
 import { CURRENCY, METRIC_KEYS, TOP_UP, isTopUpAmount, metricAmounts } from '@arrakit/plans'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm, useWatch } from 'react-hook-form'
+import { useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -15,8 +15,10 @@ import {
 } from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
+import { useClearingForm } from '#/lib/form'
 import { money } from '#/lib/format'
-import { client } from '#/lib/orpc'
+import { leave } from '#/lib/leave'
+import { orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
 import { cn } from '#/lib/utils'
 
@@ -32,37 +34,29 @@ function toCents(value: string): number | null {
 const topUpCents = z.string().transform(toCents).refine(isTopUpAmount)
 const topUpForm = z.object({ amount: topUpCents })
 
-export interface AddCreditsDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  /** Starts Checkout and resolves to its URL; defaults to `billing.topUp`. */
-  startTopUp?: (cents: number) => Promise<{ url: string }>
-  /** Leaves for Checkout; defaults to `window.location.assign`. */
-  redirect?: (url: string) => void
-}
-
 export function AddCreditsDialog({
   open,
   onOpenChange,
-  startTopUp = (cents) => client.billing.topUp({ cents }),
-  redirect = (url) => window.location.assign(url),
-}: AddCreditsDialogProps) {
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const { t } = useTranslation()
-  const form = useForm({
+  const form = useClearingForm({
     resolver: zodResolver(topUpForm),
     defaultValues: { amount: DEFAULT_DOLLARS },
   })
-  const topUp = useApiMutation(
-    { mutationFn: (cents: number) => startTopUp(cents), onSuccess: ({ url }) => redirect(url) },
-    { context: '[usage] top-up failed', failure: t(`${KEY}.topUpNotOpened`) },
-  )
-  const busy = topUp.isPending || topUp.isSuccess
+  const topUp = useApiMutation({
+    ...orpc.billing.topUp.mutationOptions(),
+    onSuccess: ({ url }) => leave(url),
+    meta: { failure: t(`${KEY}.topUpNotOpened`) },
+  })
   const cents = topUpCents.safeParse(useWatch({ control: form.control, name: 'amount' }))
   const valid = cents.success
   const amounts = metricAmounts(cents.data ?? 0)
   const preview = amountsLine(METRIC_KEYS.map((metric) => ({ metric, amount: amounts[metric] })))
 
-  const submit = ({ amount }: z.output<typeof topUpForm>) => topUp.run(amount)
+  const submit = ({ amount }: z.output<typeof topUpForm>) => topUp.run({ cents: amount })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -105,7 +99,7 @@ export function AddCreditsDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               {t(`${KEY}.topUpCancel`)}
             </Button>
-            <Button type="submit" disabled={busy || !valid}>
+            <Button type="submit" disabled={topUp.busy || !valid}>
               {t(`${KEY}.topUpPay`)}
             </Button>
           </DialogFooter>

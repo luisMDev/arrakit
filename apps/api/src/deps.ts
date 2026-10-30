@@ -14,8 +14,8 @@ export interface AppDeps {
   auth: Auth
   authConfig: AuthConfig
   mailer: Mailer
-  /** Null when Stripe is not configured: billing answers 503, the webhook 401. */
-  stripe: StripeGateway | null
+  /** Unconfigured without Stripe keys: billing answers 503, the webhook 401. */
+  stripe: StripeGateway
   log: Logger
   /** Unexpected errors go here (Sentry when SENTRY_DSN is set). */
   errors: ErrorReporter

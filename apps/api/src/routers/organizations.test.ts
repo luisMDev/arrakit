@@ -114,14 +114,12 @@ describe('organizations', () => {
       stripe.failNext(new Error('stripe down'))
       await expect(t.client(owner.headers).organizations.delete()).rejects.toMatchObject({
         status: 502,
-        message:
-          "Couldn't cancel your plan with Stripe, so nothing was deleted. Try again in a minute.",
+        message: "Couldn't reach Stripe. Try again in a minute.",
       })
       expect(errors()).toEqual([
         expect.objectContaining({
-          msg: 'ending the subscription failed',
-          organizationId: owner.organization.id,
-          subscriptionId: 'sub_fir',
+          msg: 'Stripe call failed',
+          operation: 'endNow',
           err: expect.objectContaining({ message: 'stripe down' }),
         }),
       ])

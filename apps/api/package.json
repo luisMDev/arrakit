@@ -11,9 +11,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "stripe:prices": "node --env-file-if-exists=.env --import tsx scripts/stripe-prices.ts",
-    "stripe:credits": "node --env-file-if-exists=.env --import tsx scripts/stripe-credits.ts",
-    "openapi:export": "tsx scripts/openapi-export.ts",
-    "bucket:cors": "node --env-file-if-exists=.env --import tsx scripts/bucket-cors.ts"
+    "stripe:credits": "node --env-file-if-exists=.env --import tsx scripts/stripe-credits.ts"
   },
   "dependencies": {
     "@arrakit/address": "workspace:*",

@@ -1,5 +1,5 @@
 import { betterAuth } from 'better-auth'
-import { organization, testUtils } from 'better-auth/plugins'
+import { testUtils } from 'better-auth/plugins'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
@@ -13,19 +13,7 @@ const buildAuth = (data: TestData) =>
     basePath: '/api/auth',
     database: data.authDatabase,
     telemetry: { enabled: false },
-    plugins: [
-      organization({
-        creatorRole: 'owner',
-        schema: {
-          member: {
-            additionalFields: {
-              termsAcceptedAt: { type: 'date', required: false, input: false },
-            },
-          },
-        },
-      }),
-      testUtils(),
-    ],
+    plugins: [testUtils()],
   })
 
 describe('the Better Auth adapter over the Drizzle schema', () => {
@@ -62,21 +50,5 @@ describe('the Better Auth adapter over the Drizzle schema', () => {
 
     expect(await auth.api.getSession({ headers })).toBeNull()
     expect(await data.db.select().from(sessions).where(eq(sessions.userId, userId))).toHaveLength(0)
-  })
-
-  it('reads an organization made by createOrganization, with the terms stamp', async () => {
-    const { userId, headers } = await signedIn('owner@birch.vc')
-    const made = await data.createOrganization('Birch', { userId, termsAccepted: true })
-
-    const full = await auth.api.getFullOrganization({
-      headers,
-      query: { organizationId: made.id },
-    })
-    expect(full?.id).toBe(made.id)
-    expect(full?.slug).toBe(made.slug)
-    const owner = full?.members.find((member) => member.userId === userId) as
-      { role: string; termsAcceptedAt?: Date | null } | undefined
-    expect(owner?.role).toBe('owner')
-    expect(owner?.termsAcceptedAt).toBeInstanceOf(Date)
   })
 })

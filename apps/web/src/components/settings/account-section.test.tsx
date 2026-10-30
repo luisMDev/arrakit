@@ -1,14 +1,14 @@
 import type { AccountView } from '@arrakit/contract'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { i18n, loadLanguage } from '#/i18n'
 import { orpc } from '#/lib/orpc'
-import { answer, api, meAs, quiet, renderAt } from '#/test/rpc'
+import { answer, meAs, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
 import { AccountSection, devicesLine } from './account-section'
-import { SettingsPage } from './settings-page'
+import { RoutedSettings } from './testing'
 
 const auth = vi.hoisted(() => ({
   revokeOtherSessions: vi.fn(),
@@ -16,15 +16,12 @@ const auth = vi.hoisted(() => ({
 }))
 vi.mock('#/lib/auth-client', () => ({ authClient: auth }))
 
-beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
+setupTestApi()
 afterEach(async () => {
-  api.resetHandlers()
-  vi.restoreAllMocks()
   auth.revokeOtherSessions.mockReset()
   auth.signOut.mockReset()
   await loadLanguage('en')
 })
-afterAll(() => api.close())
 
 const ACCOUNT: AccountView = {
   name: 'Ana',
@@ -38,7 +35,7 @@ const ACCOUNT: AccountView = {
 
 function setup(account: Partial<AccountView> = {}, role: 'owner' | 'admin' | 'member' = 'member') {
   answer('me/account/get', { ...ACCOUNT, ...account })
-  return renderAt(<AccountSection open={() => undefined} />, {
+  return renderAt(<AccountSection />, {
     me: meAs({ role, email: 'ana@acme.com', name: 'Ana' }),
   })
 }
@@ -51,7 +48,7 @@ describe('devicesLine', () => {
     [['Mac', 'iPhone'], 'This Mac and an iPhone'],
     [['iPhone', 'Mac', 'Windows PC'], 'This iPhone, a Mac, and a Windows PC'],
   ])('%j -> %s', (devices, line) => {
-    expect(devicesLine(devices, t, 'en')).toBe(line)
+    expect(devicesLine(devices, t)).toBe(line)
   })
 })
 
@@ -211,7 +208,7 @@ describe('AccountSection', () => {
     expect(screen.getByRole('combobox', { name: 'Time zone' })).toHaveTextContent('London')
   })
 
-  it('drops the changes queued behind a failed save and saves the next one', async () => {
+  it('saves the change queued behind a failed one, then shows what the server kept', async () => {
     quiet()
     let fail: () => void = () => undefined
     const calls = answer(
@@ -219,8 +216,8 @@ describe('AccountSection', () => {
       () => new Promise((resolve) => (fail = () => resolve(new Response(null, { status: 500 })))),
       (input: unknown) => ({ ...ACCOUNT, ...(input as object) }),
     )
-    const loads = answer('me/account/get', ACCOUNT)
-    renderAt(<AccountSection open={() => undefined} />, {
+    answer('me/account/get', ACCOUNT, { ...ACCOUNT, timeZone: 'Europe/London' })
+    renderAt(<AccountSection />, {
       me: meAs({ role: 'member', email: 'ana@acme.com', name: 'Ana' }),
     })
     await userEvent.click(await screen.findByRole('switch', { name: /Product news/ }))
@@ -229,28 +226,22 @@ describe('AccountSection', () => {
     await waitFor(() => expect(calls).toHaveLength(1))
     fail()
     expect(await screen.findByText("Couldn't save your settings. Try again.")).toBeInTheDocument()
-    await waitFor(() => expect(loads).toHaveLength(2))
-    await waitFor(() =>
-      expect(screen.getByRole('switch', { name: /Product news/ })).not.toBeChecked(),
-    )
-    expect(screen.getByRole('combobox', { name: 'Time zone' })).toHaveTextContent('Madrid')
-    await new Promise((r) => setTimeout(r, 50))
-    expect(calls).toEqual([{ input: { emails: { productNews: true } } }])
-
-    await userEvent.click(screen.getByRole('switch', { name: /Product news/ }))
     await waitFor(() =>
       expect(calls).toEqual([
         { input: { emails: { productNews: true } } },
-        { input: { emails: { productNews: true } } },
+        { input: { timeZone: 'Europe/London' } },
       ]),
     )
-    await waitFor(() => expect(screen.getByRole('switch', { name: /Product news/ })).toBeChecked())
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: /Product news/ })).not.toBeChecked(),
+    )
+    expect(screen.getByRole('combobox', { name: 'Time zone' })).toHaveTextContent('London')
   })
 
   it('toasts when the account does not load', async () => {
     quiet()
     answer('me/account/get', 500)
-    renderAt(<AccountSection open={() => undefined} />)
+    renderAt(<AccountSection />)
     expect(
       await screen.findByText("Couldn't load your account. Reload the page."),
     ).toBeInTheDocument()
@@ -260,7 +251,7 @@ describe('AccountSection', () => {
     let resolve: (value: unknown) => void = () => undefined
     auth.revokeOtherSessions.mockReturnValue(new Promise((r) => (resolve = r)))
     answer('me/account/get', ACCOUNT, { ...ACCOUNT, devices: ['Mac'] })
-    renderAt(<AccountSection open={() => undefined} />)
+    renderAt(<AccountSection />)
     const button = await screen.findByRole('button', { name: 'Sign out everywhere' })
     await userEvent.dblClick(button)
     expect(button).toBeDisabled()
@@ -270,15 +261,15 @@ describe('AccountSection', () => {
     expect(auth.revokeOtherSessions).toHaveBeenCalledTimes(1)
   })
 
-  it('says so when the devices do not reload after signing out everywhere', async () => {
+  it('says so when the account does not reload after signing out everywhere', async () => {
     quiet()
     auth.revokeOtherSessions.mockResolvedValue({ data: { status: true }, error: null })
     const loads = answer('me/account/get', ACCOUNT, 500)
-    renderAt(<AccountSection open={() => undefined} />)
+    renderAt(<AccountSection />)
     await userEvent.click(await screen.findByRole('button', { name: 'Sign out everywhere' }))
     expect(await screen.findByText('Signed out on your other devices.')).toBeInTheDocument()
     expect(
-      await screen.findByText("Couldn't load your devices. Reload the page."),
+      await screen.findByText("Couldn't load your account. Reload the page."),
     ).toBeInTheDocument()
     expect(loads).toHaveLength(2)
     expect(screen.getByText('This Mac and an iPhone')).toBeInTheDocument()
@@ -297,12 +288,14 @@ describe('AccountSection', () => {
 
   it('tells an owner to delete the organization first, linking to Security', async () => {
     answer('me/account/get', ACCOUNT)
-    renderAt(<SettingsPage section="account" />, { me: meAs({ role: 'owner' }) })
+    renderAt(<RoutedSettings />, { me: meAs({ role: 'owner' }) })
     expect(await screen.findByText(/You own this organization/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull()
     const owned = screen.getByText(/You own this organization/)
-    await userEvent.click(within(owned).getByRole('button', { name: 'Security and data' }))
-    expect(screen.getByRole('heading', { level: 2, name: 'Security and data' })).toBeInTheDocument()
+    await userEvent.click(within(owned).getByRole('link', { name: 'Security and data' }))
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Security and data' }),
+    ).toBeInTheDocument()
   })
 
   it('deletes the account after confirming, signs out and opens Sign in', async () => {

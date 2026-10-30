@@ -1,4 +1,4 @@
-import type { ScopedData, OrganizationRow, OrganizationScope } from '@arrakit/db'
+import type { OrganizationRow, OrganizationScope, ScopedData, StripeRefs } from '@arrakit/db'
 import type { Plan } from '@arrakit/plans'
 
 import type { StripeGateway, SubscriptionEvent, SubscriptionState } from './stripe-gateway'
@@ -30,6 +30,12 @@ export type BillingOutcome =
     }
 
 type DataLike = Pick<ScopedData, 'forOrganization'>
+
+export const stripeRefs = (subscription: SubscriptionState, plan: Plan): StripeRefs => ({
+  customerId: subscription.customerId,
+  subscriptionId: plan === 'free' ? null : subscription.id,
+  anchor: subscription.anchor,
+})
 
 export async function findOrganization(
   data: DataLike,
@@ -87,11 +93,7 @@ export async function applyBillingEvent(
   if (plan === 'free' && replaced) {
     return { kind: 'ignored', reason: `subscription ${subscription.id} was replaced` }
   }
-  await scope.setPlan(plan, {
-    customerId: subscription.customerId,
-    subscriptionId: plan === 'free' ? null : subscription.id,
-    anchor: subscription.anchor,
-  })
+  await scope.setPlan(plan, stripeRefs(subscription, plan))
   return {
     kind: 'applied',
     organizationId,

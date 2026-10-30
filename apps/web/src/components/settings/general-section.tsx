@@ -1,14 +1,11 @@
 import { updateOrganizationSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import { Card, CardContent } from '#/components/ui/card'
 import { Field, FieldDescription, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
-import { apiFailed } from '#/lib/api-errors'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing, useClearingForm } from '#/lib/form'
 import { orpc } from '#/lib/orpc'
@@ -29,39 +26,23 @@ export function GeneralSection() {
     values: { name: organization?.name ?? '' },
   })
   const invalid = form.formState.errors.name !== undefined
-  const queryClient = useQueryClient()
 
-  async function load(failure: string) {
-    try {
-      await queryClient.fetchQuery({ ...orpc.me.get.queryOptions(), staleTime: 0 })
-    } catch (err) {
-      apiFailed('[general] loading the organization failed', err, failure)
-    }
-  }
-
-  const loadOnOpen = useRef(() => load(t(`${K}.notLoaded`)))
-  useEffect(() => {
-    void loadOnOpen.current()
-  }, [])
-
-  const rename = useApiMutation(
-    {
-      ...orpc.organizations.update.mutationOptions(),
-      onSuccess: (saved) => {
-        me.patch((current) =>
-          current.organization
-            ? { ...current, organization: { ...current.organization, name: saved.name } }
-            : current,
-        )
-        form.reset({ name: saved.name })
-      },
-      onError: async () => {
-        form.reset()
-        await load(t(`${K}.notSaved`))
-      },
+  const rename = useApiMutation({
+    ...orpc.organizations.update.mutationOptions(),
+    onSuccess: (saved) => {
+      me.patch((current) =>
+        current.organization
+          ? { ...current, organization: { ...current.organization, name: saved.name } }
+          : current,
+      )
+      form.reset({ name: saved.name })
     },
-    { context: '[general] renaming the organization failed', failure: t(`${K}.notSaved`) },
-  )
+    onError: async () => {
+      form.reset()
+      await me.refresh()
+    },
+    meta: { failure: t(`${K}.notSaved`) },
+  })
 
   async function saveName({ name: trimmed }: z.output<typeof nameSchema>) {
     if (!organization || !me.isAdmin) return

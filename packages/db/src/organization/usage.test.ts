@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { creditLedger, organizations, usageLevels } from '../schema/index'
-import { type TestData, openTestData } from '../testing'
+import { type TestData, insertOrganization, openTestData } from '../testing'
 import { UsageLimitError } from './usage'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -21,22 +21,15 @@ describe('forOrganization().usage', () => {
     clock = new Date('2026-10-08T12:00:00Z')
   })
 
-  async function newOrganization(
-    plan: Plan = 'free',
-    options: { createdAt?: Date; usageAnchor?: Date | null } = {},
-  ) {
+  async function newOrganization(plan: Plan = 'free', options: { usageAnchor?: Date } = {}) {
     counter += 1
-    const [org] = await data.db
-      .insert(organizations)
-      .values({
-        name: `Org ${counter}`,
-        slug: `org-${counter}`,
-        plan,
-        createdAt: options.createdAt ?? new Date(clock.getTime() - DAY),
-        usageAnchor: options.usageAnchor ?? null,
-      })
-      .returning()
-    return { id: org!.id, usage: data.forOrganization(org!.id).usage }
+    const { id } = await insertOrganization(data, {
+      slug: `org-${counter}`,
+      plan,
+      createdAt: new Date(clock.getTime() - DAY),
+      ...options,
+    })
+    return { id, usage: data.forOrganization(id).usage }
   }
 
   const metric = async (
@@ -68,15 +61,28 @@ describe('forOrganization().usage', () => {
     expect(summary[0]!.resetsOn.getTime()).toBeGreaterThan(clock.getTime() + 27 * DAY - DAY)
   })
 
-  it('writes the grant once however many reads race', async () => {
+  it('computes the grant on read, writing nothing to the ledger', async () => {
     const { id, usage } = await newOrganization()
-    await Promise.all([usage.summary(), usage.summary(), usage.summary()])
-    const grants = await data.db
-      .select()
-      .from(creditLedger)
-      .where(eq(creditLedger.organizationId, id))
-    expect(grants.filter((g) => g.metric === 'credits')).toHaveLength(1)
+    await Promise.all([usage.summary(), usage.check('credits')])
+    expect(
+      await data.db.select().from(creditLedger).where(eq(creditLedger.organizationId, id)),
+    ).toEqual([])
     expect((await metric(usage, 'credits')).granted).toBe(100)
+  })
+
+  it('ignores plan_grant rows left in the ledger', async () => {
+    const { id, usage } = await newOrganization()
+    const { resetsOn } = await metric(usage, 'credits')
+    await data.db.insert(creditLedger).values({
+      organizationId: id,
+      metric: 'credits',
+      bucket: 'plan',
+      reason: 'plan_grant',
+      amount: 500,
+      periodStart: new Date(resetsOn.getTime() - 31 * DAY),
+      idempotencyKey: 'grant:old',
+    })
+    expect(await metric(usage, 'credits')).toMatchObject({ granted: 100, available: 100 })
   })
 
   it('spends the plan first, then purchased', async () => {
@@ -189,11 +195,11 @@ describe('forOrganization().usage', () => {
     expect(await metric(usage, 'credits')).toMatchObject({ granted: 3_000, plan: 2_600 })
   })
 
-  it('keeps what was granted on a downgrade mid-month', async () => {
+  it('follows the plan on a downgrade mid-month', async () => {
     const { id, usage } = await newOrganization('team')
-    await usage.summary()
+    await usage.consume('credits', 50, { idempotencyKey: 'work' })
     await data.db.update(organizations).set({ plan: 'free' }).where(eq(organizations.id, id))
-    expect((await metric(usage, 'credits')).granted).toBe(3_000)
+    expect(await metric(usage, 'credits')).toMatchObject({ granted: 100, plan: 50, used: 50 })
   })
 
   it('limits a capacity metric by its level', async () => {
@@ -210,8 +216,9 @@ describe('forOrganization().usage', () => {
   it('reverses a refund proportionally from every metric, once per key', async () => {
     const { usage } = await newOrganization()
     await usage.credit(2_000, { idempotencyKey: 'checkout:cs_6' })
-    expect(await usage.reverse(1_000, { idempotencyKey: 'reversal:re_1' })).toBe(true)
-    expect(await usage.reverse(1_000, { idempotencyKey: 'reversal:re_1' })).toBe(false)
+    const payment = { key: 'pi_re_1', cents: 2_000 }
+    expect(await usage.reverse(1_000, { idempotencyKey: 'reversal:re_1', payment })).toBe(true)
+    expect(await usage.reverse(1_000, { idempotencyKey: 'reversal:re_1', payment })).toBe(false)
     expect((await metric(usage, 'credits')).purchased).toBe(1_000)
     expect((await metric(usage, 'storage_gb')).purchased).toBe(100)
   })
@@ -220,7 +227,10 @@ describe('forOrganization().usage', () => {
     const { usage } = await newOrganization()
     await usage.credit(1_000, { idempotencyKey: 'checkout:cs_7' })
     await usage.consume('credits', 1_100, { idempotencyKey: 'all' })
-    await usage.reverse(1_000, { idempotencyKey: 'reversal:re_2' })
+    await usage.reverse(1_000, {
+      idempotencyKey: 'reversal:re_2',
+      payment: { key: 'pi_re_2', cents: 1_000 },
+    })
     expect(await metric(usage, 'credits')).toMatchObject({ purchased: 0, available: 0 })
     await usage.credit(2_000, { idempotencyKey: 'checkout:cs_8' })
     expect((await metric(usage, 'credits')).purchased).toBe(1_000)
@@ -269,9 +279,13 @@ describe('forOrganization().usage', () => {
     expect((await metric(usage, 'credits')).purchased).toBe(0)
   })
 
-  it('keeps a capacity limit at 0 when adjustments take back more than it had', async () => {
+  it('keeps a capacity limit at 0 when reversals take back more than it had', async () => {
     const { usage } = await newOrganization()
-    await usage.adjust('storage_gb', -50, { idempotencyKey: 'clawback' })
+    await usage.credit(1_000, { idempotencyKey: 'checkout:cs_16' })
+    await usage.reverse(1_500, {
+      idempotencyKey: 'dispute:dp_3',
+      payment: { key: 'pi_6', cents: 1_500 },
+    })
     expect(await metric(usage, 'storage_gb')).toMatchObject({
       purchased: -50,
       available: 0,
@@ -279,16 +293,6 @@ describe('forOrganization().usage', () => {
     })
     await expect(usage.set('storage_gb', 1)).rejects.toBeInstanceOf(UsageLimitError)
     expect(await usage.set('storage_gb', 0)).toMatchObject({ used: 0, limit: 0 })
-  })
-
-  it('adjusts by hand once per key', async () => {
-    const { usage } = await newOrganization()
-    expect(await usage.adjust('credits', 50, { idempotencyKey: 'goodwill' })).toBe(true)
-    expect(await usage.adjust('credits', 50, { idempotencyKey: 'goodwill' })).toBe(false)
-    expect((await metric(usage, 'credits')).available).toBe(150)
-    await expect(usage.adjust('credits', 0, { idempotencyKey: 'zero' })).rejects.toThrow(
-      'other than 0',
-    )
   })
 
   it('refuses malformed uses', async () => {
@@ -302,6 +306,9 @@ describe('forOrganization().usage', () => {
     await expect(usage.consume('credits', 1, { idempotencyKey: '  ' })).rejects.toThrow(
       'must not be blank',
     )
+    await expect(
+      usage.reverse(100, { idempotencyKey: 'r', payment: { key: ' ', cents: 100 } }),
+    ).rejects.toThrow('must not be blank')
   })
 
   it('keeps balances per organization', async () => {
@@ -319,7 +326,10 @@ describe('forOrganization().usage', () => {
     clock = new Date(clock.getTime() + 1_000)
     await new Promise((resolve) => setTimeout(resolve, 5))
     await usage.credit(2_500, { idempotencyKey: 'checkout:new' })
-    await usage.reverse(1_000, { idempotencyKey: 'reversal:re_3' })
+    await usage.reverse(1_000, {
+      idempotencyKey: 'reversal:re_3',
+      payment: { key: 'pi_re_3', cents: 2_500 },
+    })
     const topUps = await usage.topUps()
     expect(topUps.map((t) => t.cents)).toEqual([2_500, 1_000])
     expect(topUps[0]!.amounts).toEqual({ credits: 2_500, storage_gb: 250 })

@@ -29,5 +29,5 @@ export const usageSchema = z.object({
 export type UsageView = z.infer<typeof usageSchema>
 
 export const usageContract = {
-  get: base.route({ method: 'GET', path: '/usage', tags: ['usage'] }).output(usageSchema),
+  get: base.output(usageSchema),
 }

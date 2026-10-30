@@ -18,7 +18,6 @@ interface EmailInput {
   readonly heading: { readonly lead: string; readonly tail: string }
   readonly blocks: readonly Block[]
   readonly footer?: string
-  readonly replyTo?: string
 }
 
 export const paragraph = (text: string): Block => ({ kind: 'paragraph', text })
@@ -133,7 +132,6 @@ function renderText(input: EmailInput): string {
 
 export function composeEmail(input: EmailInput): RenderedEmail {
   return {
-    replyTo: input.replyTo ?? null,
     subject: input.subject,
     html: renderHtml(input),
     text: renderText(input),

@@ -1,10 +1,10 @@
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import '#/i18n'
 import { renderWithQueries } from '#/components/auth/testing'
-import { answer, api, meAs, quiet } from '#/test/rpc'
+import { answer, meAs, quiet, setupTestApi } from '#/test/rpc'
 import type { ChoiceSearch } from '#/lib/checkout-choice'
 
 import { ProfilePage } from './profile-page'
@@ -18,16 +18,11 @@ const ORG = {
 
 const NO_ORGANIZATION = meAs({ organization: null, role: null, plan: null, seats: null })
 
-beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
+setupTestApi()
 beforeEach(() => {
   quiet()
   answer('me/get', NO_ORGANIZATION)
 })
-afterEach(() => {
-  api.resetHandlers()
-  vi.restoreAllMocks()
-})
-afterAll(() => api.close())
 
 function renderPage(search: ChoiceSearch = {}) {
   const onDone = vi.fn()

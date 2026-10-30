@@ -8,7 +8,7 @@ export const onboardingRouter = {
     const { user } = context
     const name = organizationNameOr(input.name, user.email, input.personName || user.name)
     return organizationSummary(
-      await context.data.createOrganization(name, {
+      await context.deps.data.createOrganization(name, {
         userId: user.id,
         personName: input.personName,
         termsAccepted: true,
@@ -18,7 +18,7 @@ export const onboardingRouter = {
   skip: authed.organizations.skip.handler(async ({ context }) => {
     const { user } = context
     return organizationSummary(
-      await context.data.createOrganization(organizationNameOnSkip(user.email, user.name), {
+      await context.deps.data.createOrganization(organizationNameOnSkip(user.email, user.name), {
         userId: user.id,
         termsAccepted: false,
       }),

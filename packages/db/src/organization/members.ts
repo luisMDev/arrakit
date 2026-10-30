@@ -4,12 +4,13 @@ import {
   isAdminRole,
   isWorkEmail,
   normalizeEmail,
+  toAssignableRole,
   toOrganizationRole,
 } from '@arrakit/address'
 import { PLAN_LABELS, PLAN_OFFERS, type Plan } from '@arrakit/plans'
 import { type SQL, and, asc, eq, gt, inArray, ne, sql } from 'drizzle-orm'
 
-import type { Database } from '../connection'
+import { type Database, transaction } from '../connection'
 import type { DataContext } from '../context'
 import {
   AlreadyMemberError,
@@ -19,8 +20,9 @@ import {
   SeatLimitError,
 } from '../errors'
 import type { OrganizationId } from '../organization-id'
-import { invitations, members, organizations, users } from '../schema/index'
+import { invitations, members, users } from '../schema/index'
 import { revokeGrants } from '../data/organizations'
+import { organizationRow } from './organization'
 
 export type { AssignableRole, OrganizationRole }
 
@@ -60,9 +62,6 @@ export interface OrganizationMembers {
   changeRole(actorUserId: string, email: string, role: AssignableRole): Promise<MemberView>
   remove(actorUserId: string, email: string): Promise<void>
 }
-
-export const toAssignableRole = (role: string | null): AssignableRole =>
-  role === 'admin' ? 'admin' : 'member'
 
 interface PolicyMember {
   userId: string
@@ -143,12 +142,7 @@ const inviteExpiry = () => sql`now() + make_interval(days => ${INVITE_DAYS})`
 
 /** The organization's plan, its row held until the transaction ends so seat checks never interleave. */
 export async function lockedPlan(tx: Database, organizationId: string): Promise<Plan | undefined> {
-  const [row] = await tx
-    .select({ plan: organizations.plan })
-    .from(organizations)
-    .where(eq(organizations.id, organizationId))
-    .for('no key update')
-  return row?.plan
+  return (await organizationRow(tx, organizationId, { lock: true }))?.plan
 }
 
 export async function memberCount(tx: Database, organizationId: string): Promise<number> {
@@ -212,9 +206,6 @@ export function membersScope(
   const inOrganization = eq(members.organizationId, organizationId)
   const pendingHere = (where: SQL) =>
     and(eq(invitations.organizationId, organizationId), eq(invitations.status, 'pending'), where)
-
-  const transaction = <R>(work: (tx: Database) => Promise<R>) =>
-    db.transaction((tx) => work(tx as unknown as Database))
 
   async function actorIn(tx: Database, userId: string): Promise<PolicyMember> {
     const [row] = await tx
@@ -286,7 +277,7 @@ export function membersScope(
     async invite({ email, role, inviterId }) {
       const normalized = normalizeEmail(email)
       if (!isWorkEmail(normalized)) throw new InviteEmailUnusableError(email)
-      return transaction(async (tx) => {
+      return transaction(db, async (tx) => {
         const plan = await lockedPlan(tx, organizationId)
         requireMemberChange({
           actor: await actorIn(tx, inviterId),
@@ -325,7 +316,7 @@ export function membersScope(
     },
 
     resend: (id) =>
-      transaction(async (tx) => {
+      transaction(db, async (tx) => {
         const plan = await lockedPlan(tx, organizationId)
         const [invitation] = await tx
           .select({ email: invitations.email })
@@ -360,7 +351,7 @@ export function membersScope(
     },
 
     changeRole: (actorUserId, email, role) =>
-      transaction(async (tx) => {
+      transaction(db, async (tx) => {
         const target = await checked(tx, actorUserId, email, (t) => ({
           kind: 'role',
           target: t,
@@ -371,7 +362,7 @@ export function membersScope(
       }),
 
     remove: (actorUserId, email) =>
-      transaction(async (tx) => {
+      transaction(db, async (tx) => {
         const target = await checked(tx, actorUserId, email, (t) => ({ kind: 'remove', target: t }))
         await tx.delete(members).where(eq(members.id, target.id))
         await revokeGrants(tx, organizationId, target.userId)

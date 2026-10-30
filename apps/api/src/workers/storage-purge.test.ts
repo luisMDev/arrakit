@@ -6,8 +6,6 @@ import { type LogEntry, recordingLogger } from '../observability/logger'
 
 import { STORAGE_PURGE, queueStoragePurge, registerStoragePurge } from './storage-purge'
 
-const bytes = new TextEncoder().encode('x')
-
 describe('storage purge worker', () => {
   let data: TestData
   let orgId: string
@@ -30,21 +28,12 @@ describe('storage purge worker', () => {
     expect(data.jobs.workers.has(STORAGE_PURGE)).toBe(true)
   })
 
-  it('removes a folder, or only the keys named, through the queue', async () => {
-    await files().put('companies/c1/a.pdf', bytes, 'application/pdf')
-    await files().put('companies/c1x/b.pdf', bytes, 'application/pdf')
-    await files().put('notes.txt', bytes, 'text/plain')
-    await files().put('keep.txt', bytes, 'text/plain')
+  it('removes a folder, or the whole organization, through the queue', async () => {
+    for (const path of ['companies/c1/a.pdf', 'companies/c1x/b.pdf', 'keep.txt']) {
+      data.storage.put(orgId, path)
+    }
 
     await queueStoragePurge(data.jobs, { organizationId: orgId, folder: 'companies/c1/' }, log)
-    await data.jobs.run(STORAGE_PURGE)
-    expect(await paths()).toEqual(['companies/c1x/b.pdf', 'keep.txt', 'notes.txt'])
-
-    await queueStoragePurge(
-      data.jobs,
-      { organizationId: orgId, keys: ['notes.txt', 'gone.txt'] },
-      log,
-    )
     await data.jobs.run(STORAGE_PURGE)
     expect(await paths()).toEqual(['companies/c1x/b.pdf', 'keep.txt'])
 
@@ -66,13 +55,13 @@ describe('storage purge worker', () => {
     })
   })
 
-  it('names every key and the whole organization in its log lines', async () => {
+  it('names the folder or the whole organization in its log lines', async () => {
     const jobs = { ...data.jobs, send: async () => Promise.reject(new Error('queue down')) }
 
     await expect(
       queueStoragePurge(jobs, { organizationId: orgId, folder: '' }, log),
     ).resolves.toBeUndefined()
-    await queueStoragePurge(jobs, { organizationId: orgId, keys: ['a.pdf', 'b.pdf'] }, log)
+    await queueStoragePurge(jobs, { organizationId: orgId, folder: 'companies/' }, log)
 
     const notQueued = 'storage purge not queued; its files stay in the bucket'
     expect(errors()).toEqual([
@@ -80,7 +69,7 @@ describe('storage purge worker', () => {
       expect.objectContaining({
         msg: notQueued,
         organizationId: orgId,
-        target: 'files a.pdf, b.pdf',
+        target: 'folder "companies/"',
       }),
     ])
   })

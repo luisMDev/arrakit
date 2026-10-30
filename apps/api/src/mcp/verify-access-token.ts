@@ -42,9 +42,8 @@ export async function verifyAccessToken(
 
   return {
     userId,
-    organizationId: membership.organization.id,
+    organization: membership.organization,
     role: membership.role,
-    organizationSlug: membership.organization.slug,
     clientId: typeof clientId === 'string' ? clientId : '',
     scopes: typeof scope === 'string' ? scope.split(' ').filter(Boolean) : [],
   }

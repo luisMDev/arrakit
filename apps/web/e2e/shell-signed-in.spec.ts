@@ -1,10 +1,9 @@
 import { expect, test } from '@playwright/test'
 
-import { createOrganization, signIn, uniqueEmail } from './session'
+import { signIn, signedInOwner, uniqueEmail } from './session'
 
 test('a signed-in owner moves around the app from the account menu', async ({ page }) => {
-  await signIn(page, uniqueEmail('ana'))
-  await createOrganization(page, 'Acme', 'Ana Ruiz')
+  await signedInOwner(page, { who: 'ana', personName: 'Ana Ruiz' })
 
   await page.goto('/app')
   await expect(page.getByRole('heading', { level: 1, name: 'Hi, Ana Ruiz.' })).toBeVisible()
@@ -21,8 +20,8 @@ test('a signed-in owner moves around the app from the account menu', async ({ pa
 
   for (const [item, path, section] of [
     ['Settings', '/app/settings', 'Account'],
-    ['Members', '/app/members', 'Members'],
-    ['Billing', '/app/billing', 'Billing'],
+    ['Members', '/app/settings\\?section=members', 'Members'],
+    ['Billing', '/app/settings\\?section=billing', 'Billing'],
   ] as const) {
     await menuButton.click()
     await page.locator('#app-menu').getByRole('link', { name: item }).click()
@@ -44,8 +43,7 @@ test('a signed-in owner moves around the app from the account menu', async ({ pa
 })
 
 test('a free organization opening Welcome without a checkout goes to Plans', async ({ page }) => {
-  await signIn(page, uniqueEmail('free'))
-  await createOrganization(page, 'Free Co', 'Fran')
+  await signedInOwner(page, { who: 'free', organization: 'Free Co', personName: 'Fran' })
   await page.goto('/app/welcome')
   await expect(page).toHaveURL(/\/app\/plans$/)
 })

@@ -1,63 +1,8 @@
-import { type Page, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 import { magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
-import { createOrganization, rpc, signIn, stripeWebhook, uniqueEmail } from './session'
-
-const RENEWAL = Date.UTC(2027, 9, 4) / 1000
-
-async function ownerOnFree(page: Page, who: string) {
-  const email = uniqueEmail(who)
-  await signIn(page, email)
-  const organization = await createOrganization(page, 'Billing Co')
-  return { email, organizationId: organization.id }
-}
-
-async function payFor(
-  page: Page,
-  organizationId: string,
-  lookupKey: 'pro_yearly' | 'team_yearly' | 'team_monthly',
-) {
-  const slug = organizationId.slice(0, 8)
-  const customerId = `cus_${slug}`
-  const subscriptionId = `sub_${slug}`
-  const yearly = lookupKey.endsWith('yearly')
-  const amount = { pro_yearly: 19_200, team_yearly: 48_000, team_monthly: 5_000 }[lookupKey]
-  await stripeWebhook(page, {
-    subscriptionId,
-    organizationId,
-    subscribe: { id: subscriptionId, customerId, organizationId, status: 'active', lookupKey },
-    bill: {
-      customerId,
-      snapshot: {
-        subscription: {
-          status: 'active',
-          lookupKey,
-          periodEnd: RENEWAL,
-          cancelAtPeriodEnd: false,
-          amount: { amount, currency: 'usd' },
-          scheduled: null,
-        },
-        customer: {
-          email: 'finance@billing.test',
-          name: 'Billing Co SL',
-          taxId: null,
-          card: { brand: 'visa', last4: '4242' },
-        },
-        invoices: [
-          {
-            id: `in_${slug}`,
-            created: Date.UTC(2026, 9, 4) / 1000,
-            total: { amount, currency: 'usd' },
-            status: 'paid',
-            pdfUrl: 'https://pay.stripe.test/in_1.pdf',
-          },
-        ],
-      },
-    },
-  })
-  return { yearly }
-}
+import { payFor, rpc, signedInOwner, uniqueEmail } from './session'
 
 test('a visitor picks Pro on Pricing, signs up, creates the organization and reaches Checkout', async ({
   page,
@@ -83,7 +28,7 @@ test('a visitor picks Pro on Pricing, signs up, creates the organization and rea
 test('an admin on Free selects Team monthly and is offered yearly before Checkout', async ({
   page,
 }) => {
-  await ownerOnFree(page, 'free')
+  await signedInOwner(page, { who: 'free', organization: 'Billing Co' })
   await page.goto('/app/plans')
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Pick the plan')
   await page
@@ -99,7 +44,10 @@ test('an admin on Free selects Team monthly and is offered yearly before Checkou
 })
 
 test('a paid webhook welcomes the organization to Team, and Billing shows it', async ({ page }) => {
-  const { organizationId } = await ownerOnFree(page, 'welcome')
+  const { organizationId } = await signedInOwner(page, {
+    who: 'welcome',
+    organization: 'Billing Co',
+  })
   await payFor(page, organizationId, 'team_yearly')
   await page.goto('/app/welcome?session_id=cs_test_1')
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Welcome')
@@ -114,7 +62,10 @@ test('a paid webhook welcomes the organization to Team, and Billing shows it', a
 })
 
 test('a paying admin switches up to Team, then cancels and keeps the plan', async ({ page }) => {
-  const { organizationId } = await ownerOnFree(page, 'switch')
+  const { organizationId } = await signedInOwner(page, {
+    who: 'switch',
+    organization: 'Billing Co',
+  })
   await payFor(page, organizationId, 'pro_yearly')
 
   await page.goto('/app/plans')
@@ -122,7 +73,7 @@ test('a paying admin switches up to Team, then cancels and keeps the plan', asyn
   const dialog = page.getByRole('dialog', { name: 'Switch to Team, yearly' })
   await expect(dialog).toContainText('$1,200 today, for the rest of this period.')
   await dialog.getByRole('button', { name: 'Switch to Team' }).click()
-  await expect(page).toHaveURL(/\/app\/billing$/)
+  await expect(page).toHaveURL(/\/app\/settings\?section=billing$/)
   const billing = page.getByRole('region', { name: 'Billing' })
   await expect(billing.getByText('Team · yearly')).toBeVisible()
 
@@ -135,7 +86,7 @@ test('a paying admin switches up to Team, then cancels and keeps the plan', asyn
 })
 
 test('Checkout without a valid plan goes back to Plans', async ({ page }) => {
-  await ownerOnFree(page, 'invalid')
+  await signedInOwner(page, { who: 'invalid', organization: 'Billing Co' })
   await page.goto('/app/checkout?plan=enterprise&cycle=yearly')
   await expect(page).toHaveURL(/\/app\/plans$/)
 })
@@ -144,7 +95,7 @@ test('a member sees Plans without buy buttons and cannot reach Billing or Checko
   page,
   browser,
 }) => {
-  const { organizationId } = await ownerOnFree(page, 'owner')
+  const { organizationId } = await signedInOwner(page, { who: 'owner', organization: 'Billing Co' })
   await payFor(page, organizationId, 'pro_yearly')
   const memberEmail = uniqueEmail('member')
   await rpc(page, 'invitations/invite', { email: memberEmail, role: 'member' })

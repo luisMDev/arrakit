@@ -1,51 +1,41 @@
 import { ORPCError } from '@orpc/server'
 
-import type { OrganizationMembers, PendingInvitation } from '@arrakit/db'
+import type { PendingInvitation } from '@arrakit/db'
 
-import type { Logger } from '../observability/logger'
 import { authed, member } from '../orpc/base'
-import { requireTrustedOrigin } from '../orpc/context'
+import type { MemberContext } from '../orpc/context'
 import { sendInviteMail } from '../organizations/invite-mail'
 import { invitationView } from '../organizations/invitation-view'
 import { organizationSummary } from '../organizations/organization-summary'
 
 const admin = member('admin')
-const fromApp = admin.use(requireTrustedOrigin('Invite from the app.'))
 
 const NO_SUCH_INVITATION = 'No such invitation in your organization.'
 
-type MarkSentContext = {
-  log: Logger
-  activeOrganization: { id: string }
-  scope: { members: Pick<OrganizationMembers, 'markEmailSent'> }
-}
-
 /**
- * Records that an invite email went out. The email is already sent, so a failed
- * write is logged and never fails the request: failing it would make the admin
- * press Resend again and send a second email.
+ * Sends the invite email and records that it went out. False when the email failed. The
+ * email is already sent when the mark fails, so that is only logged: failing the request would
+ * make the admin press Resend and send a second email.
  */
-async function markSent(
-  context: MarkSentContext,
-  invitationId: string,
-): Promise<PendingInvitation | undefined> {
-  const organizationId = context.activeOrganization.id
+async function sendAndMark(
+  context: MemberContext,
+  invitation: PendingInvitation,
+): Promise<PendingInvitation | null> {
+  const ids = { organizationId: context.activeOrganization.id, invitationId: invitation.id }
   try {
-    const marked = await context.scope.members.markEmailSent(invitationId)
-    if (!marked) {
-      context.log.error(
-        { organizationId, invitationId },
-        'invite email sent, but the invitation is no longer pending',
-      )
-    }
-    return marked
+    await sendInviteMail(context.deps, context.headers, invitation)
   } catch (err) {
-    context.log.error(
-      { err, organizationId, invitationId },
-      'invite email sent, but not marked sent',
-    )
-    return undefined
+    context.log.error({ err, ...ids }, 'invite email not sent')
+    return null
   }
+  try {
+    const marked = await context.scope.members.markEmailSent(invitation.id)
+    if (marked) return marked
+    context.log.error(ids, 'invite email sent, but the invitation is no longer pending')
+  } catch (err) {
+    context.log.error({ err, ...ids }, 'invite email sent, but not marked sent')
+  }
+  return { ...invitation, emailSent: true }
 }
 
 export const invitationsRouter = {
@@ -53,42 +43,25 @@ export const invitationsRouter = {
     (await context.scope.members.invitations()).map(invitationView),
   ),
 
-  invite: fromApp.invitations.invite.handler(async ({ context, input }) => {
-    const organizationId = context.activeOrganization.id
+  invite: admin.invitations.invite.handler(async ({ context, input }) => {
     const invitation = await context.scope.members.invite({
       email: input.email,
       role: input.role,
       inviterId: context.user.id,
     })
-    try {
-      await sendInviteMail(context.deps, context.headers, invitation)
-    } catch (err) {
-      context.log.error(
-        { err, organizationId, invitationId: invitation.id },
-        'invite email not sent',
-      )
-      return invitationView(invitation)
-    }
-    const marked = await markSent(context, invitation.id)
-    return invitationView(marked ?? { ...invitation, emailSent: true })
+    return invitationView((await sendAndMark(context, invitation)) ?? invitation)
   }),
 
-  resend: fromApp.invitations.resend.handler(async ({ context, input }) => {
+  resend: admin.invitations.resend.handler(async ({ context, input }) => {
     const invitation = await context.scope.members.resend(input.id)
     if (!invitation) throw new ORPCError('NOT_FOUND', { message: NO_SUCH_INVITATION })
-    try {
-      await sendInviteMail(context.deps, context.headers, invitation)
-    } catch (err) {
-      context.log.error(
-        { err, organizationId: context.activeOrganization.id, invitationId: invitation.id },
-        'invite email not sent again',
-      )
+    const sent = await sendAndMark(context, invitation)
+    if (!sent) {
       throw new ORPCError('SERVICE_UNAVAILABLE', {
         message: `The invite to ${invitation.email} is saved, but its email did not go out. Press Resend to send it again.`,
       })
     }
-    const marked = await markSent(context, invitation.id)
-    return invitationView(marked ?? { ...invitation, emailSent: true })
+    return invitationView(sent)
   }),
 
   cancel: admin.invitations.cancel.handler(async ({ context, input }) => {
@@ -98,7 +71,7 @@ export const invitationsRouter = {
   }),
 
   accept: authed.invitations.accept.handler(async ({ context, input }) => {
-    const { organization, role } = await context.data.acceptInvitation({
+    const { organization, role } = await context.deps.data.acceptInvitation({
       invitationId: input.id,
       userId: context.user.id,
       email: context.user.email,

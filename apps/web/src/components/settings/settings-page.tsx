@@ -1,6 +1,5 @@
 import { Link } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AccountSection } from '#/components/settings/account-section'
@@ -12,12 +11,21 @@ import { UsageSection } from '#/components/settings/usage-section'
 import { Button } from '#/components/ui/button'
 import { useCurrentUser } from '#/lib/current-user'
 
-export type SettingsSection = 'account' | 'general' | 'usage' | 'members' | 'billing' | 'security'
+const SETTINGS_SECTIONS = ['account', 'general', 'usage', 'members', 'billing', 'security'] as const
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]
 
-export interface SectionProps {
-  /** Opens another settings section in place. */
-  open: (section: SettingsSection) => void
+export interface SettingsSearch {
+  section?: SettingsSection
+  top_up?: string
 }
+
+const isSection = (value: unknown): value is SettingsSection =>
+  (SETTINGS_SECTIONS as readonly unknown[]).includes(value)
+
+export const settingsSearch = (search: Record<string, unknown>): SettingsSearch => ({
+  ...(isSection(search.section) ? { section: search.section } : {}),
+  ...(typeof search.top_up === 'string' ? { top_up: search.top_up } : {}),
+})
 
 const SETTINGS_NAV: {
   group: string
@@ -36,7 +44,7 @@ const SETTINGS_NAV: {
   },
 ]
 
-const SECTIONS: Record<SettingsSection, (props: SectionProps) => React.JSX.Element> = {
+const SECTIONS: Record<SettingsSection, () => React.JSX.Element> = {
   account: AccountSection,
   general: GeneralSection,
   usage: UsageSection,
@@ -51,15 +59,11 @@ const ADMIN_ONLY = new Set(
     .map((item) => item.id),
 )
 
-export function SettingsPage({ section }: { section: SettingsSection }) {
+export function SettingsPage({ section = 'account' }: { section?: SettingsSection }) {
   const { t } = useTranslation()
   const { isAdmin } = useCurrentUser()
   const visible = (id: SettingsSection) => isAdmin || !ADMIN_ONLY.has(id)
-  const [chosen, setChosen] = useState<SettingsSection>(section)
-  const current = visible(chosen) ? chosen : 'account'
-  const open = (id: SettingsSection) => {
-    if (visible(id)) setChosen(id)
-  }
+  const current = visible(section) ? section : 'account'
   const Section = SECTIONS[current]
 
   return (
@@ -86,19 +90,24 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
                 .map((item) => (
                   <Button
                     key={item.id}
+                    asChild
                     variant={current === item.id ? 'secondary' : 'ghost'}
                     className="justify-start"
-                    aria-current={current === item.id ? 'true' : undefined}
-                    onClick={() => open(item.id)}
                   >
-                    {t(`settings.${item.id}`)}
+                    <Link
+                      to="/app/settings"
+                      search={{ section: item.id }}
+                      aria-current={current === item.id ? 'page' : undefined}
+                    >
+                      {t(`settings.${item.id}`)}
+                    </Link>
                   </Button>
                 ))}
             </div>
           ))}
         </nav>
       </div>
-      <Section open={open} />
+      <Section />
     </main>
   )
 }

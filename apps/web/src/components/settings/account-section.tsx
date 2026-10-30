@@ -1,7 +1,13 @@
 import { type AccountView, accountUpdateSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { personName } from '@arrakit/address'
+import {
+  type UseMutationOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
@@ -20,17 +26,15 @@ import {
 } from '#/components/ui/select'
 import { Switch } from '#/components/ui/switch'
 import { type Language, isLanguage, loadLanguage } from '#/i18n'
-import { apiFailed, reportError, type SaveOnChange, saveOnChange } from '#/lib/api-errors'
 import { authClient } from '#/lib/auth-client'
-import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
+import { initialOf, useCurrentUser } from '#/lib/current-user'
+import { listing } from '#/lib/format'
 import { registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import { client, orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
-import { useFailureToast } from '#/lib/use-failure-toast'
 
 import { ConfirmDeleteDialog } from './confirm-delete-dialog'
-import type { SectionProps } from './settings-page'
 import { SettingRow, SettingsCard, SettingsHeading, SettingsSectionLayout } from './settings-ui'
 
 const LANGUAGE_NAMES: Record<Language, string> = { en: 'English', es: 'Español' }
@@ -46,19 +50,16 @@ const TIME_ZONES: { zone: string; key: string }[] = [
 
 const K = 'settings.accountSettings'
 
+const SAVE_KEY = ['account']
+
 const nameSchema = z.object({ name: accountUpdateSchema.shape.name.unwrap() })
 
 type AccountUpdate = Parameters<typeof client.me.account.update>[0]
 
-interface QueuedChange {
-  changes: AccountUpdate
-  id: number
-}
-
 type Translate = (key: string, params?: Record<string, unknown>) => string
 
 /** "This Mac and an iPhone": the current device first, the others with their article. */
-export function devicesLine(devices: string[], t: Translate, language: string): string {
+export function devicesLine(devices: string[], t: Translate): string {
   if (devices.length === 0) return t(`${K}.noDevice`)
   const [first, ...others] = devices as [string, ...string[]]
   const parts = [
@@ -67,7 +68,7 @@ export function devicesLine(devices: string[], t: Translate, language: string): 
       t(/^[aeiou]/i.test(device) ? `${K}.anDevice` : `${K}.aDevice`, { device }),
     ),
   ]
-  return new Intl.ListFormat(language, { style: 'long', type: 'conjunction' }).format(parts)
+  return listing(parts)
 }
 
 function withChanges(account: AccountView, changes: AccountUpdate): AccountView {
@@ -88,97 +89,54 @@ function browserTimeZone(): string | null {
   }
 }
 
-export function AccountSection({ open }: SectionProps) {
-  const { t, i18n } = useTranslation()
+export function AccountSection() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const me = useCurrentUser()
-  const accountQuery = orpc.me.account.get.queryOptions()
-  // Loaded when the section opens and after a failure or a sign-out, never in the background:
-  // a refetch landing between queued saves would put back a choice the person just made.
-  const { data: account, error } = useQuery({
-    ...accountQuery,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  })
+  const { queryKey } = orpc.me.account.get.queryOptions()
+  const { data: account } = useQuery(
+    orpc.me.account.get.queryOptions({ meta: { failure: t(`${K}.notLoaded`) } }),
+  )
   const form = useClearingForm({
     resolver: zodResolver(nameSchema),
-    values: { name: account ? displayName(account) : '' },
+    values: { name: account ? personName(account.name, account.email) : '' },
   })
   const nameError = form.formState.errors.name !== undefined
   const [confirming, setConfirming] = useState(false)
+
+  const update: UseMutationOptions<AccountView, Error, AccountUpdate> = {
+    mutationKey: SAVE_KEY,
+    mutationFn: (changes) => client.me.account.update(changes),
+    scope: { id: 'account' },
+    onMutate: async (changes) => {
+      await queryClient.cancelQueries({ queryKey })
+      queryClient.setQueryData<AccountView>(queryKey, (current) =>
+        current ? withChanges(current, changes) : current,
+      )
+    },
+    onSuccess: async (saved) => {
+      if (queryClient.isMutating({ mutationKey: SAVE_KEY }) === 1) {
+        queryClient.setQueryData(queryKey, saved)
+      }
+      me.patch((current) => ({ ...current, name: saved.name, language: saved.language }))
+      if (isLanguage(saved.language)) await loadLanguage(saved.language)
+    },
+    onError: () => queryClient.invalidateQueries({ queryKey }),
+  }
+  const saving = useApiMutation({ ...update, meta: { failure: t(`${K}.notSaved`) } })
+  const save = (changes: AccountUpdate) => saving.mutate(changes)
+  const fillZone = useMutation(update)
+
   const zoneFilled = useRef(false)
-
-  useFailureToast(
-    account ? null : error,
-    '[account] loading the account failed',
-    t(`${K}.notLoaded`),
-  )
-
-  async function load(failure: string) {
-    try {
-      await queryClient.fetchQuery({ ...accountQuery, staleTime: 0 })
-    } catch (err) {
-      apiFailed('[account] reloading the account failed', err, failure)
-    }
-  }
-
-  async function applySaved(saved: AccountView, latest: boolean) {
-    if (latest) queryClient.setQueryData<AccountView>(accountQuery.queryKey, saved)
-    me.patch((current) => ({ ...current, name: saved.name, language: saved.language }))
-    if (isLanguage(saved.language)) await loadLanguage(saved.language)
-  }
-
-  const handlers = useRef({ applySaved, load, t })
-  useEffect(() => {
-    handlers.current = { applySaved, load, t }
-  })
-
-  const lastChange = useRef(0)
-  const saver = useRef<SaveOnChange<QueuedChange> | null>(null)
-
-  function save(changes: AccountUpdate) {
-    queryClient.setQueryData<AccountView>(accountQuery.queryKey, (current) =>
-      current ? withChanges(current, changes) : current,
-    )
-    saver.current ??= saveOnChange(
-      async ({ changes, id }: QueuedChange) => ({
-        saved: await client.me.account.update(changes),
-        id,
-      }),
-      {
-        context: '[account] saving a setting failed',
-        failure: () => handlers.current.t(`${K}.notSaved`),
-        saved: ({ saved, id }) =>
-          void handlers.current.applySaved(saved, id === lastChange.current),
-        failed: () => void handlers.current.load(handlers.current.t(`${K}.notSaved`)),
-      },
-    )
-    lastChange.current += 1
-    saver.current({ changes, id: lastChange.current })
-  }
-
-  /** Saves the browser's zone the person never chose: a failure is only reported, never toasted. */
-  async function fillZone(timeZone: string) {
-    try {
-      await applySaved(await client.me.account.update({ timeZone }), lastChange.current === 0)
-    } catch (err) {
-      reportError('[account] saving the browser time zone failed', err)
-    }
-  }
-
-  const fillZoneRef = useRef(fillZone)
-  useEffect(() => {
-    fillZoneRef.current = fillZone
-  })
-
   const needsZone = account?.timeZone === null
+  const { mutate: saveZone } = fillZone
   useEffect(() => {
     if (!needsZone || zoneFilled.current) return
     zoneFilled.current = true
     const zone = browserTimeZone()
-    if (zone) void fillZoneRef.current(zone)
-  }, [needsZone])
+    if (zone) saveZone({ timeZone: zone })
+  }, [needsZone, saveZone])
 
   function saveName({ name: trimmed }: z.output<typeof nameSchema>) {
     if (!account) return
@@ -188,33 +146,29 @@ export function AccountSection({ open }: SectionProps) {
 
   const nameField = registerClearing(form, 'name')
 
-  const signOutEverywhere = useApiMutation(
-    {
-      mutationFn: async () => {
-        const result = await authClient.revokeOtherSessions()
-        if (result?.error) throw result.error
-      },
-      onSuccess: () => {
-        notify.success(t(`${K}.signedOut`))
-        void load(t(`${K}.devicesNotLoaded`))
-      },
+  const signOutEverywhere = useApiMutation({
+    mutationFn: async () => {
+      const result = await authClient.revokeOtherSessions()
+      if (result?.error) throw result.error
     },
-    { context: '[account] signing out everywhere failed', failure: t(`${K}.notSignedOut`) },
-  )
+    onSuccess: () => {
+      notify.success(t(`${K}.signedOut`))
+      void queryClient.invalidateQueries({ queryKey })
+    },
+    meta: { failure: t(`${K}.notSignedOut`) },
+  })
 
-  const deleteAccount = useApiMutation(
-    {
-      ...orpc.me.delete.mutationOptions(),
-      onSuccess: async () => {
-        await authClient.signOut().catch(() => undefined)
-        setConfirming(false)
-        notify.success(t(`${K}.deleted`))
-        me.signedOut()
-        void navigate({ to: '/signin' })
-      },
+  const deleteAccount = useApiMutation({
+    ...orpc.me.delete.mutationOptions(),
+    onSuccess: async () => {
+      await authClient.signOut().catch(() => undefined)
+      setConfirming(false)
+      notify.success(t(`${K}.deleted`))
+      me.signedOut()
+      void navigate({ to: '/signin' })
     },
-    { context: '[account] deleting the account failed', failure: t(`${K}.notDeleted`) },
-  )
+    meta: { failure: t(`${K}.notDeleted`) },
+  })
 
   const zones =
     account?.timeZone && !TIME_ZONES.some((z) => z.zone === account.timeZone)
@@ -228,7 +182,9 @@ export function AccountSection({ open }: SectionProps) {
           <Card>
             <CardContent className="flex items-start gap-4">
               <Avatar className="size-12">
-                <AvatarFallback>{initialOf(displayName(account))}</AvatarFallback>
+                <AvatarFallback>
+                  {initialOf(personName(account.name, account.email))}
+                </AvatarFallback>
               </Avatar>
               <Field data-invalid={nameError || undefined} className="flex-1">
                 <FieldLabel htmlFor="account-name">{t(`${K}.yourName`)}</FieldLabel>
@@ -273,7 +229,7 @@ export function AccountSection({ open }: SectionProps) {
                   </Button>
                 }
               >
-                {devicesLine(account.devices, t, i18n.language)}
+                {devicesLine(account.devices, t)}
               </SettingRow>
             </SettingsCard>
           </div>
@@ -347,8 +303,10 @@ export function AccountSection({ open }: SectionProps) {
               {me.isOwner ? (
                 <CardDescription>
                   {t(`${K}.ownerDeleteFirst`)}{' '}
-                  <Button variant="link" className="h-auto p-0" onClick={() => open('security')}>
-                    {t(`${K}.securityAndData`)}
+                  <Button asChild variant="link" className="h-auto p-0">
+                    <Link to="/app/settings" search={{ section: 'security' }}>
+                      {t(`${K}.securityAndData`)}
+                    </Link>
                   </Button>
                   {t(`${K}.ownerDeleteFirstEnd`)}
                 </CardDescription>

@@ -1,10 +1,11 @@
-import { Link, Outlet, useLocation, useRouter } from '@tanstack/react-router'
+import { Link, Outlet, useLocation } from '@tanstack/react-router'
 import { type ReactNode, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { APP_NAME, SITE_URL } from '#/config'
+import { initialOf } from '#/lib/current-user'
 
-import { onPreloadError, type PreloadErrorEvent } from './stale-chunk'
+import { reloadOnStaleChunk } from './stale-chunk'
 
 export function isInApp(pathname: string): boolean {
   return pathname.split('/')[1] === 'app'
@@ -17,7 +18,7 @@ function Wordmark() {
         aria-hidden="true"
         className="flex size-7 items-center justify-center rounded-full bg-primary text-sm text-primary-foreground"
       >
-        {APP_NAME.charAt(0).toUpperCase()}
+        {initialOf(APP_NAME)}
       </span>
       {APP_NAME}
     </span>
@@ -45,18 +46,17 @@ export function RootFrame({ children }: { children: ReactNode }) {
   )
 }
 
-/**
- * A lazy chunk that Vite failed to preload after a deploy: reload the screen being opened once
- * (the router's latest location is the navigation's target).
- */
+/** A lazy chunk that Vite failed to preload after a deploy; cancelled so Vite does not rethrow it. */
 function useStaleChunkRecovery() {
-  const router = useRouter()
   useEffect(() => {
-    const listener = (event: Event) =>
-      onPreloadError(event as PreloadErrorEvent, router.latestLocation.href, window)
+    const listener = (event: Event) => {
+      if (reloadOnStaleChunk((event as Event & { payload?: unknown }).payload)) {
+        event.preventDefault()
+      }
+    }
     window.addEventListener('vite:preloadError', listener)
     return () => window.removeEventListener('vite:preloadError', listener)
-  }, [router])
+  }, [])
 }
 
 export function RootLayout() {

@@ -4,18 +4,19 @@ import type { QueryClient } from '@tanstack/react-query'
 import { redirect } from '@tanstack/react-router'
 
 import { type ChoiceSearch, checkoutChoice } from '#/lib/checkout-choice'
-import { orpc } from '#/lib/orpc'
+import { guardedMe } from '#/lib/guards/guarded-me'
 
 export async function canCheckout({
   context,
+  location,
   search,
 }: {
   context: { queryClient: QueryClient }
+  location: { href: string }
   search: ChoiceSearch
 }): Promise<{ choice: PaidChoice }> {
+  const me = await guardedMe(context.queryClient, location.href)
   const choice = checkoutChoice(search)
-  const me = await context.queryClient.ensureQueryData(orpc.me.get.queryOptions())
-  const admin = isAdminRole(me.role)
-  if (!choice || !admin) throw redirect({ to: '/app/plans' })
+  if (!choice || !isAdminRole(me?.role ?? null)) throw redirect({ to: '/app/plans' })
   return { choice }
 }

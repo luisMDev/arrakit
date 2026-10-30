@@ -7,11 +7,6 @@ export const updateOrganizationSchema = z
   .refine((body) => Object.values(body).some((v) => v !== undefined), { error: 'Send a name.' })
 
 export const organizationsContract = {
-  update: base
-    .route({ method: 'PATCH', path: '/organizations', tags: ['organizations'] })
-    .input(updateOrganizationSchema)
-    .output(organizationSummarySchema),
-  delete: base
-    .route({ method: 'DELETE', path: '/organizations', tags: ['organizations'] })
-    .output(z.void()),
+  update: base.input(updateOrganizationSchema).output(organizationSummarySchema),
+  delete: base.output(z.void()),
 }

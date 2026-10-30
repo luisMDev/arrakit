@@ -2,7 +2,7 @@ import { ORPCError, call } from '@orpc/server'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { pub } from '../orpc/base'
-import { type TestApp, createTestApp } from '../testing/app'
+import { TEST_WEB_ORIGIN, type TestApp, createTestApp } from '../testing/app'
 import { createErrorReporter, noErrorReporter } from './error-reporter'
 import { isUnexpected } from './unexpected-error'
 
@@ -26,7 +26,10 @@ describe('request log and unexpected errors', () => {
     vi.spyOn(t.deps.auth.api, 'getSession').mockRejectedValue(new Error('adapter down'))
 
   it('gives each request an id, echoes it and logs one access line with it', async () => {
-    const res = await t.request('/api/rpc/authProviders/get', { method: 'POST' })
+    const res = await t.request('/api/rpc/authProviders/get', {
+      method: 'POST',
+      headers: { origin: TEST_WEB_ORIGIN },
+    })
     const requestId = res.headers.get('x-request-id')
     expect(requestId).toBeTruthy()
     expect(t.logs).toContainEqual(
@@ -45,7 +48,7 @@ describe('request log and unexpected errors', () => {
   it('keeps an incoming X-Request-Id, and leaves /health out of the access log', async () => {
     const res = await t.request('/api/rpc/authProviders/get', {
       method: 'POST',
-      headers: { 'x-request-id': 'lb-1234' },
+      headers: { 'x-request-id': 'lb-1234', origin: TEST_WEB_ORIGIN },
     })
     expect(res.headers.get('x-request-id')).toBe('lb-1234')
     expect(t.logs).toContainEqual(expect.objectContaining({ requestId: 'lb-1234' }))
@@ -76,21 +79,21 @@ describe('request log and unexpected errors', () => {
     })
   })
 
-  it('reports a procedure that fails unexpectedly, over RPC and REST', async () => {
+  it('reports a procedure that fails unexpectedly, without its message', async () => {
     const { headers } = await t.signIn({ email: 'ana@acme.com' })
     failSessions()
-    await expect(t.client(headers).me.get()).rejects.toMatchObject({ status: 500 })
-    const rest = await t.request('/api/me', { headers: { 'x-request-id': 'req-rest' } })
-    expect(rest.status).toBe(500)
-    expect(JSON.stringify(await rest.json())).not.toContain('adapter down')
+    headers.set('x-request-id', 'req-rpc')
+    const res = await t.request('/api/rpc/me/get', { method: 'POST', headers })
+    expect(res.status).toBe(500)
+    expect(await res.text()).not.toContain('adapter down')
 
-    expect(t.captured.map((c) => c.tags.procedure)).toEqual(['me.get', 'me.get'])
-    expect(t.captured[1]?.tags.requestId).toBe('req-rest')
+    expect(t.captured.map((c) => c.tags.procedure)).toEqual(['me.get'])
+    expect(t.captured[0]?.tags.requestId).toBe('req-rpc')
     expect(t.logs).toContainEqual(
       expect.objectContaining({
         level: 'error',
         procedure: 'me.get',
-        requestId: 'req-rest',
+        requestId: 'req-rpc',
         err: expect.objectContaining({ message: 'adapter down' }),
       }),
     )

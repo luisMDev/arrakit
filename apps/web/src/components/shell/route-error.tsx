@@ -6,7 +6,7 @@ import { Button } from '#/components/ui/button'
 import { reportError } from '#/lib/api-errors'
 
 import { RootFrame } from './root-layout'
-import { recoverFromStaleChunk } from './stale-chunk'
+import { reloadOnStaleChunk } from './stale-chunk'
 
 /** A screen that failed to load: a stale lazy chunk reloads the target once, anything else says so. */
 export function RouteError({ error, reset }: ErrorComponentProps) {
@@ -14,10 +14,8 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
   const router = useRouter()
 
   useEffect(() => {
-    void recoverFromStaleChunk(error, router.state.location.href, window).then((recovered) => {
-      if (!recovered) reportError('[router] a screen failed to load', error)
-    })
-  }, [error, router])
+    if (!reloadOnStaleChunk(error)) reportError('[router] a screen failed to load', error)
+  }, [error])
 
   return (
     <RootFrame>

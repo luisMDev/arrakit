@@ -39,6 +39,11 @@ export interface Connection {
   close(): Promise<void>
 }
 
+/** Runs `work` in one transaction, handed over as a plain Database. */
+export function transaction<R>(db: Database, work: (tx: Database) => Promise<R>): Promise<R> {
+  return db.transaction((tx) => work(tx as unknown as Database))
+}
+
 /** Key of the advisory lock held while migrating, so two instances booting together serialize. */
 export const MIGRATION_LOCK = 724083001
 

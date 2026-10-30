@@ -9,16 +9,6 @@ export const createOrganizationSchema = z.object({
 })
 
 export const onboardingContract = {
-  create: base
-    .route({ method: 'POST', path: '/organizations', tags: ['organizations'], successStatus: 201 })
-    .input(createOrganizationSchema)
-    .output(organizationSummarySchema),
-  skip: base
-    .route({
-      method: 'POST',
-      path: '/organizations/skip',
-      tags: ['organizations'],
-      successStatus: 201,
-    })
-    .output(organizationSummarySchema),
+  create: base.input(createOrganizationSchema).output(organizationSummarySchema),
+  skip: base.output(organizationSummarySchema),
 }

@@ -1,3 +1,5 @@
+import { isTrustedOrigin } from '@arrakit/auth'
+import { ORPCError } from '@orpc/server'
 import { RPCHandler } from '@orpc/server/fetch'
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
@@ -9,13 +11,10 @@ import { procedureContext } from './orpc/context'
 import { router } from './router'
 import { authRoutes } from './routes/auth'
 import { healthRoutes } from './routes/health'
-import { localFilesRoutes } from './routes/local-files'
 import { mcpRoutes } from './routes/mcp'
-import { openApiDocument } from './routes/openapi'
-import { restRoutes } from './routes/rest'
 import { stripeWebhookRoutes } from './routes/stripe-webhook'
 
-export { openApiDocument } from './routes/openapi'
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 export function createApp(deps: AppDeps) {
   const app = new Hono()
@@ -23,14 +22,18 @@ export function createApp(deps: AppDeps) {
 
   app.route('/', healthRoutes(deps))
   app.use(requestLog(deps.log))
-  app.route('/', restRoutes(deps))
-  app.get('/api/openapi.json', async (c) => c.json(await openApiDocument()))
   app.route('/', authRoutes(deps))
   app.route('/', stripeWebhookRoutes(deps))
   app.route('/', mcpRoutes(deps))
-  app.route('/', localFilesRoutes(deps))
 
   app.use('/api/rpc/*', async (c, next) => {
+    const crossSite =
+      !SAFE_METHODS.has(c.req.method) &&
+      !isTrustedOrigin(c.req.header('origin'), deps.authConfig.trustedOrigins)
+    if (crossSite) {
+      // The body is an oRPC error, so the client reads the message like any other refusal.
+      return c.json({ json: new ORPCError('FORBIDDEN', { message: 'Use the app.' }).toJSON() }, 403)
+    }
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: '/api/rpc',
       context: procedureContext(deps, c.req.raw.headers, c.get('log')),

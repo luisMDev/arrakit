@@ -1,4 +1,4 @@
-import { members } from '@arrakit/db/schema'
+import { insertMember } from '@arrakit/db/testing'
 import type { Plan } from '@arrakit/plans'
 
 import type { TestApp } from './app'
@@ -51,6 +51,6 @@ export async function joinAs(
   role: 'admin' | 'member',
 ): Promise<Person> {
   const person = await t.signIn({ email })
-  await t.data.db.insert(members).values({ organizationId, userId: person.userId, role })
+  await insertMember(t.data, organizationId, person.userId, role)
   return { ...person, email }
 }

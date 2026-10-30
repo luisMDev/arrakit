@@ -34,7 +34,7 @@ describe('createAuth on the real schema (PGlite)', () => {
     expect(session?.user.language).toBe('en')
   })
 
-  it('closes the organization plugin routes and the session-to-JWT route', async () => {
+  it('has no organization routes and closes the session-to-JWT route', async () => {
     const list = await auth.handler(new Request(`${WEB}/api/auth/organization/list`))
     expect(list.status).toBe(404)
     const token = await auth.handler(new Request(`${WEB}/api/auth/token`))
