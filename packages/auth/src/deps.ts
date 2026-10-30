@@ -18,6 +18,8 @@ export interface AuthDeps {
   mailer: Mailer
   invitationFor(invitationId: string, email: string): Promise<InvitationForMail | null>
   organizationOf(userId: string): Promise<{ id: string } | null>
+  /** Where Better Auth writes its own messages (its console logger when unset). */
+  logger?: BetterAuthOptions['logger']
   /** Adds Better Auth's testUtils plugin (tests only). */
   testing?: boolean
 }
