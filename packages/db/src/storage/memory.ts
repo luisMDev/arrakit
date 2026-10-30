@@ -27,7 +27,6 @@ export function memoryStorage(): MemoryStorage {
   }
 
   return {
-    kind: 'memory',
     objects,
     forOrganization,
     put(organizationId, path) {

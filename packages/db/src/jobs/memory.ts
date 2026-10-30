@@ -6,7 +6,6 @@ export interface SentJob {
   id: string
   name: string
   data: object
-  at: Date
 }
 
 export interface MemoryJobs extends JobsRuntime {
@@ -21,7 +20,6 @@ export function memoryJobs(): MemoryJobs {
   let stopped = false
   const done = new Set<string>()
   const fake: MemoryJobs = {
-    kind: 'memory',
     queues: new Map(),
     workers: new Map(),
     sent: [],
@@ -30,7 +28,7 @@ export function memoryJobs(): MemoryJobs {
     },
     async send(name, data) {
       const id = randomUUID()
-      fake.sent.push({ id, name, data, at: new Date() })
+      fake.sent.push({ id, name, data })
       return id
     },
     async work(name, handler) {
@@ -53,18 +51,4 @@ export function memoryJobs(): MemoryJobs {
     },
   }
   return fake
-}
-
-/** Jobs sent to `name`, optionally only for one organization and after `since`. */
-export function sentJobs(
-  jobs: MemoryJobs,
-  filter: { name: string; organizationId?: string; since?: Date },
-): SentJob[] {
-  return jobs.sent.filter(
-    (job) =>
-      job.name === filter.name &&
-      (!filter.organizationId ||
-        (job.data as { organizationId?: string }).organizationId === filter.organizationId) &&
-      (!filter.since || job.at >= filter.since),
-  )
 }

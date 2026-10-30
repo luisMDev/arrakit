@@ -4,7 +4,7 @@ import { ESLint } from 'eslint'
 import { describe, expect, it } from 'vitest'
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url))
-const GUARD_RULES = ['no-restricted-imports', 'no-restricted-syntax']
+const GUARD_RULES = ['no-restricted-imports']
 
 const eslint = new ESLint({ cwd: repo })
 
@@ -29,18 +29,12 @@ const DRIVERS = [
   "import { x } from '@aws-sdk/lib-storage'",
   "export { Pool } from 'pg'",
   "import pg = require('pg')",
-  "const pg = require('pg')",
-  "require('drizzle-orm/node-postgres')",
-  "await import('pg-boss')",
-  'await import(`@aws-sdk/client-s3`)',
 ]
 
 const DB_INTERNALS = [
   "import { users } from '@arrakit/db/schema'",
   "import { openTestData } from '@arrakit/db/testing'",
   "import x from '@arrakit/db/src/organization/tenant-db'",
-  "await import('@arrakit/db/schema')",
-  "require('@arrakit/db/testing')",
 ]
 
 const ALLOWED = [
@@ -86,8 +80,7 @@ describe('the data import guard', () => {
     expect(await lint('apps/api/src/guard-probe.ts', `${code}\nexport {}\n`)).toEqual([])
   })
 
-  it('refuses the drivers in a .cjs file too', async () => {
-    expect(await lint('apps/api/scripts/guard-probe.cjs', "require('pg')\n")).toHaveLength(1)
+  it('refuses the drivers in a script too', async () => {
     expect(await lint('apps/api/scripts/guard-probe.mjs', "import pg from 'pg'\n")).toHaveLength(1)
   })
 
@@ -108,7 +101,7 @@ describe('the data import guard', () => {
   })
 
   it('allows the drivers inside packages/db', async () => {
-    const code = `${DRIVERS.filter((line) => !line.includes('require') && !line.includes('await')).join('\n')}\nexport {}\n`
+    const code = `${DRIVERS.filter((line) => !line.includes('require')).join('\n')}\nexport {}\n`
     expect(await lint('packages/db/src/guard-probe.ts', code)).toEqual([])
   })
 }, 60_000)

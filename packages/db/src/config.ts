@@ -29,7 +29,7 @@ const R2_REQUIRED = [
  * is reported in one error `[data] missing env: A, B`.
  */
 export function loadDataConfig(env: Env): DataConfig {
-  const value = (name: string) => (env[name] ? env[name] : undefined)
+  const value = (name: string) => env[name] || undefined
   const production = env.NODE_ENV === 'production'
   const missing: string[] = []
   if (production && !value('DATABASE_URL')) missing.push('DATABASE_URL')

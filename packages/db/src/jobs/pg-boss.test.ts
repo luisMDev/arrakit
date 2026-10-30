@@ -5,7 +5,7 @@ import { fromPglite } from 'pg-boss'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { pgBossJobs } from './pg-boss'
-import { consoleLog } from '../log'
+import { consoleLog } from '../context'
 import { type JobsRuntime, deadLetterOf } from './types'
 
 /**
@@ -82,8 +82,7 @@ describe.each(targets)('pgBossJobs on $name', (target) => {
     vi.restoreAllMocks()
   })
 
-  it('is the pg-boss runtime and its probe passes while it runs', async () => {
-    expect(jobs.kind).toBe('pg-boss')
+  it('passes its probe while it runs', async () => {
     await expect(jobs.probe()).resolves.toBeUndefined()
   })
 

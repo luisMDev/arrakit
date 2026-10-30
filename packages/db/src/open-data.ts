@@ -1,17 +1,17 @@
+import { sql } from 'drizzle-orm'
+
 import { authDatabase } from './auth-database'
 import type { DataConfig } from './config'
 import { connect } from './connection'
-import type { DataContext } from './context'
+import { type DataContext, type DataLog, consoleLog } from './context'
 import { accountData } from './data/account'
 import { invitationsData } from './data/invitations'
 import { membershipData } from './data/membership'
 import { organizationsData } from './data/organizations'
-import { health } from './health'
 import { inProcessJobs } from './jobs/in-process'
 import { pgBossJobs } from './jobs/pg-boss'
 import type { JobsRuntime } from './jobs/types'
 import { forOrganization } from './organization/index'
-import { type DataLog, consoleLog } from './log'
 import { memoryStorage } from './storage/memory'
 import { s3Storage } from './storage/s3'
 import type { Storage } from './storage/types'
@@ -24,6 +24,46 @@ export interface OpenDataOptions {
   now?: () => Date
   /** Where recovered failures are reported (console when unset). */
   log?: DataLog
+}
+
+type ProbeState = 'up' | 'down'
+export interface HealthReport {
+  status: 'ok' | 'error'
+  postgres: ProbeState
+  storage: ProbeState
+  queue: ProbeState
+}
+
+const PROBE_TIMEOUT_MS = 3000
+
+async function probe(
+  ctx: DataContext,
+  name: string,
+  run: (signal: AbortSignal) => Promise<unknown>,
+): Promise<ProbeState> {
+  const signal = AbortSignal.timeout(PROBE_TIMEOUT_MS)
+  const timeout = new Promise<never>((_, reject) =>
+    signal.addEventListener('abort', () =>
+      reject(new Error(`timed out after ${PROBE_TIMEOUT_MS} ms`)),
+    ),
+  )
+  try {
+    await Promise.race([run(signal), timeout])
+    return 'up'
+  } catch (err) {
+    ctx.log.error({ err, probe: name }, 'health probe down')
+    return 'down'
+  }
+}
+
+export async function health(ctx: DataContext): Promise<HealthReport> {
+  const [postgres, storage, queue] = await Promise.all([
+    probe(ctx, 'postgres', () => ctx.db.execute(sql`select 1`)),
+    probe(ctx, 'storage', (signal) => ctx.storage.probe(signal)),
+    probe(ctx, 'queue', (signal) => ctx.jobs.probe(signal)),
+  ])
+  const ok = postgres === 'up' && storage === 'up' && queue === 'up'
+  return { status: ok ? 'ok' : 'error', postgres, storage, queue }
 }
 
 function buildData(ctx: DataContext, close: () => Promise<void>, driver: 'postgres' | 'pglite') {

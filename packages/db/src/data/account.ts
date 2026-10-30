@@ -3,7 +3,7 @@ import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm'
 
 import type { Database } from '../connection'
 import type { DataContext } from '../context'
-import { PersonOwnsOrganizationError } from '../errors'
+import { DomainError } from '../errors'
 import {
   type AccountLanguage,
   accounts,
@@ -104,24 +104,7 @@ export function accountData(ctx: DataContext) {
       return readAccount(ctx.db, userId, sessionId)
     },
 
-    /** Unknown people want every email. */
-    async wantsEmail(email: string, _kind: 'productNews'): Promise<boolean> {
-      const [person] = await ctx.db
-        .select({ wants: users.emailProductNews })
-        .from(users)
-        .where(eq(users.email, normalizeEmail(email)))
-      return person?.wants ?? true
-    },
-
-    async languageOf(userId: string): Promise<AccountLanguage> {
-      const [person] = await ctx.db
-        .select({ language: users.language })
-        .from(users)
-        .where(eq(users.id, userId))
-      return person?.language ?? 'en'
-    },
-
-    /** False when the user is gone; PersonOwnsOrganizationError for an owner of any organization. */
+    /** False when the user is gone; a CONFLICT DomainError for an owner of any organization. */
     async deleteAccount(userId: string): Promise<boolean> {
       return ctx.db.transaction(async (tx) => {
         const [person] = await tx
@@ -135,7 +118,12 @@ export function accountData(ctx: DataContext) {
           .from(members)
           .where(and(eq(members.userId, userId), eq(members.role, 'owner')))
           .limit(1)
-        if (owned) throw new PersonOwnsOrganizationError()
+        if (owned) {
+          throw new DomainError(
+            'CONFLICT',
+            'You own an organization. Delete the organization first, in Settings → Security and data.',
+          )
+        }
         await tx.delete(invitations).where(eq(invitations.email, normalizeEmail(person.email)))
         await tx.delete(users).where(eq(users.id, userId))
         return true

@@ -4,13 +4,9 @@ import type { Plan } from '@arrakit/plans'
 
 import { type MemoryJobs, memoryJobs } from './jobs/memory'
 import { type Data, type OpenDataOptions, openData } from './open-data'
-import type { OrganizationRow } from './organization/organization'
+import type { OrganizationRow } from './organization/index'
 import { members, organizations, users } from './schema/index'
 import { type MemoryStorage, memoryStorage } from './storage/memory'
-
-export { memoryJobs, sentJobs, type MemoryJobs, type SentJob } from './jobs/memory'
-export { memoryStorage, type MemoryStorage } from './storage/memory'
-export { inProcessJobs } from './jobs/in-process'
 
 /** Data with the recording jobs fake and the in-memory storage. */
 export type TestData = Data & { jobs: MemoryJobs; storage: MemoryStorage }

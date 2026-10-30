@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { inProcessJobs } from './in-process'
-import { consoleLog } from '../log'
-import { memoryJobs, sentJobs } from './memory'
+import { consoleLog } from '../context'
+import { memoryJobs } from './memory'
 import { deadLetterOf } from './types'
 
 afterEach(() => {
@@ -113,9 +113,11 @@ describe('memoryJobs', () => {
     await jobs.defineQueue('m', { retryLimit: 1, retryDelay: 1, retryBackoff: false })
     expect(jobs.queues.get('m')?.expireInSeconds).toBe(900)
     await jobs.send('m', { organizationId: 'o1' })
-    const since = new Date()
     await jobs.send('m', { organizationId: 'o2' })
-    expect(sentJobs(jobs, { name: 'm', organizationId: 'o2', since })).toHaveLength(1)
+    expect(jobs.sent.map((job) => job.data)).toEqual([
+      { organizationId: 'o1' },
+      { organizationId: 'o2' },
+    ])
 
     const ran: object[] = []
     await jobs.work('m', async (data) => void ran.push(data))

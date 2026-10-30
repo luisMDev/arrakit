@@ -1,6 +1,6 @@
 import { type ConstructorOptions, PgBoss } from 'pg-boss'
 
-import type { DataLog } from '../log'
+import type { DataLog } from '../context'
 import { DEFAULT_EXPIRE_IN_SECONDS, type JobsRuntime, deadLetterOf } from './types'
 
 /**
@@ -19,11 +19,11 @@ export async function pgBossJobs(
   let stopped: Promise<void> | undefined
 
   return {
-    kind: 'pg-boss',
     async defineQueue(name, policy) {
       const dead = deadLetterOf(name)
-      if (!(await boss.getQueue(dead))) await boss.createQueue(dead)
-      if (await boss.getQueue(name)) return
+      const [deadQueue, queue] = await Promise.all([boss.getQueue(dead), boss.getQueue(name)])
+      if (!deadQueue) await boss.createQueue(dead)
+      if (queue) return
       await boss.createQueue(name, {
         retryLimit: policy.retryLimit,
         retryDelay: policy.retryDelay,

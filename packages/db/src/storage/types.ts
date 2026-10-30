@@ -10,7 +10,6 @@ export interface OrganizationFiles {
 }
 
 export interface Storage {
-  readonly kind: 's3' | 'memory'
   forOrganization(organizationId: string): OrganizationFiles
   /** HeadBucket on S3; throws when storage is down. */
   probe(signal?: AbortSignal): Promise<void>

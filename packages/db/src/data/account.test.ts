@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { PersonOwnsOrganizationError } from '../errors'
 import { accounts, invitations, sessions } from '../schema/index'
 import {
   type TestData,
@@ -87,12 +86,10 @@ describe('account', () => {
       timeZone: 'Europe/Madrid',
       emails: { productNews: true },
     })
-    expect(await data.languageOf(cy)).toBe('es')
-    expect(await data.languageOf(other)).toBe('en')
-    expect(await data.languageOf('nobody')).toBe('en')
-    expect(await data.wantsEmail(' CY@acme.com', 'productNews')).toBe(true)
-    expect(await data.wantsEmail('dee@acme.com', 'productNews')).toBe(false)
-    expect(await data.wantsEmail('stranger@acme.com', 'productNews')).toBe(true)
+    expect((await data.account(other, 'none'))?.user).toMatchObject({
+      language: 'en',
+      emails: { productNews: false },
+    })
   })
 
   it('refuses to delete an owner of any organization', async () => {
@@ -101,7 +98,7 @@ describe('account', () => {
     const second = (await insertOrganization(data, { slug: 'oak-second' })).id
     await insertMember(data, first, owner, 'admin')
     await insertMember(data, second, owner, 'owner')
-    await expect(data.deleteAccount(owner)).rejects.toBeInstanceOf(PersonOwnsOrganizationError)
+    await expect(data.deleteAccount(owner)).rejects.toMatchObject({ code: 'CONFLICT' })
     expect(await data.memberOf(owner)).not.toBeNull()
   })
 

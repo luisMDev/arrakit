@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { type Database, defaultMigrationsFolder } from '../connection'
 import { memoryJobs } from '../jobs/memory'
-import { consoleLog } from '../log'
+import { consoleLog } from '../context'
 import { type Data, openData } from '../open-data'
 import { toOrganizationId } from '../organization-id'
 import * as schema from '../schema/index'

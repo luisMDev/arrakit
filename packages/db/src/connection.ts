@@ -3,7 +3,6 @@ import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { PGlite } from '@electric-sql/pglite'
-import { sql } from 'drizzle-orm'
 import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres'
 import { migrate as migratePg } from 'drizzle-orm/node-postgres/migrator'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
@@ -11,7 +10,7 @@ import { drizzle as drizzlePglite } from 'drizzle-orm/pglite'
 import { migrate as migratePglite } from 'drizzle-orm/pglite/migrator'
 import pg from 'pg'
 
-import type { DataLog } from './log'
+import type { DataLog } from './context'
 import * as schema from './schema/index'
 
 type Schema = typeof schema
@@ -26,8 +25,6 @@ export interface ConnectionConfig {
   pgliteDir?: string
   /** Delete the PGlite directory before opening it (throwaway e2e databases). */
   pgliteReset?: boolean
-  /** Where the drizzle-kit migrations live. Defaults to the package's ./drizzle folder. */
-  migrationsFolder?: string
 }
 
 export interface Connection {
@@ -35,7 +32,6 @@ export interface Connection {
   driver: 'postgres' | 'pglite'
   /** Applies pending migrations (under an advisory lock on Postgres). Idempotent. */
   migrate(): Promise<void>
-  ping(): Promise<void>
   close(): Promise<void>
 }
 
@@ -59,7 +55,7 @@ export function defaultMigrationsFolder(): string {
 
 /** Opens Drizzle over node-postgres when DATABASE_URL is set, otherwise over PGlite. */
 export async function connect(config: ConnectionConfig, log: DataLog): Promise<Connection> {
-  const migrationsFolder = config.migrationsFolder ?? defaultMigrationsFolder()
+  const migrationsFolder = defaultMigrationsFolder()
 
   if (config.databaseUrl) {
     const pool = new pg.Pool({
@@ -79,9 +75,6 @@ export async function connect(config: ConnectionConfig, log: DataLog): Promise<C
     db: db as unknown as Database,
     driver: 'pglite',
     migrate: () => migratePglite(db, { migrationsFolder }),
-    ping: async () => {
-      await db.execute(sql`select 1`)
-    },
     close: () => client.close(),
   }
 }
@@ -115,9 +108,6 @@ export function postgresConnection(
       } finally {
         client.release(release)
       }
-    },
-    ping: async () => {
-      await db.execute(sql`select 1`)
     },
     close: () => pool.end(),
   }

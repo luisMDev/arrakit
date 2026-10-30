@@ -3,7 +3,6 @@ import {
   METRIC_KEYS,
   type Metric,
   type MetricBalance,
-  type MetricKind,
   type MetricSums,
   type Plan,
   type UsagePeriod,
@@ -22,7 +21,7 @@ import type { DataContext } from '../context'
 import { DomainError } from '../errors'
 import type { OrganizationId } from '../organization-id'
 import { creditLedger, usageLevels } from '../schema/index'
-import { organizationRow } from './organization'
+import { organizationRow } from './index'
 
 export type { MetricBalance } from '@arrakit/plans'
 
@@ -70,7 +69,6 @@ interface ReverseOptions {
 /** Thrown when a use would exceed what the organization has (mapped to HTTP 402). */
 export class UsageLimitError extends DomainError {
   override name = 'UsageLimitError'
-  readonly kind: MetricKind
 
   constructor(
     readonly metric: Metric,
@@ -85,13 +83,7 @@ export class UsageLimitError extends DomainError {
         : `Not enough ${label.toLowerCase()}: this needs ${requested} ${unit} and your organization has ${available} left. Add credits in Settings → Billing.`,
       { metric, requested, available },
     )
-    this.kind = kind
   }
-}
-
-function knownMetric(metric: Metric): Metric {
-  if (!isMetric(metric)) throw new Error(`[data] no metric ${String(metric)} in METRICS`)
-  return metric
 }
 
 function wholeAtLeast(value: number, min: number, what: string): number {
@@ -102,7 +94,7 @@ function wholeAtLeast(value: number, min: number, what: string): number {
 }
 
 function keyOf(idempotencyKey: string): string {
-  const key = typeof idempotencyKey === 'string' ? idempotencyKey.trim() : ''
+  const key = idempotencyKey.trim()
   if (!key) throw new Error('[data] an idempotency key must not be blank')
   return key
 }
@@ -185,9 +177,8 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
   }
 
   async function currentUsage(): Promise<Map<Metric, MetricUsage>> {
-    const billing = await billingOf(ctx.db, false)
-    const [rows, levels] = await Promise.all([ledgerSums(ctx.db, billing), levelsOf(ctx.db)])
-    return usageFrom(billing, rows, levels)
+    const [billing, levels] = await Promise.all([billingOf(ctx.db, false), levelsOf(ctx.db)])
+    return usageFrom(billing, await ledgerSums(ctx.db, billing), levels)
   }
 
   async function lockedUsage(l: Locked): Promise<Map<Metric, MetricUsage>> {
@@ -236,14 +227,12 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
     },
 
     async check(metric, quantity = 1) {
-      knownMetric(metric)
       wholeAtLeast(quantity, 0, 'a quantity')
       const { available } = (await currentUsage()).get(metric)!
       return { metric, allowed: quantity <= available, available, requested: quantity }
     },
 
     async consume(metric, quantity, { idempotencyKey }) {
-      knownMetric(metric)
       if (metricOf(metric).kind !== 'consumable') {
         throw new Error(`[data] ${metric} is a capacity metric, not consumable`)
       }
@@ -292,7 +281,6 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
     },
 
     async set(metric, value) {
-      knownMetric(metric)
       if (metricOf(metric).kind !== 'capacity') {
         throw new Error(`[data] ${metric} is a consumable metric, not capacity`)
       }

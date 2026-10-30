@@ -157,7 +157,6 @@ describe('forOrganization().usage', () => {
     expect((await usage.check('credits', 101)).allowed).toBe(false)
     expect((await usage.check('storage_gb', 11)).allowed).toBe(false)
     expect((await metric(usage, 'credits')).used).toBe(0)
-    await expect(usage.check('nope' as never)).rejects.toThrow('no metric nope in METRICS')
     await expect(usage.check('credits', -1)).rejects.toThrow(/whole number/)
   })
 

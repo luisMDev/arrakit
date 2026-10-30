@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm'
 
 import type { DataContext } from '../context'
 import { liveInvitation } from '../organization/members'
-import type { OrganizationRow } from '../organization/organization'
+import type { OrganizationRow } from '../organization/index'
 import { invitations, organizations, users } from '../schema/index'
 
 export interface InvitationForPerson {

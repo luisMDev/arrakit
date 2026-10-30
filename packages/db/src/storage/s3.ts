@@ -71,7 +71,6 @@ export function s3Storage(config: S3Config, options: { listPageSize?: number } =
   }
 
   return {
-    kind: 's3',
     forOrganization,
     async probe(signal) {
       await client.send(new HeadBucketCommand({ Bucket }), { abortSignal: signal })

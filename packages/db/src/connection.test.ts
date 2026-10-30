@@ -1,7 +1,8 @@
+import { sql } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 
 import { MIGRATION_LOCK, connect, defaultMigrationsFolder, postgresConnection } from './connection'
-import { consoleLog } from './log'
+import { consoleLog } from './context'
 
 /**
  * The node-postgres path of connect(). Without Docker it is driven through a scripted pool (lock
@@ -100,8 +101,8 @@ describe.runIf(process.env.DATABASE_URL)('connect() on real Postgres (DATABASE_U
     const a = await connect({ databaseUrl: process.env.DATABASE_URL }, consoleLog)
     const b = await connect({ databaseUrl: process.env.DATABASE_URL }, consoleLog)
     await Promise.all([a.migrate(), b.migrate()])
-    await a.ping()
-    await b.ping()
+    await a.db.execute(sql`select 1`)
+    await b.db.execute(sql`select 1`)
     await Promise.all([a.close(), b.close()])
   }, 60_000)
 })

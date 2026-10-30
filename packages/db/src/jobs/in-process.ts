@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import type { DataLog } from '../log'
+import type { DataLog } from '../context'
 import {
   DEFAULT_EXPIRE_IN_SECONDS,
   type JobsRuntime,
@@ -81,7 +81,6 @@ export function inProcessJobs(options: {
   }
 
   return {
-    kind: 'in-process',
     async defineQueue(name, policy) {
       assertRunning()
       if (!queues.has(deadLetterOf(name))) queues.set(deadLetterOf(name), DEFAULT_POLICY)

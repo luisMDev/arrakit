@@ -1,10 +1,12 @@
 import { eq } from 'drizzle-orm'
-import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, expectTypeOf, it, vi } from 'vitest'
 
 import { connect } from './connection'
-import { consoleLog } from './log'
+import { consoleLog } from './context'
 import type { ScopedData } from './open-data'
 import { organizations } from './schema/index'
+import { memoryStorage } from './storage/memory'
+import type { Storage } from './storage/types'
 import {
   type TestData,
   insertMember,
@@ -61,4 +63,71 @@ describe('ScopedData, the type app code is given', () => {
     expectTypeOf<ScopedData>().not.toHaveProperty('storage')
     expectTypeOf<ScopedData>().toHaveProperty('forOrganization')
   })
+})
+
+const quietly = () => vi.spyOn(console, 'error').mockImplementation(() => {})
+
+describe('health', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('is ok with every probe up', async () => {
+    const data = await openTestData()
+    expect(await data.health()).toEqual({
+      status: 'ok',
+      postgres: 'up',
+      storage: 'up',
+      queue: 'up',
+    })
+    await data.close()
+  })
+
+  it('reports storage down when the bucket probe fails, and logs it', async () => {
+    const log = { error: vi.fn() }
+    const storage: Storage = {
+      ...memoryStorage(),
+      probe: async () => {
+        throw new Error('NoSuchBucket')
+      },
+    }
+    const data = await openTestData({ storage, log })
+    expect(await data.health()).toEqual({
+      status: 'error',
+      postgres: 'up',
+      storage: 'down',
+      queue: 'up',
+    })
+    expect(log.error).toHaveBeenCalledWith(
+      { err: expect.objectContaining({ message: 'NoSuchBucket' }), probe: 'storage' },
+      'health probe down',
+    )
+    await data.close()
+  })
+
+  it('reports the queue down once the data layer is closed', async () => {
+    quietly()
+    const data = await openTestData()
+    await data.close()
+    await data.close()
+    const report = await data.health()
+    expect(report.queue).toBe('down')
+    expect(report.status).toBe('error')
+  })
+
+  it('gives up on a hanging probe after about three seconds', async () => {
+    quietly()
+    const storage: Storage = {
+      ...memoryStorage(),
+      probe: () => new Promise<void>(() => {}),
+    }
+    const data = await openTestData({ storage })
+    const started = Date.now()
+    const report = await data.health()
+    const took = Date.now() - started
+    expect(report).toMatchObject({ status: 'error', storage: 'down', postgres: 'up', queue: 'up' })
+    expect(took).toBeGreaterThanOrEqual(2900)
+    expect(took).toBeLessThan(4500)
+    await data.close()
+  }, 10_000)
 })

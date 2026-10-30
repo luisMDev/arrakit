@@ -11,13 +11,3 @@ export class DomainError extends Error {
     super(message)
   }
 }
-
-export class PersonOwnsOrganizationError extends DomainError {
-  override name = 'PersonOwnsOrganizationError'
-  constructor() {
-    super(
-      'CONFLICT',
-      'You own an organization. Delete the organization first, in Settings → Security and data.',
-    )
-  }
-}

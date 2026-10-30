@@ -19,7 +19,6 @@ export interface Jobs {
 
 /** A running implementation: health probe and graceful stop. */
 export interface JobsRuntime extends Jobs {
-  readonly kind: 'pg-boss' | 'in-process' | 'memory'
   /** Throws when the runner is stopped or unreachable. */
   probe(signal?: AbortSignal): Promise<void>
   /** Graceful: waits for running handlers. Idempotent. */

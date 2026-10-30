@@ -3,7 +3,7 @@ import { type SQL, and, asc, eq } from 'drizzle-orm'
 import type { DataContext } from '../context'
 import { isUuid } from '../organization-id'
 import { members, organizations, sessions } from '../schema/index'
-import type { OrganizationRow } from '../organization/organization'
+import type { OrganizationRow } from '../organization/index'
 
 export interface Membership {
   organization: OrganizationRow
