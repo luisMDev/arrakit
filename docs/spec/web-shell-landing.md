@@ -179,7 +179,9 @@ Panel (`id="app-menu"`), only in the DOM while open:
    - `Settings` → `/app/settings` (`appMenu.settings`)
    - `Members` → `/app/members` (`appMenu.members`) — **admins only** (owner or admin)
    - `Billing` → `/app/billing` (`appMenu.billing`) — **admins only**
-3. List `aria-label={t('appMenu.more')}` ("More"):
+3. Theme switcher (`appMenu.theme`, "Theme"): a single-choice toggle group Light / Dark / System
+   (`appMenu.themeLight|themeDark|themeSystem`), default System.
+4. List `aria-label={t('appMenu.more')}` ("More"):
    - Button `Sign out` (`appMenu.signOut`).
 
 Behaviour:
@@ -188,6 +190,9 @@ Behaviour:
 - `Escape` closes it (only when open) and **returns focus to the trigger button**.
 - A click anywhere outside the menu host closes it.
 - The name shown reacts immediately to `patch()` (no refetch).
+- **Theme**: `next-themes` (`ThemeProvider` in the root document) toggles the `.dark` class on `<html>`, follows
+  `prefers-color-scheme` on System and remembers the choice in `localStorage['arrakit.theme']`. Picking a theme
+  keeps the menu open.
 - **Sign out**: closes menu, calls Better Auth `authClient.signOut()` (`POST /api/auth/sign-out`). On success: clear
   current user (`signedOut()`), navigate to `/signin`. On failure: error toast `t('appMenu.notSignedOut')`
   ("Couldn't sign you out. Try again.") and stay.
