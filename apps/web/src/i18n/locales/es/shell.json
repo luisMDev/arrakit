@@ -1,0 +1,40 @@
+{
+  "appMenu": {
+    "accountMenu": "Menú de la cuenta",
+    "yourOrganization": "Tu organización",
+    "home": "Inicio",
+    "settings": "Ajustes",
+    "members": "Miembros",
+    "billing": "Facturación",
+    "more": "Más",
+    "signOut": "Cerrar sesión",
+    "notSignedOut": "No se ha podido cerrar la sesión. Inténtalo de nuevo."
+  },
+  "shell": {
+    "account": "Cuenta",
+    "usage": "{{organization}} · {{plan}}"
+  },
+  "home": {
+    "title": "Hola, {{name}}.",
+    "organization": "{{organization}} está en {{plan}}. Aquí empieza tu producto.",
+    "settings": "Ajustes",
+    "members": "Miembros",
+    "plans": "Planes"
+  },
+  "welcome": {
+    "titleLead": "Te damos la bienvenida",
+    "titleRest": "a {{plan}}.",
+    "receiptSent": "Te hemos enviado el recibo por email. Gestiona tu plan cuando quieras en",
+    "settings": "Ajustes",
+    "receiptEnd": ".",
+    "goHome": "Ir a la app →"
+  },
+  "unavailable": {
+    "forbiddenTitle": "Tu cuenta no puede abrir Arrakit ahora mismo.",
+    "forbiddenBody": "Pide al administrador de tu organización que revise tu acceso.",
+    "home": "Inicio",
+    "unreachableTitle": "No se ha podido conectar con Arrakit.",
+    "unreachableBody": "No se ha perdido nada. Inténtalo de nuevo en un momento.",
+    "tryAgain": "Reintentar"
+  }
+}

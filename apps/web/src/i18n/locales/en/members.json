@@ -1,0 +1,42 @@
+{
+  "settings": {
+    "membersSettings": {
+      "title": "Members",
+      "memberCountOne": "{{count}} member",
+      "memberCountMany": "{{count}} members",
+      "moreSeatsFree": "Pro has up to 3",
+      "moreSeatsPro": "Team has up to 10",
+      "inviteLabel": "Invite someone from your organization",
+      "role": "Role",
+      "roleOf": "Role of {{name}}",
+      "roleOwner": "Owner",
+      "roleAdmin": "Admin",
+      "roleMember": "Member",
+      "invite": "Invite",
+      "rolesHint": "Admins manage members and billing. Members use the app.",
+      "remove": "Remove",
+      "invitedToday": "Invited today",
+      "invitedYesterday": "Invited yesterday",
+      "invitedDaysAgo": "Invited {{days}} days ago",
+      "emailNotSent": "Email not sent",
+      "resend": "Resend",
+      "cancel": "Cancel",
+      "notLoaded": "Couldn't load your organization's members. Reload the page.",
+      "notInvited": "Couldn't invite {{email}}. Try again.",
+      "inviteSent": "Invite sent to {{email}}.",
+      "inviteSavedNotSent": "The invite to {{email}} is saved, but the email didn't go out. Resend it from the list.",
+      "roleNotChanged": "Couldn't change {{name}}'s role. Try again.",
+      "nowAdmin": "{{name}} is now an admin.",
+      "nowMember": "{{name}} is now a member.",
+      "notRemoved": "Couldn't remove {{name}}. Try again.",
+      "removed": "{{name}} removed from {{organization}}.",
+      "notResent": "Couldn't send the invite again. Try again.",
+      "inviteResent": "Invite sent again to {{email}}.",
+      "notCancelled": "Couldn't cancel the invite. Try again.",
+      "inviteCancelled": "Invite to {{email}} cancelled.",
+      "enterWorkEmail": "Enter their work email, like {{example}}.",
+      "alreadyInOrganization": "{{email}} is already in the organization.",
+      "alreadyInvited": "{{email}} is already invited."
+    }
+  }
+}

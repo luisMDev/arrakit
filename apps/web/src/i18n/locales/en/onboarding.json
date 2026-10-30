@@ -1,0 +1,23 @@
+{
+  "onboarding": {
+    "unreachable": "Couldn't reach Arrakit. Check your connection and reload.",
+    "failed": "Something went wrong. Reload and try again."
+  },
+  "profile": {
+    "titleStart": "Tell us",
+    "titleEnd": "about your organization.",
+    "yourName": "Your name",
+    "organization": "Organization",
+    "agreeTo": "I agree to the",
+    "terms": "Terms",
+    "andThe": "and the",
+    "privacyPolicy": "Privacy Policy",
+    "agreeEnd": ".",
+    "next": "Next",
+    "skip": "Skip",
+    "organizationNotSaved": "Couldn't save your organization. Check its name and try again.",
+    "notSkipped": "Couldn't skip this step. Try again.",
+    "termsBody": "The Terms will be published here before launch.",
+    "privacyBody": "The Privacy Policy will be published here before launch."
+  }
+}

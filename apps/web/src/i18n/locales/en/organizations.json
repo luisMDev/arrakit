@@ -1,0 +1,42 @@
+{
+  "join": {
+    "joining": "Joining your organization…",
+    "expiredStart": "Your link has",
+    "expiredEnd": "expired.",
+    "expiredBody": "Enter the email you were invited at, and we send you a new one.",
+    "yourWorkEmail": "Your work email",
+    "sendNewLink": "Send me a new link",
+    "checkStart": "Check your",
+    "checkEnd": "inbox.",
+    "sentBody": "Open the new link in this browser to join. Nothing there? Look in spam.",
+    "takenTitle": "You already belong to an organization.",
+    "takenBody": "A person is in one organization for now. Sign in to open yours.",
+    "signIn": "Sign in",
+    "closedTitle": "This invite is not open.",
+    "closedBody": "It was cancelled, it expired, or it was sent to another email. Ask whoever invited you to send it again.",
+    "failedTitle": "Couldn't join right now.",
+    "failedBody": "Nothing is lost. Open the link again in a moment.",
+    "workEmail": "Enter your work email, like name@company.com.",
+    "tooManyLinks": "Too many links asked for. Wait a minute and try again.",
+    "linkNotSent": "Couldn't send the link. Try again."
+  },
+  "settings": {
+    "generalSettings": {
+      "title": "General",
+      "organizationName": "Organization name",
+      "notSaved": "Couldn't save the organization's settings. Try again.",
+      "notLoaded": "Couldn't load your organization's settings. Reload the page.",
+      "slug": "Slug: {{slug}}"
+    },
+    "securitySettings": {
+      "title": "Security and data",
+      "deleteOrganization": "Delete the organization",
+      "deleteOrganizationHint": "Everything in it and every member's access. This can't be undone.",
+      "delete": "Delete",
+      "confirmTitle": "Delete the organization?",
+      "notDeleted": "Couldn't delete your organization. Try again.",
+      "deleted": "Your organization is deleted.",
+      "ownerOnly": "Only the owner can delete the organization."
+    }
+  }
+}

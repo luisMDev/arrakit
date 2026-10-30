@@ -1,35 +1,66 @@
-import { createORPCClient } from '@orpc/client'
-import { RPCLink } from '@orpc/client/fetch'
-import type { ContractRouterClient } from '@orpc/contract'
-import type { Contract } from '@arrakit/contract'
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { createApp } from './app'
+import { openApiDocument } from './app'
+import { type TestApp, createTestApp } from './testing/app'
 
 describe('api app', () => {
-  const app = createApp()
+  let t: TestApp
 
-  it('answers /health', async () => {
-    const res = await app.request('/health')
+  beforeAll(async () => {
+    t = await createTestApp()
+  })
+  afterAll(() => t.close())
+
+  it('answers /health with every probe up', async () => {
+    const res = await t.app.request('/health')
     expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ status: 'ok', postgres: 'up', storage: 'up', queue: 'up' })
   })
 
-  it('serves oRPC procedures under /api/rpc', async () => {
-    const link = new RPCLink({
-      url: 'http://localhost/api/rpc',
-      fetch: async (request) => app.fetch(request as Request),
-    })
-    const client: ContractRouterClient<Contract> = createORPCClient(link)
-    await expect(client.ping()).resolves.toEqual({ ok: true })
-  })
-
-  it('serves the OpenAPI document', async () => {
-    const res = await app.request('/api/openapi.json')
-    const doc = (await res.json()) as { openapi: string }
+  it('serves the OpenAPI document generated from the contract', async () => {
+    const res = await t.app.request('/api/openapi.json')
+    const doc = (await res.json()) as { openapi: string; paths: Record<string, unknown> }
     expect(doc.openapi).toMatch(/^3\./)
+    expect(doc).toEqual(JSON.parse(JSON.stringify(await openApiDocument())))
+    expect(Object.keys(doc.paths)).toContain('/me')
   })
 
   it('returns 404 for unknown routes', async () => {
-    expect((await app.request('/nope')).status).toBe(404)
+    expect((await t.app.request('/nope')).status).toBe(404)
+  })
+
+  it('answers public procedures and refuses signed-out callers', async () => {
+    await expect(t.client().authProviders.get()).resolves.toEqual({
+      google: false,
+      microsoft: false,
+    })
+    await expect(t.client().me.get()).rejects.toMatchObject({ status: 401 })
+  })
+
+  it('signs people in with Better Auth testUtils and reads me.get', async () => {
+    const { headers } = await t.signIn({ email: 'ana@acme.com' })
+    await expect(t.client(headers).me.get()).resolves.toMatchObject({
+      email: 'ana@acme.com',
+      organization: null,
+      role: null,
+    })
+    await expect(t.client(headers).members.list()).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('stubs unimplemented procedures with 501', async () => {
+    const { headers } = await t.signIn({ email: 'bo@birch.vc' })
+    await expect(t.client(headers).organizations.skip()).rejects.toMatchObject({ status: 501 })
+  })
+
+  it('mounts Better Auth, the MCP challenge and the Stripe webhook', async () => {
+    expect((await t.app.request('/api/auth/get-session')).status).toBe(200)
+    const mcp = await t.app.request('/api/mcp', { method: 'POST' })
+    expect(mcp.status).toBe(401)
+    expect(mcp.headers.get('www-authenticate')).toContain('resource_metadata=')
+    expect((await t.app.request('/api/webhooks/stripe', { method: 'POST' })).status).toBe(401)
+    const meta = await t.app.request('/.well-known/oauth-authorization-server/api/auth')
+    expect(((await meta.json()) as { issuer: string }).issuer).toBe(
+      'http://localhost:4200/api/auth',
+    )
   })
 })

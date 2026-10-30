@@ -1,11 +1,26 @@
-import { implement } from '@orpc/server'
-import { contract } from '@arrakit/contract'
+import { pub } from './orpc/base'
+import { meRouter } from './routers/account'
+import { authProvidersRouter } from './routers/auth-providers'
+import { billingRouter } from './routers/billing'
+import { healthRouter } from './routers/health'
+import { invitationsRouter } from './routers/invitations'
+import { membersRouter } from './routers/members'
+import { onboardingRouter } from './routers/onboarding'
+import { organizationsRouter } from './routers/organizations'
+import { plansRouter } from './routers/plans'
+import { topUpRouter } from './routers/top-up'
+import { usageRouter } from './routers/usage'
 
-// oRPC router implementing @arrakit/contract. Each feature adds its procedures here.
-const os = implement(contract)
-
-export const router = os.router({
-  ping: os.ping.handler(() => ({ ok: true as const })),
+export const router = pub.router({
+  health: healthRouter,
+  authProviders: authProvidersRouter,
+  me: meRouter,
+  organizations: { ...onboardingRouter, ...organizationsRouter },
+  members: membersRouter,
+  invitations: invitationsRouter,
+  plans: plansRouter,
+  billing: { ...billingRouter, ...topUpRouter },
+  usage: usageRouter,
 })
 
 export type Router = typeof router

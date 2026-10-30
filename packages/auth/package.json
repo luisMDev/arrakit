@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./roles": "./src/roles.ts",
+    "./client": "./src/client.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -15,11 +17,13 @@
     "@arrakit/address": "workspace:*",
     "@better-auth/oauth-provider": "^1.7.14",
     "better-auth": "^1.7.14",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "@arrakit/emails": "workspace:*"
   },
   "devDependencies": {
     "@arrakit/eslint-config": "workspace:*",
     "@arrakit/tsconfig": "workspace:*",
-    "@types/node": "^24.19.2"
+    "@types/node": "^24.19.2",
+    "@arrakit/db": "workspace:*"
   }
 }

@@ -34,39 +34,76 @@ When a spec and this file disagree on layout or tooling, this file wins; on beha
 | Lint/fmt | ESLint 10 flat config (typescript-eslint) + Prettier                                    |
 | Types    | TypeScript 6.0 (typescript-eslint does not support 7 yet; do not upgrade)               |
 
+## Code comments
+
+- Express intent through names, types and small functions; the code itself is the documentation.
+- Default to zero comments. Add one only when logic is genuinely complex or a constraint is invisible from the code (a workaround, an external limitation).
+- Comments describe the code as it is now. Never reference tickets, tasks, past versions, decisions or what you just changed — that belongs in commits and PRs.
+- When an edit makes an existing comment inaccurate, delete it.
+- Tool directives (eslint-disable, @ts-expect-error) and license headers are fine.
+
 ## Repository layout
 
 ```
 apps/
   web/          @arrakit/web      TanStack Start app (port 4200). shadcn/ui lives here.
-    src/routes/                   file routes (routeTree.gen.ts is generated, do not edit)
+    src/routes/                   thin file routes: guard + search validation + title + one component
+                                  (routeTree.gen.ts is generated, do not edit)
     src/components/ui/            shadcn/ui components (generated, keep as shadcn ships them)
-    src/components/               app components built on top of ui/
+    src/components/<module>/      screens per module: auth, onboarding, organizations, settings,
+                                  billing, usage, shell, oauth (settings/ holds one file per section)
     src/lib/orpc.ts               typed oRPC client + TanStack Query utils (`orpc.x.y.queryOptions()`)
-    src/lib/auth-client.ts        Better Auth React client (magic link, organization plugins)
-    src/i18n/                     i18next setup, `tr()`, `loadLanguage()`, locales/{en,es}.json
+    src/lib/auth-client.ts        Better Auth React client (`@arrakit/auth/client`)
+    src/lib/guards/               route guards: require-user, require-account, skip-when-signed-in
+    src/lib/                      session(), statusOf()/reportError(), useCurrentUser(), titled(), checkoutChoice()
+    src/i18n/                     i18next setup, `tr()`, `loadLanguage()`;
+                                  locales/{en,es}/<module>.json deep-merged into one namespace
+    src/start.ts                  createStart({ defaultSsr: false }): screens render in the browser
     src/config.ts                 APP_NAME, SITE_URL (one place to rebrand the web)
     e2e/                          Playwright specs (playwright.config.ts boots api + web)
   api/          @arrakit/api      Hono server (port 3000)
-    src/app.ts                    createApp(): /health, /api/openapi.json, /api/rpc/*, /api/auth/*, ...
-    src/router.ts                 oRPC router implementing @arrakit/contract
+    src/app.ts                    createApp(deps): mounts routes/* and the oRPC router; openApiDocument()
+    src/router.ts                 root oRPC router composing routers/<module>.ts
+    src/routers/                  one oRPC router per module (implements its contract file)
+    src/orpc/base.ts              builders: pub, authed, member(level), notImplemented()
+    src/orpc/context.ts           BaseContext {deps, data, headers}; requireSession, requireMember(level),
+                                  requireTrustedOrigin(msg), requireStripe; MemberContext adds
+                                  {user, session, activeOrganization, role, scope}
+    src/routes/                   plain Hono routes: health, auth (+ OAuth metadata), stripe-webhook,
+                                  mcp (+ protected-resource metadata), dev-outbox
+    src/services.ts               buildDeps()/depsFromEnv(): AppDeps (env, data, auth, mailer, outbox, stripe)
+    src/env.ts                    Zod env parsing (loadApiEnv)
+    src/mail/mailer.ts            createMailer (Resend / console + outbox), recordingMailer()
+    src/billing/                  StripeGateway interface + createStripeGateway (null / fake / real)
+    src/usage/                    requiresUsage() middleware (+ UsageService)
+    src/workers/                  background workers; workers/index.ts registers them at boot
+    src/mcp/                      MCP server factory
+    src/testing/                  createTestApp() (in-process app on PGlite + testUtils), fake Stripe
     src/main.ts                   boot (env, mailer, openData, workers, serve, graceful shutdown)
     scripts/                      operational scripts (Stripe prices, credits product)
   landing/      @arrakit/landing  Astro static site (port 4321)
 packages/
-  db/           @arrakit/db       Drizzle schema + migrations (./drizzle), openData(), forOrganization(),
-                                  jobs (pg-boss / in-process), storage (S3 / local), Better Auth adapter,
-                                  test helpers (PGlite in-memory)
-  auth/         @arrakit/auth     Better Auth server config factory, roles/access control; the DB
-                                  adapter is injected (never imports drizzle/pg)
-  contract/     @arrakit/contract oRPC contract + Zod schemas shared by api (implements) and web (consumes)
-  plans/        @arrakit/plans    Pure plans/metrics/top-ups catalog and arithmetic (web + api)
-  address/      @arrakit/address  Pure email/slug/org-name/time-zone rules (web + api)
-  emails/       @arrakit/emails   Email layout + templates as plain TS renderers ({subject, html, text}),
-                                  APP_NAME brand, copy helpers
+  db/           @arrakit/db       Drizzle + Postgres/PGlite. ./drizzle holds the migrations.
+    src/schema/                   complete schema, one file per domain (auth, organizations, oauth, usage)
+    src/open-data.ts              openData(config): connect, migrate, storage, jobs -> Data facade
+    src/data/<domain>.ts          non-scoped data functions (membership, onboarding, organizations,
+                                  invitations, account)
+    src/organization/             forOrganization(id): tenant-db guard + one scope file per domain
+                                  (organization, billing, members, usage, storage)
+    src/jobs/, src/storage/       Jobs (pg-boss / in-process / memory), Storage (S3 / local / memory)
+    src/testing.ts                `@arrakit/db/testing`: openTestData() (in-memory PGlite, migrated)
+  auth/         @arrakit/auth     createAuth(deps) (Better Auth + plugins; one file per concern: hooks,
+                                  magic-link, social, oauth), loadAuthConfig(); `./roles` (pure),
+                                  `./client` (React client). The DB adapter is injected.
+  contract/     @arrakit/contract oRPC contract, one file per module + common.ts; index.ts composes them
+  plans/        @arrakit/plans    Pure plans catalog (catalog.ts) and usage arithmetic (usage.ts)
+  address/      @arrakit/address  Pure email/slug/org-name/time-zone/device-name rules, one file each
+  emails/       @arrakit/emails   Mail/Mailer types, composeEmail layout, copy helpers, one file per
+                                  template in templates/, registry.ts, APP_NAME brand
   tsconfig/     @arrakit/tsconfig Shared tsconfig presets: base.json, node.json, react.json
   eslint-config/@arrakit/eslint-config  Flat config: base(), react(), data-import guard
 docs/spec/      Feature specs (read the one for your area before coding)
+docs/ownership.md  Which files each feature module owns (parallel work without collisions)
 ```
 
 ### Package boundaries (enforced)
@@ -107,9 +144,12 @@ Highlights per workspace:
 - api: hono, @hono/node-server, @orpc/server, @orpc/contract, @orpc/openapi, @orpc/zod, @orpc/client,
   zod, better-auth, @better-auth/oauth-provider, stripe, resend, @modelcontextprotocol/server
   (+ @modelcontextprotocol/sdk, and @modelcontextprotocol/client for tests), croner, tsx, tsdown.
+  The api also lists drizzle-orm, pg, pg-boss, @electric-sql/pglite and @aws-sdk/* only so the
+  tsdown bundle keeps them external at runtime; its source still may not import them (lint).
 - db: drizzle-orm, drizzle-kit, pg, @types/pg, @electric-sql/pglite, pg-boss, @aws-sdk/client-s3,
   @aws-sdk/s3-request-presigner, better-auth (drizzle adapter), croner, zod.
-- auth: better-auth, @better-auth/oauth-provider, zod.
+- auth: better-auth, @better-auth/oauth-provider, zod, @arrakit/emails (dev: @arrakit/db for tests).
+- contract: @orpc/contract, zod, @arrakit/plans, @arrakit/auth (roles only), @arrakit/address.
 - web: @tanstack/react-start, @tanstack/react-router, @tanstack/react-query, @orpc/client,
   @orpc/tanstack-query, better-auth, i18next, react-i18next, sonner, @stripe/stripe-js,
   @stripe/react-stripe-js, react-hook-form, @hookform/resolvers, zod, lucide-react, radix-ui;
@@ -149,8 +189,11 @@ install is repaired, call the Turbo binary directly: `./node_modules/.bin/turbo 
   organization data is only reached through `forOrganization(orgId)`.
 - **i18n rule**: no hard-coded user-facing strings in the web app. Use `useTranslation()` /
   `t('ns.key')` in components and `tr()` outside React. Keys live in
-  `apps/web/src/i18n/locales/{en,es}.json` (already imported from saas-base with "SaaS" →
-  "Arrakit"); `en` and `es` must keep identical key sets (a test enforces it). Add new keys to both.
+  `apps/web/src/i18n/locales/{en,es}/<module>.json` (common, shell, auth, onboarding,
+  organizations, members, settings, billing, usage, oauth; imported from saas-base with "SaaS" →
+  "Arrakit"). The files are deep-merged into one namespace, so a key reads the same wherever it
+  lives (`t('settings.membersSettings.title')` is in members.json). Each module edits only its
+  own files; `en` and `es` must keep identical key sets and no key may be defined twice (tests).
 - **Contract first**: add the procedure to `packages/contract`, implement it in apps/api, consume
   it in apps/web via `orpc.<ns>.<proc>.queryOptions()` / `.mutationOptions()`.
 - Errors from procedures use oRPC errors (`ORPCError`) with HTTP-meaningful codes (400/401/403/404/409/402).
@@ -171,21 +214,25 @@ install is repaired, call the Turbo binary directly: `./node_modules/.bin/turbo 
 
 - **Vitest** everywhere (`vitest run`); node environment for packages/api, jsdom for web
   (`apps/web/src/test/setup.ts` loads jest-dom matchers and RTL cleanup).
-- **Database**: PGlite in-memory per test file (Docker is not available). `@arrakit/db` provides
-  the test helpers (open an in-memory data layer with migrations applied).
+- **Database**: PGlite in-memory per test file (Docker is not available).
+  `import { openTestData } from '@arrakit/db/testing'` opens a migrated in-memory `Data` with
+  memory storage and the recording `memoryJobs()` fake (`data.jobs.sent`, `sentJobs()`).
 - **Auth**: Better Auth `testUtils` plugin (`import { testUtils } from 'better-auth/plugins'`),
   enabled only in tests. `const { test } = await auth.$context` then `test.createUser()`,
   `test.saveUser()`, `test.login({ userId })` → `{ headers, cookies, session, user }`,
   `test.getAuthHeaders()`, `test.addMember()`, `test.getOTP()` (with `captureOTP`). Use those
   headers when calling `app.request()` / the oRPC client against `createApp()` in-process.
   (`@better-auth/test-utils` on npm is for adapter conformance, not for this.)
-- **API integration**: build the Hono app with `createApp(deps)` and call it in-process
-  (`app.request()` or an oRPC client whose `fetch` is `app.fetch`). Stripe: in-memory fake gateway.
-  Mail: outbox mailer. Storage: in-memory.
+- **API integration**: `const t = await createTestApp()` (`apps/api/src/testing/app.ts`) builds the
+  whole app in-process: `t.signIn({ email })` → `{ headers, userId }` (session cookie + trusted
+  Origin, via testUtils), `t.client(headers).me.get()`, `t.app.request(...)`, `t.sent` (recorded
+  mail), `t.data`, `t.close()`. Pass `{ stripe: fakeStripe() }` for billing. Note: when the
+  Microsoft provider is configured, Better Auth's `validateUserInfo` makes `testUtils.saveUser()`
+  require an endpoint context, so create such users through the API.
 - **Web components**: React Testing Library + user-event; mock the API with msw or by injecting a client.
 - **E2E**: Playwright in `apps/web/e2e`; `playwright.config.ts` boots the API on port 3100 with a
   throwaway PGlite dir, `STRIPE_FAKE=1`, `NODE_ENV=test`, and the web dev server on 4200.
-  Read magic links from the dev outbox endpoint the auth spec defines. Chromium is installed
+  Read magic links from the dev outbox: `GET /api/dev/outbox?to=<email>` (newest first; `DELETE` clears). Chromium is installed
   (`pnpm --filter @arrakit/web exec playwright install chromium`).
 
 ## Features (specs)

@@ -1,7 +1,5 @@
-import { createAuthClient } from 'better-auth/react'
-import { magicLinkClient, organizationClient } from 'better-auth/client/plugins'
+import { createArrakitAuthClient } from '@arrakit/auth/client'
 
-// Better Auth client. Same origin: /api/auth/* is proxied to the API.
-export const authClient = createAuthClient({
-  plugins: [magicLinkClient(), organizationClient()],
-})
+// Better Auth client (magic link, organization, OAuth provider plugins). Same origin: /api/auth/*
+// is proxied to the API.
+export const authClient = createArrakitAuthClient()

@@ -1,5 +1,5 @@
-// Shared address rules (emails, slugs, organization names, time zones). Pure TS; runs in web and api.
-// Filled in by the auth-onboarding and organizations-members features.
-export function normalizeEmail(raw: string): string {
-  return raw.trim().toLowerCase()
-}
+export * from './email'
+export * from './slug'
+export * from './organization-name'
+export * from './time-zone'
+export * from './device-name'

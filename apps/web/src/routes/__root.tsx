@@ -2,6 +2,7 @@ import { HeadContent, Scripts, createRootRouteWithContext } from '@tanstack/reac
 import type { QueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
+import { RootLayout } from '#/components/shell/root-layout'
 import { Toaster } from '#/components/ui/sonner'
 import { TooltipProvider } from '#/components/ui/tooltip'
 import { APP_NAME } from '#/config'
@@ -22,6 +23,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     links: [{ rel: 'stylesheet', href: appCss }],
   }),
   shellComponent: RootDocument,
+  component: RootLayout,
 })
 
 function RootDocument({ children }: { children: ReactNode }) {

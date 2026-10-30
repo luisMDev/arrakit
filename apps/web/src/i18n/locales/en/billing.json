@@ -1,0 +1,177 @@
+{
+  "pricing": {
+    "signIn": "Sign in",
+    "titleLead": "Pricing for",
+    "titleRest": "every team.",
+    "subtitle": "One monthly price per organization.",
+    "perMonth": "/ month",
+    "home": "Home",
+    "loadFailed": "Couldn't load the plans. Reload the page.",
+    "startFree": "Start free",
+    "getPlan": "Get {{plan}}",
+    "noCardNeeded": "No card needed",
+    "plan": {
+      "free": "Free",
+      "pro": "Pro",
+      "team": "Team",
+      "internal": "Internal"
+    },
+    "audience": {
+      "free": "To try it out",
+      "pro": "For small teams",
+      "team": "For growing teams",
+      "internal": "For the team and demos"
+    },
+    "feature": {
+      "everythingInPro": "Everything in Pro",
+      "everythingInTeam": "Everything in Team",
+      "everythingInFreePlus": "Everything in Free, plus",
+      "everythingInProPlus": "Everything in Pro, plus",
+      "coreFeatures": "The core features",
+      "everythingInFree": "Everything in Free",
+      "prioritySupport": "Priority support",
+      "teamFeatures": "Team features"
+    },
+    "upTo": "Up to",
+    "oneSeat": "1 seat",
+    "seatsUpTo": "{{upTo}} {{seats}} seats",
+    "billedLower": {
+      "monthly": "billed monthly",
+      "yearly": "billed yearly"
+    },
+    "billed": {
+      "monthly": "Billed monthly",
+      "yearly": "Billed yearly"
+    },
+    "billedYearlyTotal": "{{total}} billed yearly",
+    "billingCycleSwitch": {
+      "billing": "Billing",
+      "monthly": "Monthly",
+      "yearly": "Yearly",
+      "save": "Save {{saving}}%"
+    }
+  },
+  "plans": {
+    "loadFailed": "Couldn't load the plans. Reload the page.",
+    "billingLoadFailed": "Couldn't load your billing. Reload the page.",
+    "priceFailed": "Couldn't price the switch. Try again in a minute.",
+    "switchFailed": "Couldn't switch plans. Nothing changed; try again.",
+    "annualTitle": "{{plan}}, yearly",
+    "compared": "{{yearly}} a year instead of {{monthly}}.",
+    "switchTitle": {
+      "monthly": "Switch to {{plan}}, monthly",
+      "yearly": "Switch to {{plan}}, yearly"
+    },
+    "switchTo": "Switch to {{plan}}",
+    "per": {
+      "monthly": "{{amount}} a month",
+      "yearly": "{{amount}} a year"
+    },
+    "dueToday": "{{amount}} today, for the rest of this period.",
+    "movesNow": "Your organization moves to {{plan}} now.",
+    "then": "Then {{after}}.",
+    "nothingToday": "Nothing to pay today.",
+    "staysOn": {
+      "monthly": "Your organization stays on {{plan}}, billed monthly from {{on}}: {{after}}.",
+      "yearly": "Your organization stays on {{plan}}, billed yearly from {{on}}: {{after}}."
+    },
+    "keepsUntil": "Your organization keeps {{from}} until {{on}}, then moves to {{plan}}: {{after}}.",
+    "titleLead": "Pick the plan",
+    "titleRest": "that fits.",
+    "subtitle": "Pick the plan for your organization.",
+    "recommended": "Recommended",
+    "perMonthBilled": "/ month, {{billed}}",
+    "currentPlan": "Your current plan",
+    "select": "Select {{plan}}",
+    "onlyAdmin": "Only an admin of your organization can change its plan.",
+    "notNow": "Not now",
+    "compareAll": "Compare all plans",
+    "annualModal": "Pay less with yearly billing",
+    "save": "Save {{saving}}%",
+    "continueYearly": "Continue yearly",
+    "continueMonthly": "Continue monthly"
+  },
+  "checkout": {
+    "loadFailed": "Couldn't load the plan. Reload the page.",
+    "openFailed": "Couldn't open the payment form. Reload the page to try again.",
+    "per": {
+      "monthly": "per month",
+      "yearly": "per year"
+    },
+    "terms": {
+      "monthly": "Billed monthly",
+      "yearly": "Billed yearly"
+    },
+    "orderSummary": "Order summary",
+    "back": "Back",
+    "subscribeTo": "Subscribe to {{product}}",
+    "subtotal": "Subtotal",
+    "tax": "Tax",
+    "taxFromAddress": "Calculated from your address",
+    "totalDueToday": "Total due today",
+    "payment": "Payment",
+    "opening": "Opening the payment form…",
+    "cancelAnytime": "Cancel anytime. Payments processed by Stripe."
+  },
+  "settings": {
+    "billingSettings": {
+      "title": "Billing",
+      "plan": "Plan",
+      "planCycle": "{{plan}} · {{cycle}}",
+      "cycle": {
+        "monthly": "monthly",
+        "yearly": "yearly"
+      },
+      "scheduled": "{{plan}} from {{day}}",
+      "switchPlan": "Switch plan",
+      "keepMyPlan": "Keep my plan",
+      "cancel": "Cancel",
+      "renewsOn": "Renews on",
+      "endsOn": "Ends on",
+      "then": "Then",
+      "nextInvoice": "Next invoice",
+      "includes": "Includes",
+      "upTo": "up to",
+      "seePricing": "See pricing",
+      "payment": "Payment",
+      "noCard": "No card yet",
+      "cardEnding": "{{brand}} ending {{last4}}",
+      "edit": "Edit",
+      "billingEmail": "Billing email",
+      "notSet": "Not set",
+      "invoiceTo": "Invoice to",
+      "taxId": "Tax ID",
+      "invoices": "Invoices",
+      "invoiceStatus": {
+        "paid": "Paid",
+        "open": "Due",
+        "failed": "Payment failed"
+      },
+      "download": "Download",
+      "noInvoices": "No invoices yet.",
+      "cancelTitle": "Cancel your plan?",
+      "cancelUntil": "Your organization keeps {{plan}} until {{day}}, then moves to Free.",
+      "cancelNoDate": "Your organization keeps {{plan}}, then moves to Free.",
+      "cancelPlan": "Cancel plan",
+      "notLoaded": "Couldn't load billing. Reload the page.",
+      "notCancelled": "Couldn't cancel the plan. Try again.",
+      "notKept": "Couldn't keep the plan. Try again.",
+      "portalNotOpened": "Couldn't open Stripe. Try again in a minute.",
+      "usage": {
+        "title": "Usage",
+        "addCredits": "Add credits",
+        "topUpTitle": "Add credits",
+        "topUpAmount": "Amount ({{currency}})",
+        "topUpBounds": "Between {{min}} and {{max}}",
+        "topUpYouGet": "You get {{amounts}}.",
+        "topUpNote": "Added to every metric at once, and never expires. Your plan's monthly part is used first.",
+        "topUpPay": "Continue to payment",
+        "topUpCancel": "Cancel",
+        "topUpNotOpened": "Couldn't open the payment. Try again in a minute.",
+        "topUpPaid": "Payment received. Your credits show up here in a moment.",
+        "topUps": "Top-ups",
+        "noTopUps": "No top-ups yet."
+      }
+    }
+  }
+}

@@ -1,0 +1,177 @@
+{
+  "pricing": {
+    "signIn": "Iniciar sesión",
+    "titleLead": "Precios para",
+    "titleRest": "cada equipo.",
+    "subtitle": "Un precio al mes por organización.",
+    "perMonth": "/ mes",
+    "home": "Inicio",
+    "loadFailed": "No se han podido cargar los planes. Recarga la página.",
+    "startFree": "Empieza gratis",
+    "getPlan": "Contratar {{plan}}",
+    "noCardNeeded": "Sin tarjeta",
+    "plan": {
+      "free": "Free",
+      "pro": "Pro",
+      "team": "Team",
+      "internal": "Interno"
+    },
+    "audience": {
+      "free": "Para probarlo",
+      "pro": "Para equipos pequeños",
+      "team": "Para equipos en crecimiento",
+      "internal": "Para el equipo y demos"
+    },
+    "feature": {
+      "everythingInPro": "Todo lo de Pro",
+      "everythingInTeam": "Todo lo de Team",
+      "everythingInFreePlus": "Todo lo de Free, y además",
+      "everythingInProPlus": "Todo lo de Pro, y además",
+      "coreFeatures": "Las funciones básicas",
+      "everythingInFree": "Todo lo de Free",
+      "prioritySupport": "Soporte prioritario",
+      "teamFeatures": "Funciones de equipo"
+    },
+    "upTo": "Hasta",
+    "oneSeat": "1 plaza",
+    "seatsUpTo": "{{upTo}} {{seats}} plazas",
+    "billedLower": {
+      "monthly": "facturado mensualmente",
+      "yearly": "facturado anualmente"
+    },
+    "billed": {
+      "monthly": "Facturado mensualmente",
+      "yearly": "Facturado anualmente"
+    },
+    "billedYearlyTotal": "{{total}} facturados al año",
+    "billingCycleSwitch": {
+      "billing": "Facturación",
+      "monthly": "Mensual",
+      "yearly": "Anual",
+      "save": "Ahorra un {{saving}}%"
+    }
+  },
+  "plans": {
+    "loadFailed": "No se han podido cargar los planes. Recarga la página.",
+    "billingLoadFailed": "No se ha podido cargar tu facturación. Recarga la página.",
+    "priceFailed": "No se ha podido calcular el precio del cambio. Inténtalo de nuevo en un minuto.",
+    "switchFailed": "No se ha podido cambiar de plan. No ha cambiado nada; inténtalo de nuevo.",
+    "annualTitle": "{{plan}}, anual",
+    "compared": "{{yearly}} al año en lugar de {{monthly}}.",
+    "switchTitle": {
+      "monthly": "Cambiar a {{plan}}, mensual",
+      "yearly": "Cambiar a {{plan}}, anual"
+    },
+    "switchTo": "Cambiar a {{plan}}",
+    "per": {
+      "monthly": "{{amount}} al mes",
+      "yearly": "{{amount}} al año"
+    },
+    "dueToday": "{{amount}} hoy, por lo que queda de este periodo.",
+    "movesNow": "Tu organización pasa a {{plan}} ahora.",
+    "then": "Después, {{after}}.",
+    "nothingToday": "Hoy no pagas nada.",
+    "staysOn": {
+      "monthly": "Tu organización sigue en {{plan}}, con facturación mensual desde el {{on}}: {{after}}.",
+      "yearly": "Tu organización sigue en {{plan}}, con facturación anual desde el {{on}}: {{after}}."
+    },
+    "keepsUntil": "Tu organización mantiene {{from}} hasta el {{on}} y después pasa a {{plan}}: {{after}}.",
+    "titleLead": "Elige el plan",
+    "titleRest": "que encaje.",
+    "subtitle": "Elige el plan para tu organización.",
+    "recommended": "Recomendado",
+    "perMonthBilled": "/ mes, {{billed}}",
+    "currentPlan": "Tu plan actual",
+    "select": "Elegir {{plan}}",
+    "onlyAdmin": "Solo un administrador de tu organización puede cambiar su plan.",
+    "notNow": "Ahora no",
+    "compareAll": "Comparar todos los planes",
+    "annualModal": "Paga menos con la facturación anual",
+    "save": "Ahorra un {{saving}}%",
+    "continueYearly": "Continuar con anual",
+    "continueMonthly": "Continuar con mensual"
+  },
+  "checkout": {
+    "loadFailed": "No se ha podido cargar el plan. Recarga la página.",
+    "openFailed": "No se ha podido abrir el formulario de pago. Recarga la página para volver a intentarlo.",
+    "per": {
+      "monthly": "al mes",
+      "yearly": "al año"
+    },
+    "terms": {
+      "monthly": "Facturación mensual",
+      "yearly": "Facturación anual"
+    },
+    "orderSummary": "Resumen del pedido",
+    "back": "Volver",
+    "subscribeTo": "Suscribirse a {{product}}",
+    "subtotal": "Subtotal",
+    "tax": "Impuestos",
+    "taxFromAddress": "Calculados según tu dirección",
+    "totalDueToday": "Total a pagar hoy",
+    "payment": "Pago",
+    "opening": "Abriendo el formulario de pago…",
+    "cancelAnytime": "Cancela cuando quieras. Pagos procesados por Stripe."
+  },
+  "settings": {
+    "billingSettings": {
+      "title": "Facturación",
+      "plan": "Plan",
+      "planCycle": "{{plan}} · {{cycle}}",
+      "cycle": {
+        "monthly": "mensual",
+        "yearly": "anual"
+      },
+      "scheduled": "{{plan}} desde el {{day}}",
+      "switchPlan": "Cambiar de plan",
+      "keepMyPlan": "Mantener mi plan",
+      "cancel": "Cancelar",
+      "renewsOn": "Se renueva el",
+      "endsOn": "Termina el",
+      "then": "Después",
+      "nextInvoice": "Próxima factura",
+      "includes": "Incluye",
+      "upTo": "hasta",
+      "seePricing": "Ver precios",
+      "payment": "Pago",
+      "noCard": "Aún no hay tarjeta",
+      "cardEnding": "{{brand}} terminada en {{last4}}",
+      "edit": "Editar",
+      "billingEmail": "Email de facturación",
+      "notSet": "Sin definir",
+      "invoiceTo": "Facturar a",
+      "taxId": "NIF",
+      "invoices": "Facturas",
+      "invoiceStatus": {
+        "paid": "Pagada",
+        "open": "Pendiente",
+        "failed": "Pago fallido"
+      },
+      "download": "Descargar",
+      "noInvoices": "Aún no hay facturas.",
+      "cancelTitle": "¿Cancelar tu plan?",
+      "cancelUntil": "Tu organización mantiene {{plan}} hasta el {{day}} y después pasa a Free.",
+      "cancelNoDate": "Tu organización mantiene {{plan}} y después pasa a Free.",
+      "cancelPlan": "Cancelar plan",
+      "notLoaded": "No se ha podido cargar la facturación. Recarga la página.",
+      "notCancelled": "No se ha podido cancelar el plan. Inténtalo de nuevo.",
+      "notKept": "No se ha podido mantener el plan. Inténtalo de nuevo.",
+      "portalNotOpened": "No se ha podido abrir Stripe. Inténtalo de nuevo en un minuto.",
+      "usage": {
+        "title": "Consumo",
+        "addCredits": "Añadir créditos",
+        "topUpTitle": "Añadir créditos",
+        "topUpAmount": "Importe ({{currency}})",
+        "topUpBounds": "Entre {{min}} y {{max}}",
+        "topUpYouGet": "Recibes {{amounts}}.",
+        "topUpNote": "Se suma a todas las métricas a la vez y no caduca. Primero se usa la parte mensual de tu plan.",
+        "topUpPay": "Continuar al pago",
+        "topUpCancel": "Cancelar",
+        "topUpNotOpened": "No se ha podido abrir el pago. Inténtalo de nuevo en un minuto.",
+        "topUpPaid": "Pago recibido. Tus créditos aparecerán aquí en un momento.",
+        "topUps": "Recargas",
+        "noTopUps": "Aún no hay recargas."
+      }
+    }
+  }
+}

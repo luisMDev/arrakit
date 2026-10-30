@@ -1,0 +1,25 @@
+{
+  "app": {
+    "homeLabel": "Home",
+    "titles": {
+      "signIn": "Sign in",
+      "pricing": "Pricing",
+      "unavailable": "Unavailable",
+      "joinYourOrganization": "Join your organization",
+      "signInToConnect": "Sign in to connect",
+      "connect": "Connect",
+      "whereToWrite": "Where to write",
+      "yourOrganization": "Your organization",
+      "home": "Home",
+      "settings": "Settings",
+      "plans": "Plans",
+      "checkout": "Checkout",
+      "welcome": "Welcome"
+    }
+  },
+  "confirmDelete": {
+    "cannotBeUndone": "This can't be undone.",
+    "keepIt": "Keep it"
+  },
+  "shared": {}
+}

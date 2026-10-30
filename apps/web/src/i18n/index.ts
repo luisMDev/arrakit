@@ -1,7 +1,7 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 
-import en from './locales/en.json'
+import { en, loadEs } from './resources'
 
 // i18n (docs/spec/web-shell-landing.md section 6). `en` is bundled and is the fallback;
 // `es` is lazy-loaded the first time it is used. Never switch before the target is loaded.
@@ -10,7 +10,7 @@ export type Language = (typeof LANGUAGES)[number]
 
 const loaders: Record<Language, () => Promise<Record<string, unknown>>> = {
   en: async () => en,
-  es: async () => (await import('./locales/es.json')).default,
+  es: loadEs,
 }
 
 export function isLanguage(value: unknown): value is Language {

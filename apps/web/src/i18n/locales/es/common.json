@@ -1,0 +1,25 @@
+{
+  "app": {
+    "homeLabel": "Inicio",
+    "titles": {
+      "signIn": "Iniciar sesión",
+      "pricing": "Precios",
+      "unavailable": "No disponible",
+      "joinYourOrganization": "Únete a tu organización",
+      "signInToConnect": "Inicia sesión para conectar",
+      "connect": "Conectar",
+      "whereToWrite": "Dónde escribir",
+      "yourOrganization": "Tu organización",
+      "home": "Inicio",
+      "settings": "Ajustes",
+      "plans": "Planes",
+      "checkout": "Pago",
+      "welcome": "Bienvenida"
+    }
+  },
+  "confirmDelete": {
+    "cannotBeUndone": "No se puede deshacer.",
+    "keepIt": "Conservar"
+  },
+  "shared": {}
+}

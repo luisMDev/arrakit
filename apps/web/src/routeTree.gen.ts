@@ -10,33 +10,287 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SplatRouteImport } from './routes/$'
+import { Route as AppRouteImport } from './routes/app'
+import { Route as NewRouteImport } from './routes/new'
+import { Route as PricingRouteImport } from './routes/pricing'
+import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as SigninRouteImport } from './routes/signin'
+import { Route as SignupRouteImport } from './routes/signup'
+import { Route as StartRouteImport } from './routes/start'
+import { Route as UnavailableRouteImport } from './routes/unavailable'
+import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppSplatRouteImport } from './routes/app/$'
+import { Route as AppBillingRouteImport } from './routes/app/billing'
+import { Route as AppCheckoutRouteImport } from './routes/app/checkout'
+import { Route as AppMembersRouteImport } from './routes/app/members'
+import { Route as AppPlansRouteImport } from './routes/app/plans'
+import { Route as AppSettingsRouteImport } from './routes/app/settings'
+import { Route as AppWelcomeRouteImport } from './routes/app/welcome'
+import { Route as JoinInvitationIdRouteImport } from './routes/join.$invitationId'
+import { Route as OauthConsentRouteImport } from './routes/oauth/consent'
+import { Route as OauthSigninRouteImport } from './routes/oauth/signin'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SplatRoute = SplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppRoute = AppRouteImport.update({
+  id: '/app',
+  path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewRoute = NewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SigninRoute = SigninRouteImport.update({
+  id: '/signin',
+  path: '/signin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StartRoute = StartRouteImport.update({
+  id: '/start',
+  path: '/start',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UnavailableRoute = UnavailableRouteImport.update({
+  id: '/unavailable',
+  path: '/unavailable',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSplatRoute = AppSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppBillingRoute = AppBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCheckoutRoute = AppCheckoutRouteImport.update({
+  id: '/checkout',
+  path: '/checkout',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMembersRoute = AppMembersRouteImport.update({
+  id: '/members',
+  path: '/members',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPlansRoute = AppPlansRouteImport.update({
+  id: '/plans',
+  path: '/plans',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppWelcomeRoute = AppWelcomeRouteImport.update({
+  id: '/welcome',
+  path: '/welcome',
+  getParentRoute: () => AppRoute,
+} as any)
+const JoinInvitationIdRoute = JoinInvitationIdRouteImport.update({
+  id: '/join/$invitationId',
+  path: '/join/$invitationId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OauthConsentRoute = OauthConsentRouteImport.update({
+  id: '/oauth/consent',
+  path: '/oauth/consent',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OauthSigninRoute = OauthSigninRouteImport.update({
+  id: '/oauth/signin',
+  path: '/oauth/signin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/$': typeof SplatRoute
+  '/app': typeof AppRouteWithChildren
+  '/new': typeof NewRoute
+  '/pricing': typeof PricingRoute
+  '/profile': typeof ProfileRoute
+  '/signin': typeof SigninRoute
+  '/signup': typeof SignupRoute
+  '/start': typeof StartRoute
+  '/unavailable': typeof UnavailableRoute
+  '/app/$': typeof AppSplatRoute
+  '/app/billing': typeof AppBillingRoute
+  '/app/checkout': typeof AppCheckoutRoute
+  '/app/members': typeof AppMembersRoute
+  '/app/plans': typeof AppPlansRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/welcome': typeof AppWelcomeRoute
+  '/join/$invitationId': typeof JoinInvitationIdRoute
+  '/oauth/consent': typeof OauthConsentRoute
+  '/oauth/signin': typeof OauthSigninRoute
+  '/app/': typeof AppIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/$': typeof SplatRoute
+  '/new': typeof NewRoute
+  '/pricing': typeof PricingRoute
+  '/profile': typeof ProfileRoute
+  '/signin': typeof SigninRoute
+  '/signup': typeof SignupRoute
+  '/start': typeof StartRoute
+  '/unavailable': typeof UnavailableRoute
+  '/app/$': typeof AppSplatRoute
+  '/app/billing': typeof AppBillingRoute
+  '/app/checkout': typeof AppCheckoutRoute
+  '/app/members': typeof AppMembersRoute
+  '/app/plans': typeof AppPlansRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/welcome': typeof AppWelcomeRoute
+  '/join/$invitationId': typeof JoinInvitationIdRoute
+  '/oauth/consent': typeof OauthConsentRoute
+  '/oauth/signin': typeof OauthSigninRoute
+  '/app': typeof AppIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/$': typeof SplatRoute
+  '/app': typeof AppRouteWithChildren
+  '/new': typeof NewRoute
+  '/pricing': typeof PricingRoute
+  '/profile': typeof ProfileRoute
+  '/signin': typeof SigninRoute
+  '/signup': typeof SignupRoute
+  '/start': typeof StartRoute
+  '/unavailable': typeof UnavailableRoute
+  '/app/$': typeof AppSplatRoute
+  '/app/billing': typeof AppBillingRoute
+  '/app/checkout': typeof AppCheckoutRoute
+  '/app/members': typeof AppMembersRoute
+  '/app/plans': typeof AppPlansRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/welcome': typeof AppWelcomeRoute
+  '/join/$invitationId': typeof JoinInvitationIdRoute
+  '/oauth/consent': typeof OauthConsentRoute
+  '/oauth/signin': typeof OauthSigninRoute
+  '/app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/$'
+    | '/app'
+    | '/new'
+    | '/pricing'
+    | '/profile'
+    | '/signin'
+    | '/signup'
+    | '/start'
+    | '/unavailable'
+    | '/app/$'
+    | '/app/billing'
+    | '/app/checkout'
+    | '/app/members'
+    | '/app/plans'
+    | '/app/settings'
+    | '/app/welcome'
+    | '/join/$invitationId'
+    | '/oauth/consent'
+    | '/oauth/signin'
+    | '/app/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/$'
+    | '/new'
+    | '/pricing'
+    | '/profile'
+    | '/signin'
+    | '/signup'
+    | '/start'
+    | '/unavailable'
+    | '/app/$'
+    | '/app/billing'
+    | '/app/checkout'
+    | '/app/members'
+    | '/app/plans'
+    | '/app/settings'
+    | '/app/welcome'
+    | '/join/$invitationId'
+    | '/oauth/consent'
+    | '/oauth/signin'
+    | '/app'
+  id:
+    | '__root__'
+    | '/'
+    | '/$'
+    | '/app'
+    | '/new'
+    | '/pricing'
+    | '/profile'
+    | '/signin'
+    | '/signup'
+    | '/start'
+    | '/unavailable'
+    | '/app/$'
+    | '/app/billing'
+    | '/app/checkout'
+    | '/app/members'
+    | '/app/plans'
+    | '/app/settings'
+    | '/app/welcome'
+    | '/join/$invitationId'
+    | '/oauth/consent'
+    | '/oauth/signin'
+    | '/app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SplatRoute: typeof SplatRoute
+  AppRoute: typeof AppRouteWithChildren
+  NewRoute: typeof NewRoute
+  PricingRoute: typeof PricingRoute
+  ProfileRoute: typeof ProfileRoute
+  SigninRoute: typeof SigninRoute
+  SignupRoute: typeof SignupRoute
+  StartRoute: typeof StartRoute
+  UnavailableRoute: typeof UnavailableRoute
+  JoinInvitationIdRoute: typeof JoinInvitationIdRoute
+  OauthConsentRoute: typeof OauthConsentRoute
+  OauthSigninRoute: typeof OauthSigninRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,21 +302,198 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$': {
+      id: '/$'
+      path: '/$'
+      fullPath: '/$'
+      preLoaderRoute: typeof SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/new': {
+      id: '/new'
+      path: '/new'
+      fullPath: '/new'
+      preLoaderRoute: typeof NewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signin': {
+      id: '/signin'
+      path: '/signin'
+      fullPath: '/signin'
+      preLoaderRoute: typeof SigninRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/start': {
+      id: '/start'
+      path: '/start'
+      fullPath: '/start'
+      preLoaderRoute: typeof StartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/unavailable': {
+      id: '/unavailable'
+      path: '/unavailable'
+      fullPath: '/unavailable'
+      preLoaderRoute: typeof UnavailableRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app/': {
+      id: '/app/'
+      path: '/'
+      fullPath: '/app/'
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/$': {
+      id: '/app/$'
+      path: '/$'
+      fullPath: '/app/$'
+      preLoaderRoute: typeof AppSplatRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/billing': {
+      id: '/app/billing'
+      path: '/billing'
+      fullPath: '/app/billing'
+      preLoaderRoute: typeof AppBillingRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/checkout': {
+      id: '/app/checkout'
+      path: '/checkout'
+      fullPath: '/app/checkout'
+      preLoaderRoute: typeof AppCheckoutRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/members': {
+      id: '/app/members'
+      path: '/members'
+      fullPath: '/app/members'
+      preLoaderRoute: typeof AppMembersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/plans': {
+      id: '/app/plans'
+      path: '/plans'
+      fullPath: '/app/plans'
+      preLoaderRoute: typeof AppPlansRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/settings': {
+      id: '/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/welcome': {
+      id: '/app/welcome'
+      path: '/welcome'
+      fullPath: '/app/welcome'
+      preLoaderRoute: typeof AppWelcomeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/join/$invitationId': {
+      id: '/join/$invitationId'
+      path: '/join/$invitationId'
+      fullPath: '/join/$invitationId'
+      preLoaderRoute: typeof JoinInvitationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/consent': {
+      id: '/oauth/consent'
+      path: '/oauth/consent'
+      fullPath: '/oauth/consent'
+      preLoaderRoute: typeof OauthConsentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/signin': {
+      id: '/oauth/signin'
+      path: '/oauth/signin'
+      fullPath: '/oauth/signin'
+      preLoaderRoute: typeof OauthSigninRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
+interface AppRouteChildren {
+  AppSplatRoute: typeof AppSplatRoute
+  AppBillingRoute: typeof AppBillingRoute
+  AppCheckoutRoute: typeof AppCheckoutRoute
+  AppMembersRoute: typeof AppMembersRoute
+  AppPlansRoute: typeof AppPlansRoute
+  AppSettingsRoute: typeof AppSettingsRoute
+  AppWelcomeRoute: typeof AppWelcomeRoute
+  AppIndexRoute: typeof AppIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppSplatRoute: AppSplatRoute,
+  AppBillingRoute: AppBillingRoute,
+  AppCheckoutRoute: AppCheckoutRoute,
+  AppMembersRoute: AppMembersRoute,
+  AppPlansRoute: AppPlansRoute,
+  AppSettingsRoute: AppSettingsRoute,
+  AppWelcomeRoute: AppWelcomeRoute,
+  AppIndexRoute: AppIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SplatRoute: SplatRoute,
+  AppRoute: AppRouteWithChildren,
+  NewRoute: NewRoute,
+  PricingRoute: PricingRoute,
+  ProfileRoute: ProfileRoute,
+  SigninRoute: SigninRoute,
+  SignupRoute: SignupRoute,
+  StartRoute: StartRoute,
+  UnavailableRoute: UnavailableRoute,
+  JoinInvitationIdRoute: JoinInvitationIdRoute,
+  OauthConsentRoute: OauthConsentRoute,
+  OauthSigninRoute: OauthSigninRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }

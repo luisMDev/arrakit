@@ -13,3 +13,14 @@ describe('emails package', () => {
     )
   })
 })
+
+describe('templates', () => {
+  it('render the sign-in email with the exact link', async () => {
+    const { signinEmail } = await import('./index')
+    const mail = signinEmail({ minutes: 15, links: { signIn: 'https://app.example/x?a=1&b=2' } })
+    expect(mail.subject).toBe('Your link to sign in to Arrakit')
+    expect(mail.text).toContain('https://app.example/x?a=1&b=2')
+    expect(mail.html).toContain('href="https://app.example/x?a=1&amp;b=2"')
+    expect(mail.text).toContain('15 minutes')
+  })
+})

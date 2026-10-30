@@ -1,17 +1,13 @@
-// Email templates rendered by the API mailer. Plain TS renderers returning { subject, html, text }.
-export const APP_NAME = 'Arrakit'
-
-export interface RenderedEmail {
-  subject: string
-  html: string
-  text: string
-}
-
-export function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
+export { APP_NAME } from './brand'
+export { escapeHtml } from './escape'
+export type { Mail, Mailer, RenderedEmail } from './mail'
+export { composeEmail, type Action, type Block, type EmailInput } from './compose'
+export * from './copy'
+export { EMAIL_TEMPLATES, type EmailTemplateName } from './registry'
+export * from './templates/signin'
+export * from './templates/member'
+export * from './templates/receipt'
+export * from './templates/renew'
+export * from './templates/failed'
+export * from './templates/canceled'
+export * from './templates/downgraded'

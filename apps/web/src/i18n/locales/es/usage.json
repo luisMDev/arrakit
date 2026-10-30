@@ -1,0 +1,26 @@
+{
+  "settings": {
+    "usageSettings": {
+      "title": "Consumo",
+      "memberHint": "¿Te quedas sin créditos? Un propietario o un administrador puede añadir más.",
+      "adminHint": "Añade créditos en Facturación.",
+      "notLoaded": "No se ha podido cargar el consumo. Recarga la página.",
+      "metric": {
+        "credits": "Créditos",
+        "storage_gb": "Almacenamiento"
+      },
+      "amount": {
+        "credits": "{{n}} créditos",
+        "storage_gb": "{{n}} GB"
+      },
+      "available": {
+        "consumable": "Quedan {{amount}}",
+        "capacity": "{{amount}} libres"
+      },
+      "split": "{{plan}} de tu plan · {{purchased}} comprados",
+      "usedThisMonth": "{{amount}} usados este mes",
+      "usedOf": "{{used}} de {{limit}} usados",
+      "resets": "La parte de tu plan se renueva el {{day}}"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "settings": {
+    "usageSettings": {
+      "title": "Usage",
+      "memberHint": "Running low? An owner or an admin can add credits.",
+      "adminHint": "Add credits in Billing.",
+      "notLoaded": "Couldn't load usage. Reload the page.",
+      "metric": {
+        "credits": "Credits",
+        "storage_gb": "Storage"
+      },
+      "amount": {
+        "credits": "{{n}} credits",
+        "storage_gb": "{{n}} GB"
+      },
+      "available": {
+        "consumable": "{{amount}} left",
+        "capacity": "{{amount}} free"
+      },
+      "split": "{{plan}} from your plan · {{purchased}} purchased",
+      "usedThisMonth": "{{amount}} used this month",
+      "usedOf": "{{used}} of {{limit}} used",
+      "resets": "Your plan's part resets on {{day}}"
+    }
+  }
+}

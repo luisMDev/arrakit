@@ -1,0 +1,25 @@
+{
+  "oauth": {
+    "oauthSignin": {
+      "incompleteTitle": "This link is incomplete.",
+      "startAgain": "Start again from the app you were connecting Arrakit to.",
+      "titleStart": "Sign in to",
+      "titleEnd": "connect Arrakit",
+      "useOrganizationAccount": "Use your organization's account. You'll see what is shared before anything is."
+    },
+    "oauthConsent": {
+      "loading": "Loading…",
+      "incompleteTitle": "This link is incomplete.",
+      "startAgain": "Start again from the app you were connecting Arrakit to.",
+      "unavailableTitle": "Couldn't open this request.",
+      "connect": "Connect",
+      "willSee": "{{client}} will act as you in {{organization}}.",
+      "allow": "Allow",
+      "deny": "Deny",
+      "noOrganizationTitle": "You're not in an organization yet.",
+      "noOrganizationBody": "{{client}} acts within an organization. Join yours, or set one up, then connect again.",
+      "backTo": "Back to {{client}}",
+      "failed": "Couldn't finish connecting. Try again."
+    }
+  }
+}

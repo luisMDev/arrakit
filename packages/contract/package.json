@@ -14,7 +14,9 @@
   "dependencies": {
     "@arrakit/plans": "workspace:*",
     "@orpc/contract": "^1.16.1",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "@arrakit/auth": "workspace:*",
+    "@arrakit/address": "workspace:*"
   },
   "devDependencies": {
     "@arrakit/eslint-config": "workspace:*",

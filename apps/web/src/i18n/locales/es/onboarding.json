@@ -1,0 +1,23 @@
+{
+  "onboarding": {
+    "unreachable": "No se ha podido conectar con Arrakit. Revisa tu conexión y recarga.",
+    "failed": "Algo ha ido mal. Recarga e inténtalo de nuevo."
+  },
+  "profile": {
+    "titleStart": "Cuéntanos",
+    "titleEnd": "sobre tu organización.",
+    "yourName": "Tu nombre",
+    "organization": "Organización",
+    "agreeTo": "Acepto los",
+    "terms": "Términos",
+    "andThe": "y la",
+    "privacyPolicy": "Política de privacidad",
+    "agreeEnd": ".",
+    "next": "Siguiente",
+    "skip": "Omitir",
+    "organizationNotSaved": "No se ha podido guardar tu organización. Revisa el nombre y vuelve a intentarlo.",
+    "notSkipped": "No se ha podido omitir este paso. Inténtalo de nuevo.",
+    "termsBody": "Los Términos se publicarán aquí antes del lanzamiento.",
+    "privacyBody": "La Política de privacidad se publicará aquí antes del lanzamiento."
+  }
+}

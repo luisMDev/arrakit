@@ -1,0 +1,42 @@
+{
+  "join": {
+    "joining": "Entrando en tu organización…",
+    "expiredStart": "Tu enlace ha",
+    "expiredEnd": "caducado.",
+    "expiredBody": "Escribe el email al que te invitaron y te enviaremos uno nuevo.",
+    "yourWorkEmail": "Tu email de trabajo",
+    "sendNewLink": "Envíame un enlace nuevo",
+    "checkStart": "Revisa tu",
+    "checkEnd": "bandeja de entrada.",
+    "sentBody": "Abre el enlace nuevo en este navegador para entrar. ¿No está? Mira en spam.",
+    "takenTitle": "Ya perteneces a una organización.",
+    "takenBody": "Por ahora, cada persona está en una sola organización. Inicia sesión para abrir la tuya.",
+    "signIn": "Iniciar sesión",
+    "closedTitle": "Esta invitación no está abierta.",
+    "closedBody": "Se canceló, caducó o se envió a otro email. Pide a quien te invitó que te la vuelva a enviar.",
+    "failedTitle": "No se ha podido entrar ahora.",
+    "failedBody": "No se ha perdido nada. Vuelve a abrir el enlace en un momento.",
+    "workEmail": "Escribe tu email de trabajo, como nombre@empresa.com.",
+    "tooManyLinks": "Has pedido demasiados enlaces. Espera un minuto y vuelve a intentarlo.",
+    "linkNotSent": "No se ha podido enviar el enlace. Inténtalo de nuevo."
+  },
+  "settings": {
+    "generalSettings": {
+      "title": "General",
+      "organizationName": "Nombre de la organización",
+      "notSaved": "No se han podido guardar los ajustes de la organización. Inténtalo de nuevo.",
+      "notLoaded": "No se han podido cargar los ajustes de tu organización. Recarga la página.",
+      "slug": "Slug: {{slug}}"
+    },
+    "securitySettings": {
+      "title": "Seguridad y datos",
+      "deleteOrganization": "Eliminar la organización",
+      "deleteOrganizationHint": "Todo lo que contiene y el acceso de cada miembro. No se puede deshacer.",
+      "delete": "Eliminar",
+      "confirmTitle": "¿Eliminar la organización?",
+      "notDeleted": "No se ha podido eliminar tu organización. Inténtalo de nuevo.",
+      "deleted": "Tu organización se ha eliminado.",
+      "ownerOnly": "Solo el propietario puede eliminar la organización."
+    }
+  }
+}

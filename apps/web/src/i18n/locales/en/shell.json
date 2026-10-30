@@ -1,0 +1,40 @@
+{
+  "appMenu": {
+    "accountMenu": "Account menu",
+    "yourOrganization": "Your organization",
+    "home": "Home",
+    "settings": "Settings",
+    "members": "Members",
+    "billing": "Billing",
+    "more": "More",
+    "signOut": "Sign out",
+    "notSignedOut": "Couldn't sign you out. Try again."
+  },
+  "shell": {
+    "account": "Account",
+    "usage": "{{organization}} · {{plan}}"
+  },
+  "home": {
+    "title": "Hi, {{name}}.",
+    "organization": "{{organization}} is on {{plan}}. This is where your product starts.",
+    "settings": "Settings",
+    "members": "Members",
+    "plans": "Plans"
+  },
+  "welcome": {
+    "titleLead": "Welcome",
+    "titleRest": "to {{plan}}.",
+    "receiptSent": "Receipt sent to your email. Manage your plan anytime in",
+    "settings": "Settings",
+    "receiptEnd": ".",
+    "goHome": "Go to the app →"
+  },
+  "unavailable": {
+    "forbiddenTitle": "Your account can't open Arrakit right now.",
+    "forbiddenBody": "Ask your organization's admin to check your access.",
+    "home": "Home",
+    "unreachableTitle": "Couldn't reach Arrakit.",
+    "unreachableBody": "Nothing is lost. Try again in a moment.",
+    "tryAgain": "Try again"
+  }
+}
