@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 
 import NotFound from './pages/404.astro'
 import Index from './pages/index.astro'
+import Privacy from './pages/privacy.astro'
+import Terms from './pages/terms.astro'
 
 const render = async (page: Parameters<AstroContainer['renderToString']>[0]) =>
   (await AstroContainer.create()).renderToString(page)
@@ -23,6 +25,13 @@ describe('front page', () => {
     expect(html).toMatch(/<b[^>]*>Your product<\/b> in one line,/)
     expect(html).toMatch(/<b[^>]*>the reason<\/b> people need it\./)
     expect(html).toContain('© Arrakit')
+    expect(html).toContain('href="/terms"')
+    expect(html).toContain('href="/privacy"')
+  })
+
+  it('loads no analytics script unless it is configured', async () => {
+    const html = await render(Index)
+    expect(html).not.toContain('data-domain')
   })
 
   it('carries the search and link-preview metadata', async () => {
@@ -41,5 +50,18 @@ describe('404 page', () => {
     expect(html).toContain('<title>Page not found · Arrakit</title>')
     expect(html).toContain('This page does not exist.')
     expect(html).toContain('href="/"')
+  })
+})
+
+describe.each([
+  [Terms, 'Terms of Service', '/terms'],
+  [Privacy, 'Privacy Policy', '/privacy'],
+])('legal page', (page, title, path) => {
+  it(`renders ${title} with its canonical URL and the footer`, async () => {
+    const html = await render(page)
+    expect(html).toContain(`<title>${title} · Arrakit</title>`)
+    expect(html).toContain(`rel="canonical" href="https://example.com${path}"`)
+    expect(html).toContain('href="/terms"')
+    expect(html).toContain('href="/privacy"')
   })
 })

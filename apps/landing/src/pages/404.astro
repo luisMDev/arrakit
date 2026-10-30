@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css'
+import Analytics from '../components/Analytics.astro'
 import Favicons from '../components/Favicons.astro'
 import LogoMark from '../components/LogoMark.astro'
 import { APP_NAME } from '../lib/config'
@@ -12,6 +13,7 @@ import { APP_NAME } from '../lib/config'
     <meta name="robots" content="noindex" />
     <title>Page not found · {APP_NAME}</title>
     <Favicons />
+    <Analytics />
   </head>
   <body
     class="flex min-h-svh flex-col items-center justify-center gap-7 bg-white px-4 py-5 text-center text-neutral-900"

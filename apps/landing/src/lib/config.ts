@@ -31,3 +31,9 @@ export function robotsTxt(siteUrl: string = SITE_URL): string {
     '',
   ].join('\n')
 }
+
+/** Plausible-compatible analytics; off unless both variables are set. */
+export const ANALYTICS: { src: string; domain: string } | null =
+  import.meta.env.PUBLIC_ANALYTICS_SRC && import.meta.env.PUBLIC_ANALYTICS_DOMAIN
+    ? { src: import.meta.env.PUBLIC_ANALYTICS_SRC, domain: import.meta.env.PUBLIC_ANALYTICS_DOMAIN }
+    : null

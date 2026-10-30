@@ -1,6 +1,8 @@
 ---
 import '../styles/global.css'
+import Analytics from '../components/Analytics.astro'
 import Favicons from '../components/Favicons.astro'
+import Footer from '../components/Footer.astro'
 import { APP_NAME, MOTTO, appLink, siteLink } from '../lib/config'
 
 const description = 'One sentence on what the product does, for search results.'
@@ -13,6 +15,7 @@ const previewDescription = 'One sentence on what the product does, for link prev
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{APP_NAME}</title>
     <Favicons />
+    <Analytics />
     <meta name="description" content={description} />
     <link rel="canonical" href={siteLink('/')} />
     <meta property="og:type" content="website" />
@@ -66,8 +69,6 @@ const previewDescription = 'One sentence on what the product does, for link prev
       </a>
     </main>
 
-    <footer class="flex justify-center pb-2 text-sm text-neutral-500">
-      <span>© {APP_NAME}</span>
-    </footer>
+    <Footer />
   </body>
 </html>

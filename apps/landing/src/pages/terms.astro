@@ -1,0 +1,27 @@
+---
+import LegalPage from '../layouts/LegalPage.astro'
+import { APP_NAME } from '../lib/config'
+---
+
+<LegalPage title="Terms of Service" path="/terms" updated="Before launch">
+  <p>
+    This is a template. Replace it with terms reviewed by a lawyer before launch. By creating an
+    account you agree to these terms on behalf of yourself and your organization.
+  </p>
+  <h2>The service</h2>
+  <p>{APP_NAME} is provided as is. We may change or discontinue features with reasonable notice.</p>
+  <h2>Your account</h2>
+  <p>
+    You are responsible for the activity in your account and your organization, and for keeping
+    access to your email address secure.
+  </p>
+  <h2>Payments</h2>
+  <p>
+    Paid plans renew automatically until cancelled. Cancelling stops the next renewal; the current
+    period stays active until it ends.
+  </p>
+  <h2>Acceptable use</h2>
+  <p>Do not use the service to break the law, abuse others or disrupt the service.</p>
+  <h2>Contact</h2>
+  <p>Questions about these terms: write to the address published on this site.</p>
+</LegalPage>

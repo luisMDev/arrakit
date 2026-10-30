@@ -1,0 +1,39 @@
+---
+import '../styles/global.css'
+import Analytics from '../components/Analytics.astro'
+import Favicons from '../components/Favicons.astro'
+import Footer from '../components/Footer.astro'
+import { APP_NAME, siteLink } from '../lib/config'
+
+interface Props {
+  title: string
+  path: string
+  updated: string
+}
+
+const { title, path, updated } = Astro.props
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} · {APP_NAME}</title>
+    <Favicons />
+    <Analytics />
+    <link rel="canonical" href={siteLink(path)} />
+  </head>
+  <body class="flex min-h-svh flex-col bg-white px-4 py-5 text-neutral-900 sm:px-8 sm:py-7">
+    <header>
+      <a class="text-2xl font-semibold tracking-tight" href="/">{APP_NAME}</a>
+    </header>
+    <main
+      class="mx-auto flex w-full max-w-2xl grow flex-col gap-4 py-10 leading-relaxed [&_h2]:mt-4 [&_h2]:text-lg [&_h2]:font-semibold [&_ul]:list-disc [&_ul]:pl-6"
+    >
+      <h1 class="text-3xl font-semibold tracking-tight">{title}</h1>
+      <p class="text-sm text-neutral-500">Last updated: {updated}</p>
+      <slot />
+    </main>
+    <Footer />
+  </body>
+</html>

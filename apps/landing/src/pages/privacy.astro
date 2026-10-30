@@ -1,0 +1,29 @@
+---
+import LegalPage from '../layouts/LegalPage.astro'
+import { APP_NAME } from '../lib/config'
+---
+
+<LegalPage title="Privacy Policy" path="/privacy" updated="Before launch">
+  <p>
+    This is a template. Replace it with a policy reviewed by a lawyer before launch. It describes
+    what {APP_NAME} collects and why.
+  </p>
+  <h2>What we collect</h2>
+  <ul>
+    <li>Account data: your name, email address and the organizations you belong to.</li>
+    <li>Billing data: handled by our payment processor; we do not store card numbers.</li>
+    <li>Usage data: what you do in the product, to run and bill the service.</li>
+    <li>Analytics: aggregate, cookieless page views, when analytics is enabled.</li>
+  </ul>
+  <h2>How we use it</h2>
+  <p>To provide the service, send the emails it needs, bill for it and keep it secure.</p>
+  <h2>Sharing</h2>
+  <p>We do not sell personal data. We share it only with the providers that run the service.</p>
+  <h2>Your rights</h2>
+  <p>
+    You can update your profile or delete your account from Settings at any time. Deleting it
+    removes your personal data.
+  </p>
+  <h2>Contact</h2>
+  <p>Privacy questions: write to the address published on this site.</p>
+</LegalPage>
