@@ -7,8 +7,6 @@ import { fakeStripe } from '../testing/fake-stripe'
 import { realStripeGateway } from './real-stripe'
 import type { PaidSubscription } from './subscription-plan'
 
-export type { PaidSubscription } from './subscription-plan'
-
 export interface Money {
   /** Minor unit. */
   amount: number

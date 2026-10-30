@@ -21,7 +21,7 @@ import '#/i18n'
 import { createQueryClient } from '#/integrations/tanstack-query/root-provider'
 import { orpc } from '#/lib/orpc'
 
-export const api = setupServer()
+const api = setupServer()
 
 /** Starts the msw server for the file; after each test: no handlers, no spies, no toasts. */
 export function setupTestApi({

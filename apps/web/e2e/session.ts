@@ -29,7 +29,7 @@ export async function signIn(page: Page, email: string, callbackURL = '/app') {
 }
 
 /** Calls Better Auth's `/api/auth/organization/<path>` as the user signed in on `page`. */
-export async function organizationApi<T>(page: Page, path: string, body: unknown): Promise<T> {
+async function organizationApi<T>(page: Page, path: string, body: unknown): Promise<T> {
   const res = await page.request.post(`/api/auth/organization/${path}`, {
     data: body,
     headers: { origin: WEB_ORIGIN },
@@ -39,7 +39,7 @@ export async function organizationApi<T>(page: Page, path: string, body: unknown
 }
 
 /** Creates the person's organization as the profile step does, and makes it the active one. */
-export async function createOrganization(page: Page, name: string, personName?: string) {
+async function createOrganization(page: Page, name: string, personName?: string) {
   const created = await rpc<{ id: string }>(page, 'onboarding/create', {
     name,
     personName,
@@ -86,7 +86,7 @@ const PRICE_CENTS: Record<LookupKey, number> = {
   team_yearly: 48_000,
 }
 
-export const RENEWAL = Date.UTC(2027, 9, 4) / 1000
+const RENEWAL = Date.UTC(2027, 9, 4) / 1000
 
 /**
  * Subscribes the organization to `lookupKey` through the fake Stripe webhook, paid with a Visa

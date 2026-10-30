@@ -16,5 +16,3 @@ export const router = pub.router({
   billing: billingRouter,
   usage: usageRouter,
 })
-
-export type Router = typeof router

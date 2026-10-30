@@ -14,7 +14,7 @@ import {
 } from '../schema/index'
 
 const SIGN_IN_METHODS = ['email', 'google', 'microsoft'] as const
-export type SignInMethod = (typeof SIGN_IN_METHODS)[number]
+type SignInMethod = (typeof SIGN_IN_METHODS)[number]
 
 export interface Account {
   user: {

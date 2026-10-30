@@ -1,6 +1,6 @@
 export type Messages = { [key: string]: string | Messages }
 
-export function deepMerge(target: Messages, source: Messages): Messages {
+function deepMerge(target: Messages, source: Messages): Messages {
   for (const [key, value] of Object.entries(source)) {
     const current = target[key]
     target[key] =
@@ -11,7 +11,7 @@ export function deepMerge(target: Messages, source: Messages): Messages {
   return target
 }
 
-export const mergeModules = (modules: Record<string, Messages>): Messages =>
+const mergeModules = (modules: Record<string, Messages>): Messages =>
   Object.keys(modules)
     .sort()
     .reduce<Messages>((all, path) => deepMerge(all, modules[path]!), {})

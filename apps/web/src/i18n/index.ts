@@ -4,7 +4,7 @@ import { initReactI18next } from 'react-i18next'
 
 import { en, loadEs } from './resources'
 
-export const LANGUAGES = ACCOUNT_LANGUAGES
+const LANGUAGES = ACCOUNT_LANGUAGES
 export type Language = AccountLanguage
 
 export const STORED_LANGUAGE_KEY = 'arrakit.lang'

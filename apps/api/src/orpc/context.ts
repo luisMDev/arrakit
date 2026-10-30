@@ -65,12 +65,12 @@ export const reportErrors = os
     }
   })
 
-export const notInOrganization = () =>
+const notInOrganization = () =>
   new ORPCError('NOT_FOUND', { message: 'Not found in your organization.' })
 
 type SessionResult = NonNullable<Awaited<ReturnType<Auth['api']['getSession']>>>
 type SessionUser = SessionResult['user']
-export type Session = SessionResult['session']
+type Session = SessionResult['session']
 
 interface SessionContext extends BaseContext {
   user: SessionUser

@@ -8,7 +8,7 @@ interface AuthFailure {
 
 type AuthAnswer<T> = { data: T | null; error: AuthFailure | null }
 
-export class AuthCallError extends Error {
+class AuthCallError extends Error {
   constructor(
     readonly status: number,
     readonly code: string | null,
