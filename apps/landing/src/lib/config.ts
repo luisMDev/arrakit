@@ -1,7 +1,7 @@
 export const APP_NAME = 'Arrakit'
 export const MOTTO = 'Nothing in excess.'
 const APP_URL: string = import.meta.env.PUBLIC_APP_URL ?? 'https://app.example.com'
-const SITE_URL: string = (import.meta.env.SITE ?? 'https://example.com').replace(/\/$/, '')
+const SITE_URL: string = import.meta.env.SITE.replace(/\/$/, '')
 
 /** A link into the app (Pricing, Sign in, Get started). */
 export function appLink(path: string, appUrl: string = APP_URL): string {
@@ -10,7 +10,7 @@ export function appLink(path: string, appUrl: string = APP_URL): string {
 
 /** A URL on this site (canonical, og:url, og:image, sitemap). */
 export function siteLink(path: string, siteUrl: string = SITE_URL): string {
-  return `${siteUrl.replace(/\/$/, '')}${path}`
+  return `${siteUrl}${path}`
 }
 
 /** robots.txt: everything is crawlable, AI crawlers included. */

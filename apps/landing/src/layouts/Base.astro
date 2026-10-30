@@ -1,0 +1,28 @@
+---
+import '../styles/global.css'
+import { ANALYTICS } from '../lib/config'
+
+interface Props {
+  title: string
+  bodyClass: string
+}
+
+const { title, bodyClass } = Astro.props
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    {ANALYTICS && <script is:inline defer data-domain={ANALYTICS.domain} src={ANALYTICS.src} />}
+    <slot name="head" />
+  </head>
+  <body class={bodyClass}>
+    <slot />
+  </body>
+</html>

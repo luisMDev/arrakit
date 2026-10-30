@@ -1,21 +1,17 @@
 ---
-import '../styles/global.css'
-import Analytics from '../components/Analytics.astro'
-import Favicons from '../components/Favicons.astro'
 import Footer from '../components/Footer.astro'
+import Base from '../layouts/Base.astro'
 import { APP_NAME, MOTTO, appLink, siteLink } from '../lib/config'
 
 const description = 'One sentence on what the product does, for search results.'
 const previewDescription = 'One sentence on what the product does, for link previews.'
 ---
 
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{APP_NAME}</title>
-    <Favicons />
-    <Analytics />
+<Base
+  title={APP_NAME}
+  bodyClass="flex min-h-svh flex-col bg-white px-4 py-5 text-neutral-900 sm:px-8 sm:py-7"
+>
+  <Fragment slot="head">
     <meta name="description" content={description} />
     <link rel="canonical" href={siteLink('/')} />
     <meta property="og:type" content="website" />
@@ -26,49 +22,47 @@ const previewDescription = 'One sentence on what the product does, for link prev
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
-  </head>
-  <body class="flex min-h-svh flex-col bg-white px-4 py-5 text-neutral-900 sm:px-8 sm:py-7">
-    <header class="flex items-center justify-between gap-4">
-      <div class="flex flex-col">
-        <span class="text-2xl font-semibold tracking-tight">{APP_NAME}</span>
-        <span class="text-sm text-neutral-500 italic">{MOTTO}</span>
-      </div>
-      <nav class="flex items-center gap-5">
-        <a class="px-1 py-3 hover:underline" href={appLink('/pricing')}>Pricing</a>
-        <a class="px-1 py-3 hover:underline" href={appLink('/signin')}>Sign in</a>
-      </nav>
-    </header>
+  </Fragment>
+  <header class="flex items-center justify-between gap-4">
+    <div class="flex flex-col">
+      <span class="text-2xl font-semibold tracking-tight">{APP_NAME}</span>
+      <span class="text-sm text-neutral-500 italic">{MOTTO}</span>
+    </div>
+    <nav class="flex items-center gap-5">
+      <a class="px-1 py-3 hover:underline" href={appLink('/pricing')}>Pricing</a>
+      <a class="px-1 py-3 hover:underline" href={appLink('/signin')}>Sign in</a>
+    </nav>
+  </header>
 
-    <main class="flex grow flex-col items-center justify-center gap-8 py-8 text-center sm:gap-11 sm:py-12">
-      <h1 class="flex max-w-4xl flex-col text-2xl leading-snug font-light sm:text-3xl">
-        <span><b class="font-semibold">Your product</b> in one line,</span>
-        <span>and <b class="font-semibold">the reason</b> people need it.</span>
-      </h1>
-      <a
-        class="inline-flex h-12 items-center gap-3 rounded-full bg-neutral-900 pr-2 pl-6 font-medium text-white hover:bg-neutral-800"
-        href={appLink('/signup')}
-      >
-        Get started
-        <span class="flex size-8 items-center justify-center rounded-full bg-white">
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.4"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="text-neutral-900"
-            aria-hidden="true"
-          >
-            <path d="M4 12h16"></path>
-            <path d="M13 5l7 7-7 7"></path>
-          </svg>
-        </span>
-      </a>
-    </main>
+  <main class="flex grow flex-col items-center justify-center gap-8 py-8 text-center sm:gap-11 sm:py-12">
+    <h1 class="flex max-w-4xl flex-col text-2xl leading-snug font-light sm:text-3xl">
+      <span><b class="font-semibold">Your product</b> in one line,</span>
+      <span>and <b class="font-semibold">the reason</b> people need it.</span>
+    </h1>
+    <a
+      class="inline-flex h-12 items-center gap-3 rounded-full bg-neutral-900 pr-2 pl-6 font-medium text-white hover:bg-neutral-800"
+      href={appLink('/signup')}
+    >
+      Get started
+      <span class="flex size-8 items-center justify-center rounded-full bg-white">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.4"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="text-neutral-900"
+          aria-hidden="true"
+        >
+          <path d="M4 12h16"></path>
+          <path d="M13 5l7 7-7 7"></path>
+        </svg>
+      </span>
+    </a>
+  </main>
 
-    <Footer />
-  </body>
-</html>
+  <Footer />
+</Base>

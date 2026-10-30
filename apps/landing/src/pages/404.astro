@@ -1,25 +1,15 @@
 ---
-import '../styles/global.css'
-import Analytics from '../components/Analytics.astro'
-import Favicons from '../components/Favicons.astro'
 import LogoMark from '../components/LogoMark.astro'
+import Base from '../layouts/Base.astro'
 import { APP_NAME } from '../lib/config'
 ---
 
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex" />
-    <title>Page not found · {APP_NAME}</title>
-    <Favicons />
-    <Analytics />
-  </head>
-  <body
-    class="flex min-h-svh flex-col items-center justify-center gap-7 bg-white px-4 py-5 text-center text-neutral-900"
-  >
-    <LogoMark />
-    <h1 class="text-2xl font-light sm:text-3xl">This page does not exist.</h1>
-    <a class="underline underline-offset-4" href="/">Back home</a>
-  </body>
-</html>
+<Base
+  title={`Page not found · ${APP_NAME}`}
+  bodyClass="flex min-h-svh flex-col items-center justify-center gap-7 bg-white px-4 py-5 text-center text-neutral-900"
+>
+  <meta slot="head" name="robots" content="noindex" />
+  <LogoMark />
+  <h1 class="text-2xl font-light sm:text-3xl">This page does not exist.</h1>
+  <a class="underline underline-offset-4" href="/">Back home</a>
+</Base>
