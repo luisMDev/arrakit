@@ -1,0 +1,21 @@
+---
+// Placeholder front page; full content in docs/spec/web-shell-landing.md section 13.
+import '../styles/global.css'
+import { APP_NAME, appLink } from '../lib/config'
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{APP_NAME}</title>
+  </head>
+  <body class="min-h-svh">
+    <main class="mx-auto flex max-w-3xl flex-col gap-6 p-8">
+      <h1 class="text-4xl font-semibold">{APP_NAME}</h1>
+      <a class="underline" href={appLink('/start')}>Get started</a>
+    </main>
+  </body>
+</html>

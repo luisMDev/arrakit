@@ -1,0 +1,49 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "stream",
+  "globalEnv": ["NODE_ENV"],
+  "globalPassThroughEnv": [
+    "DATABASE_URL",
+    "PGLITE_DIR",
+    "STRIPE_*",
+    "BETTER_AUTH_*",
+    "RESEND_API_KEY",
+    "MAIL_FROM",
+    "R2_*",
+    "S3_*",
+    "STORAGE_DIR",
+    "GOOGLE_*",
+    "MICROSOFT_*",
+    "WEB_URL",
+    "WEB_ORIGIN",
+    "API_ORIGIN",
+    "TRUSTED_ORIGINS",
+    "APP_NAME",
+    "SITE_URL",
+    "PORT",
+    "CI"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*", "!**/*.test.*", "!**/*.spec.*", "!e2e/**"],
+      "outputs": ["dist/**", ".output/**", "!.output/cache/**"],
+      "env": ["VITE_*", "PUBLIC_*"]
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"]
+    },
+    "lint": {},
+    "test": {
+      "outputs": ["coverage/**"]
+    },
+    "test:e2e": {
+      "cache": false,
+      "dependsOn": ["^build"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

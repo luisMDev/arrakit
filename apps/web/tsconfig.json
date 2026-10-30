@@ -1,0 +1,12 @@
+{
+  "extends": "@arrakit/tsconfig/react.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node", "@testing-library/jest-dom/vitest"],
+    "paths": {
+      "#/*": ["./src/*"],
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "e2e", "*.ts"],
+  "exclude": ["node_modules", ".output"]
+}

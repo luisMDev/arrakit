@@ -1,0 +1,25 @@
+packages:
+  - apps/*
+  - packages/*
+
+allowBuilds:
+  esbuild: true
+  lightningcss: true
+  sharp: true
+  '@parcel/watcher': true
+  unrs-resolver: true
+
+minimumReleaseAgeExclude:
+  - '@tanstack/devtools-bundler-core@0.1.4'
+  - '@tanstack/devtools-ui@0.7.2'
+  - '@tanstack/devtools-vite@0.8.6'
+  - '@tanstack/devtools@0.16.0'
+  - '@tanstack/react-devtools@0.10.14'
+
+permissions:
+  '@tanstack/devtools-vite':
+    skills: false
+  '@tanstack/react-router':
+    skills: false
+  '@tanstack/react-start':
+    skills: false

@@ -1,0 +1,461 @@
+{
+  "app": {
+    "homeLabel": "Home",
+    "titles": {
+      "signIn": "Sign in",
+      "pricing": "Pricing",
+      "unavailable": "Unavailable",
+      "joinYourOrganization": "Join your organization",
+      "signInToConnect": "Sign in to connect",
+      "connect": "Connect",
+      "whereToWrite": "Where to write",
+      "yourOrganization": "Your organization",
+      "home": "Home",
+      "settings": "Settings",
+      "plans": "Plans",
+      "checkout": "Checkout",
+      "welcome": "Welcome"
+    }
+  },
+  "appMenu": {
+    "accountMenu": "Account menu",
+    "yourOrganization": "Your organization",
+    "home": "Home",
+    "settings": "Settings",
+    "members": "Members",
+    "billing": "Billing",
+    "more": "More",
+    "signOut": "Sign out",
+    "notSignedOut": "Couldn't sign you out. Try again."
+  },
+  "auth": {
+    "checkYourEmail": {
+      "titleStart": "Check your",
+      "titleEnd": "email.",
+      "sentTo": "We sent a sign-in link to {{email}}. Open it in this browser to carry on.",
+      "useDifferentEmail": "Use a different email",
+      "linkWorksOnce": "The link works once. Nothing there? Look in spam."
+    },
+    "signInOptions": {
+      "linkRefused": "That link was already used or has expired. Enter your email for a new one.",
+      "providerRefused": "Couldn't sign you in with {{provider}}. Try again, or use your email.",
+      "continueWithGoogle": "Continue with Google",
+      "continueWithMicrosoft": "Continue with Microsoft",
+      "or": "OR",
+      "workEmail": "Work email",
+      "yourWorkEmail": "Your work email",
+      "workEmailError": "Enter your work email, like name@company.com.",
+      "continue": "Continue",
+      "linkNotSent": "Couldn't send your link. Try again.",
+      "notSignedIn": "Couldn't sign you in. Try again."
+    }
+  },
+  "checkout": {
+    "loadFailed": "Couldn't load the plan. Reload the page.",
+    "openFailed": "Couldn't open the payment form. Reload the page to try again.",
+    "per": {
+      "monthly": "per month",
+      "yearly": "per year"
+    },
+    "terms": {
+      "monthly": "Billed monthly",
+      "yearly": "Billed yearly"
+    },
+    "orderSummary": "Order summary",
+    "back": "Back",
+    "subscribeTo": "Subscribe to {{product}}",
+    "subtotal": "Subtotal",
+    "tax": "Tax",
+    "taxFromAddress": "Calculated from your address",
+    "totalDueToday": "Total due today",
+    "payment": "Payment",
+    "opening": "Opening the payment form…",
+    "cancelAnytime": "Cancel anytime. Payments processed by Stripe."
+  },
+  "confirmDelete": {
+    "cannotBeUndone": "This can't be undone.",
+    "keepIt": "Keep it"
+  },
+  "join": {
+    "joining": "Joining your organization…",
+    "expiredStart": "Your link has",
+    "expiredEnd": "expired.",
+    "expiredBody": "Enter the email you were invited at, and we send you a new one.",
+    "yourWorkEmail": "Your work email",
+    "sendNewLink": "Send me a new link",
+    "checkStart": "Check your",
+    "checkEnd": "inbox.",
+    "sentBody": "Open the new link in this browser to join. Nothing there? Look in spam.",
+    "takenTitle": "You already belong to an organization.",
+    "takenBody": "A person is in one organization for now. Sign in to open yours.",
+    "signIn": "Sign in",
+    "closedTitle": "This invite is not open.",
+    "closedBody": "It was cancelled, it expired, or it was sent to another email. Ask whoever invited you to send it again.",
+    "failedTitle": "Couldn't join right now.",
+    "failedBody": "Nothing is lost. Open the link again in a moment.",
+    "workEmail": "Enter your work email, like name@company.com.",
+    "tooManyLinks": "Too many links asked for. Wait a minute and try again.",
+    "linkNotSent": "Couldn't send the link. Try again."
+  },
+  "oauth": {
+    "oauthSignin": {
+      "incompleteTitle": "This link is incomplete.",
+      "startAgain": "Start again from the app you were connecting Arrakit to.",
+      "titleStart": "Sign in to",
+      "titleEnd": "connect Arrakit",
+      "useOrganizationAccount": "Use your organization's account. You'll see what is shared before anything is."
+    },
+    "oauthConsent": {
+      "loading": "Loading…",
+      "incompleteTitle": "This link is incomplete.",
+      "startAgain": "Start again from the app you were connecting Arrakit to.",
+      "unavailableTitle": "Couldn't open this request.",
+      "connect": "Connect",
+      "willSee": "{{client}} will act as you in {{organization}}.",
+      "allow": "Allow",
+      "deny": "Deny",
+      "noOrganizationTitle": "You're not in an organization yet.",
+      "noOrganizationBody": "{{client}} acts within an organization. Join yours, or set one up, then connect again.",
+      "backTo": "Back to {{client}}",
+      "failed": "Couldn't finish connecting. Try again."
+    }
+  },
+  "onboarding": {
+    "unreachable": "Couldn't reach Arrakit. Check your connection and reload.",
+    "failed": "Something went wrong. Reload and try again."
+  },
+  "plans": {
+    "loadFailed": "Couldn't load the plans. Reload the page.",
+    "billingLoadFailed": "Couldn't load your billing. Reload the page.",
+    "priceFailed": "Couldn't price the switch. Try again in a minute.",
+    "switchFailed": "Couldn't switch plans. Nothing changed; try again.",
+    "annualTitle": "{{plan}}, yearly",
+    "compared": "{{yearly}} a year instead of {{monthly}}.",
+    "switchTitle": {
+      "monthly": "Switch to {{plan}}, monthly",
+      "yearly": "Switch to {{plan}}, yearly"
+    },
+    "switchTo": "Switch to {{plan}}",
+    "per": {
+      "monthly": "{{amount}} a month",
+      "yearly": "{{amount}} a year"
+    },
+    "dueToday": "{{amount}} today, for the rest of this period.",
+    "movesNow": "Your organization moves to {{plan}} now.",
+    "then": "Then {{after}}.",
+    "nothingToday": "Nothing to pay today.",
+    "staysOn": {
+      "monthly": "Your organization stays on {{plan}}, billed monthly from {{on}}: {{after}}.",
+      "yearly": "Your organization stays on {{plan}}, billed yearly from {{on}}: {{after}}."
+    },
+    "keepsUntil": "Your organization keeps {{from}} until {{on}}, then moves to {{plan}}: {{after}}.",
+    "titleLead": "Pick the plan",
+    "titleRest": "that fits.",
+    "subtitle": "Pick the plan for your organization.",
+    "recommended": "Recommended",
+    "perMonthBilled": "/ month, {{billed}}",
+    "currentPlan": "Your current plan",
+    "select": "Select {{plan}}",
+    "onlyAdmin": "Only an admin of your organization can change its plan.",
+    "notNow": "Not now",
+    "compareAll": "Compare all plans",
+    "annualModal": "Pay less with yearly billing",
+    "save": "Save {{saving}}%",
+    "continueYearly": "Continue yearly",
+    "continueMonthly": "Continue monthly"
+  },
+  "pricing": {
+    "signIn": "Sign in",
+    "titleLead": "Pricing for",
+    "titleRest": "every team.",
+    "subtitle": "One monthly price per organization.",
+    "perMonth": "/ month",
+    "home": "Home",
+    "loadFailed": "Couldn't load the plans. Reload the page.",
+    "startFree": "Start free",
+    "getPlan": "Get {{plan}}",
+    "noCardNeeded": "No card needed",
+    "plan": {
+      "free": "Free",
+      "pro": "Pro",
+      "team": "Team",
+      "internal": "Internal"
+    },
+    "audience": {
+      "free": "To try it out",
+      "pro": "For small teams",
+      "team": "For growing teams",
+      "internal": "For the team and demos"
+    },
+    "feature": {
+      "everythingInPro": "Everything in Pro",
+      "everythingInTeam": "Everything in Team",
+      "everythingInFreePlus": "Everything in Free, plus",
+      "everythingInProPlus": "Everything in Pro, plus",
+      "coreFeatures": "The core features",
+      "everythingInFree": "Everything in Free",
+      "prioritySupport": "Priority support",
+      "teamFeatures": "Team features"
+    },
+    "upTo": "Up to",
+    "oneSeat": "1 seat",
+    "seatsUpTo": "{{upTo}} {{seats}} seats",
+    "billedLower": {
+      "monthly": "billed monthly",
+      "yearly": "billed yearly"
+    },
+    "billed": {
+      "monthly": "Billed monthly",
+      "yearly": "Billed yearly"
+    },
+    "billedYearlyTotal": "{{total}} billed yearly",
+    "billingCycleSwitch": {
+      "billing": "Billing",
+      "monthly": "Monthly",
+      "yearly": "Yearly",
+      "save": "Save {{saving}}%"
+    }
+  },
+  "profile": {
+    "titleStart": "Tell us",
+    "titleEnd": "about your organization.",
+    "yourName": "Your name",
+    "organization": "Organization",
+    "agreeTo": "I agree to the",
+    "terms": "Terms",
+    "andThe": "and the",
+    "privacyPolicy": "Privacy Policy",
+    "agreeEnd": ".",
+    "next": "Next",
+    "skip": "Skip",
+    "organizationNotSaved": "Couldn't save your organization. Check its name and try again.",
+    "notSkipped": "Couldn't skip this step. Try again.",
+    "termsBody": "The Terms will be published here before launch.",
+    "privacyBody": "The Privacy Policy will be published here before launch."
+  },
+  "settings": {
+    "back": "Back",
+    "title": "Settings",
+    "mySettings": "My settings",
+    "account": "Account",
+    "organizationSettings": "Organization settings",
+    "general": "General",
+    "usage": "Usage",
+    "members": "Members",
+    "billing": "Billing",
+    "security": "Security and data",
+    "accountSettings": {
+      "title": "Account",
+      "yourName": "Your name",
+      "signIn": "Sign in",
+      "email": "Email",
+      "signInWith": "Sign in with",
+      "signInGoogle": "Google",
+      "signInMicrosoft": "Microsoft",
+      "signInEmail": "A link by email",
+      "devices": "Devices",
+      "noDevice": "No device",
+      "thisDevice": "This {{device}}",
+      "anDevice": "an {{device}}",
+      "aDevice": "a {{device}}",
+      "signOutEverywhere": "Sign out everywhere",
+      "preferences": "Preferences",
+      "language": "Language",
+      "timeZone": "Time zone",
+      "zoneMadrid": "Central European Time (Madrid)",
+      "zoneLondon": "UK Time (London)",
+      "zoneNewYork": "Eastern Time (New York)",
+      "zoneChicago": "Central Time (Chicago)",
+      "zoneLosAngeles": "Pacific Time (Los Angeles)",
+      "zoneSantiago": "Chile Time (Santiago)",
+      "productNews": "Product news",
+      "productNewsHint": "A few times a year.",
+      "deleteAccount": "Delete your account",
+      "ownerDeleteFirst": "You own this organization. Delete the organization first, in",
+      "securityAndData": "Security and data",
+      "ownerDeleteFirstEnd": ".",
+      "cannotBeUndone": "This can't be undone.",
+      "delete": "Delete",
+      "confirmTitle": "Delete your account?",
+      "notSaved": "Couldn't save your settings. Try again.",
+      "notDeleted": "Couldn't delete your account. Try again.",
+      "notSignedOut": "Couldn't sign out your other devices. Try again.",
+      "notLoaded": "Couldn't load your account. Reload the page.",
+      "devicesNotLoaded": "Couldn't load your devices. Reload the page.",
+      "enterName": "Enter your name.",
+      "signedOut": "Signed out on your other devices.",
+      "deleted": "Your account is deleted.",
+      "emails": "Emails"
+    },
+    "billingSettings": {
+      "title": "Billing",
+      "plan": "Plan",
+      "planCycle": "{{plan}} · {{cycle}}",
+      "cycle": {
+        "monthly": "monthly",
+        "yearly": "yearly"
+      },
+      "scheduled": "{{plan}} from {{day}}",
+      "switchPlan": "Switch plan",
+      "keepMyPlan": "Keep my plan",
+      "cancel": "Cancel",
+      "renewsOn": "Renews on",
+      "endsOn": "Ends on",
+      "then": "Then",
+      "nextInvoice": "Next invoice",
+      "includes": "Includes",
+      "upTo": "up to",
+      "seePricing": "See pricing",
+      "payment": "Payment",
+      "noCard": "No card yet",
+      "cardEnding": "{{brand}} ending {{last4}}",
+      "edit": "Edit",
+      "billingEmail": "Billing email",
+      "notSet": "Not set",
+      "invoiceTo": "Invoice to",
+      "taxId": "Tax ID",
+      "invoices": "Invoices",
+      "invoiceStatus": {
+        "paid": "Paid",
+        "open": "Due",
+        "failed": "Payment failed"
+      },
+      "download": "Download",
+      "noInvoices": "No invoices yet.",
+      "cancelTitle": "Cancel your plan?",
+      "cancelUntil": "Your organization keeps {{plan}} until {{day}}, then moves to Free.",
+      "cancelNoDate": "Your organization keeps {{plan}}, then moves to Free.",
+      "cancelPlan": "Cancel plan",
+      "notLoaded": "Couldn't load billing. Reload the page.",
+      "notCancelled": "Couldn't cancel the plan. Try again.",
+      "notKept": "Couldn't keep the plan. Try again.",
+      "portalNotOpened": "Couldn't open Stripe. Try again in a minute.",
+      "usage": {
+        "title": "Usage",
+        "addCredits": "Add credits",
+        "topUpTitle": "Add credits",
+        "topUpAmount": "Amount ({{currency}})",
+        "topUpBounds": "Between {{min}} and {{max}}",
+        "topUpYouGet": "You get {{amounts}}.",
+        "topUpNote": "Added to every metric at once, and never expires. Your plan's monthly part is used first.",
+        "topUpPay": "Continue to payment",
+        "topUpCancel": "Cancel",
+        "topUpNotOpened": "Couldn't open the payment. Try again in a minute.",
+        "topUpPaid": "Payment received. Your credits show up here in a moment.",
+        "topUps": "Top-ups",
+        "noTopUps": "No top-ups yet."
+      }
+    },
+    "generalSettings": {
+      "title": "General",
+      "organizationName": "Organization name",
+      "notSaved": "Couldn't save the organization's settings. Try again.",
+      "notLoaded": "Couldn't load your organization's settings. Reload the page.",
+      "slug": "Slug: {{slug}}"
+    },
+    "usageSettings": {
+      "title": "Usage",
+      "memberHint": "Running low? An owner or an admin can add credits.",
+      "adminHint": "Add credits in Billing.",
+      "notLoaded": "Couldn't load usage. Reload the page.",
+      "metric": {
+        "credits": "Credits",
+        "storage_gb": "Storage"
+      },
+      "amount": {
+        "credits": "{{n}} credits",
+        "storage_gb": "{{n}} GB"
+      },
+      "available": {
+        "consumable": "{{amount}} left",
+        "capacity": "{{amount}} free"
+      },
+      "split": "{{plan}} from your plan · {{purchased}} purchased",
+      "usedThisMonth": "{{amount}} used this month",
+      "usedOf": "{{used}} of {{limit}} used",
+      "resets": "Your plan's part resets on {{day}}"
+    },
+    "membersSettings": {
+      "title": "Members",
+      "memberCountOne": "{{count}} member",
+      "memberCountMany": "{{count}} members",
+      "moreSeatsFree": "Pro has up to 3",
+      "moreSeatsPro": "Team has up to 10",
+      "inviteLabel": "Invite someone from your organization",
+      "role": "Role",
+      "roleOf": "Role of {{name}}",
+      "roleOwner": "Owner",
+      "roleAdmin": "Admin",
+      "roleMember": "Member",
+      "invite": "Invite",
+      "rolesHint": "Admins manage members and billing. Members use the app.",
+      "remove": "Remove",
+      "invitedToday": "Invited today",
+      "invitedYesterday": "Invited yesterday",
+      "invitedDaysAgo": "Invited {{days}} days ago",
+      "emailNotSent": "Email not sent",
+      "resend": "Resend",
+      "cancel": "Cancel",
+      "notLoaded": "Couldn't load your organization's members. Reload the page.",
+      "notInvited": "Couldn't invite {{email}}. Try again.",
+      "inviteSent": "Invite sent to {{email}}.",
+      "inviteSavedNotSent": "The invite to {{email}} is saved, but the email didn't go out. Resend it from the list.",
+      "roleNotChanged": "Couldn't change {{name}}'s role. Try again.",
+      "nowAdmin": "{{name}} is now an admin.",
+      "nowMember": "{{name}} is now a member.",
+      "notRemoved": "Couldn't remove {{name}}. Try again.",
+      "removed": "{{name}} removed from {{organization}}.",
+      "notResent": "Couldn't send the invite again. Try again.",
+      "inviteResent": "Invite sent again to {{email}}.",
+      "notCancelled": "Couldn't cancel the invite. Try again.",
+      "inviteCancelled": "Invite to {{email}} cancelled.",
+      "enterWorkEmail": "Enter their work email, like {{example}}.",
+      "alreadyInOrganization": "{{email}} is already in the organization.",
+      "alreadyInvited": "{{email}} is already invited."
+    },
+    "securitySettings": {
+      "title": "Security and data",
+      "deleteOrganization": "Delete the organization",
+      "deleteOrganizationHint": "Everything in it and every member's access. This can't be undone.",
+      "delete": "Delete",
+      "confirmTitle": "Delete the organization?",
+      "notDeleted": "Couldn't delete your organization. Try again.",
+      "deleted": "Your organization is deleted.",
+      "ownerOnly": "Only the owner can delete the organization."
+    }
+  },
+  "shared": {},
+  "shell": {
+    "account": "Account",
+    "usage": "{{organization}} · {{plan}}"
+  },
+  "signup": {
+    "titleStart": "Where should we",
+    "titleEnd": "write to you?",
+    "noPassword": "No password. We'll email you a link to sign in.",
+    "neverTraining": "Never used for training."
+  },
+  "unavailable": {
+    "forbiddenTitle": "Your account can't open Arrakit right now.",
+    "forbiddenBody": "Ask your organization's admin to check your access.",
+    "home": "Home",
+    "unreachableTitle": "Couldn't reach Arrakit.",
+    "unreachableBody": "Nothing is lost. Try again in a moment.",
+    "tryAgain": "Try again"
+  },
+  "welcome": {
+    "titleLead": "Welcome",
+    "titleRest": "to {{plan}}.",
+    "receiptSent": "Receipt sent to your email. Manage your plan anytime in",
+    "settings": "Settings",
+    "receiptEnd": ".",
+    "goHome": "Go to the app →"
+  },
+  "home": {
+    "title": "Hi, {{name}}.",
+    "organization": "{{organization}} is on {{plan}}. This is where your product starts.",
+    "settings": "Settings",
+    "members": "Members",
+    "plans": "Plans"
+  }
+}

@@ -1,0 +1,21 @@
+node_modules
+dist
+.output
+.nitro
+.tanstack
+.vinxi
+.astro
+.turbo
+coverage
+*.local
+.env
+.env.*
+!.env.example
+.DS_Store
+# Local PGlite data and local file storage
+.data
+# Playwright
+test-results
+playwright-report
+blob-report
+playwright/.cache

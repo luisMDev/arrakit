@@ -1,0 +1,4 @@
+{
+  "extends": "@arrakit/tsconfig/node.json",
+  "include": ["src", "*.ts"]
+}
