@@ -1,6 +1,4 @@
-import { APP_NAME } from './brand'
-import { escapeHtml } from './escape'
-import type { RenderedEmail } from './mail'
+import { APP_NAME, type RenderedEmail } from './index'
 
 interface Action {
   readonly label: string
@@ -31,6 +29,15 @@ export const rows = (entries: readonly (readonly [label: string, value: string])
   kind: 'rows',
   rows: entries,
 })
+
+export function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
 
 const SAFE_LINK = /^(https:\/\/|mailto:|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/)/i
 

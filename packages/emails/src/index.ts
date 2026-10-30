@@ -1,10 +1,37 @@
-export { APP_NAME } from './brand'
-export { toMail, type Mail, type Mailer, type RenderedEmail } from './mail'
+export const APP_NAME = 'Arrakit'
+
+export interface Mail {
+  to: string | string[]
+  subject: string
+  html: string
+  text: string
+}
+
+export interface Mailer {
+  send(mail: Mail): Promise<void>
+}
+
+export interface RenderedEmail {
+  subject: string
+  html: string
+  text: string
+}
+
+export const toMail = ({ subject, html, text }: RenderedEmail, to: string): Mail => ({
+  to,
+  subject,
+  html,
+  text,
+})
+
 export { daysUntil } from './copy'
-export * from './templates/signin'
-export * from './templates/member'
-export * from './templates/receipt'
-export * from './templates/renew'
-export * from './templates/failed'
-export * from './templates/canceled'
-export * from './templates/downgraded'
+export {
+  canceledEmail,
+  downgradedEmail,
+  failedEmail,
+  memberEmail,
+  receiptEmail,
+  renewEmail,
+  signinEmail,
+  type Charge,
+} from './templates'

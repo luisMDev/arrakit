@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { APP_NAME } from './brand'
-import { actions, composeEmail, note, paragraph, rows } from './compose'
+import { actions, composeEmail, escapeHtml, note, paragraph, rows } from './compose'
+import { APP_NAME } from './index'
 
 describe('composeEmail', () => {
   it('carries the subject and heading in both parts', () => {
@@ -91,5 +91,19 @@ describe('composeEmail', () => {
     expect(withLink('http://localhost:5200/api/auth/x')).not.toThrow()
     expect(withLink('http://127.0.0.1/x')).not.toThrow()
     expect(withLink('http://localhost.evil.com/x')).toThrow(/https: or mailto:/)
+  })
+})
+
+describe('escapeHtml', () => {
+  it('escapes the five HTML special characters', () => {
+    expect(escapeHtml(`<a href="x">'&'</a>`)).toBe(
+      '&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;',
+    )
+  })
+})
+
+describe('APP_NAME', () => {
+  it('names the product', () => {
+    expect(APP_NAME).toBe('Arrakit')
   })
 })
