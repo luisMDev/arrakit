@@ -146,7 +146,7 @@ Organization naming:
 
 ## 5. Better Auth server configuration (apps/api)
 
-`createAuth({ database, mailer, config, invitationFor, organizations })` returns `betterAuth({...})` (`organizations: OrganizationDeps`, organizations spec §4):
+`createAuth({ config, data, mailer, organizations })` returns `betterAuth({...})` (`data`: the data layer, whose `authDatabase` is the Drizzle adapter and `invitationFor` feeds the invite email; `organizations: OrganizationDeps`, organizations spec §4):
 
 - `appName: APP_NAME`, `baseURL: config.baseURL`, `basePath: '/api/auth'`, `secret`, `trustedOrigins: config.trustedOrigins`, `database: drizzleAdapter(...)`.
 - `emailAndPassword: { enabled: false }`. No passwords exist anywhere.
@@ -311,7 +311,7 @@ i18n: i18next with `en` (bundled) and `es`. Before sign-in the language is the o
 
 ### Data the guards use
 - `loadMe(queryClient)` (`#/lib/current-user`) = `me.get` through the query cache → `Me`, or `null` on a 401 (signed out); any other failure throws.
-- `guardedMe(queryClient, next)` (`#/lib/guards/guarded-me.ts`) = `loadMe`, but any failure other than a 401 (network, 403, 5xx, …) redirects to `/unavailable?next=<next>` (`next` = the current `location.href`). The web never signs a person out because the API failed.
+- `guardedMe(queryClient, next)` (private to `#/lib/guards.ts`) = `loadMe`, but any failure other than a 401 (network, 403, 5xx, …) redirects to `/unavailable?next=<next>` (`next` = the current `location.href`). The web never signs a person out because the API failed.
 - `checkoutChoice(search)` = `{ plan, cycle }` only when `plan ∈ {pro, team}` (paid plans: every plan except free and internal) and `cycle ∈ {monthly, yearly}`, else null (an `enterprise`, `free` or misspelled plan is dropped).
 - `appLanding(choice)` = `{ to: '/app/checkout', search: choice }` or `{ to: '/app' }`.
 - `profileLanding(choice)` = `'/profile'` or `'/profile?plan=…&cycle=…'`.
@@ -496,7 +496,7 @@ API integration (port all of these):
 - `session.guard.spec` → oRPC `requireSession` middleware (six refusal cases).
 - `organization-role.guard.spec` → `requireMember` middleware (permissions of owner/admin/member and a custom role, no-org/no-session, removal between requests, handler adds to router).
 - `sessions.spec`: revoke-other-sessions.
-- `auth-providers.spec`: two cases.
+- `auth-providers.spec`: two cases (`apps/api/src/routes/auth.test.ts` with both providers, `app.test.ts` with none).
 - `organizations create/skip spec` and `me.get spec`: every case in §6.2.
 - `auth-database.int.spec` (with PGlite): the user and session are persisted with email_verified. A consumed link leaves no verification row. Of two parallel clicks one wins. Deleting the user kills the session. Claude's dynamic client registration is stored (MCP). JWKS.
 - `create-organization.int.spec` (now `apps/api/src/routers/onboarding.test.ts` through Better Auth): the slug equals the name. Numbered slugs. Owner with terms stamped. Skip with no terms. A second org is made and becomes active. A client slug is ignored. personName is applied or kept. `memberOf` returns null for a user without an org (`packages/db/src/data/membership.test.ts`).
@@ -507,10 +507,10 @@ Web (Vitest + React Testing Library, with the API mocked via MSW or a fake clien
 - `signup.page.spec`: the whole list. Initial copy. Providers shown and hidden (and the divider). Microsoft and Google start with landing `/profile` and disable every button. Refusal alerts for both providers and for a link. Client-side email refusal with aria-invalid. A successful link → Check your email, with the normalized email and no input. Plan carry-over and an invalid plan dropped. Use a different email. API 400 → field error. Retry after failure. The bfcache pageshow re-enable. Pending lock for the link and for Google. Retry after a Google failure. Sign in mode: the landing is `/signin` for both the link and Google.
 - `http-auth.api.spec` → the auth client wrapper: request bodies with absolute callback/errorCallback URLs (including the plan carry-over, the connector resume and the via param). 400 → EmailRefusedError, while 500 is a different error. The redirect only happens after the response. A Google start failure does not redirect. Providers are asked once, with the fallback `{google:true,microsoft:false}` and a retry after failure. Session parsing: null, and the name defaults to `''`. A network error rejects. sign-out and revoke-other-sessions.
 - `profile.page.spec`: the heading, and no other inputs. Next is disabled until the terms are ticked. Next sends `{name, organization}` trimmed and goes to `/app`. A blank name is allowed. Skip sends nothing and goes to `/app`. Plan → checkout. A 409 with an existing org continues. The Terms/Privacy dialog does not tick the box and keeps its text while closing. Pending lock. Retry after a Skip failure.
-- `onboarding-guards.test.ts`: every case in §8 for `/profile`, `/signup` and `/signin` (visitor, no org with plan carry-over, member to `/app` or checkout, refused-sign-in URLs), and any failure but a 401 (network, 403, 503) → `/unavailable?next=`.
+- `lib/guards.test.ts`: every case in §8 for `/profile`, `/signup` and `/signin` (visitor, no org with plan carry-over, member to `/app` or checkout, refused-sign-in URLs), and any failure but a 401 (network, 403, 503) → `/unavailable?next=`.
 - Unavailable page (in `components/shell/pages.test.tsx`): Try again once the API answers, `next` sanitising.
 - `app.routes.spec`: `/` → `/signin`. `/app` with no org → `/profile`. Unknown `/app/x` → `/app`.
-- `api-proxy.spec`: three cases.
+- `api-proxy.spec`: three cases (Playwright `e2e/proxy.spec.ts`, through the real web server).
 
 Playwright e2e (PGlite + Mailpit, no Docker):
 1. Get started → signup → read the link from Mailpit → open it → Profile → Skip → Home.

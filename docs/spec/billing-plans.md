@@ -20,7 +20,7 @@ saas-base source locations (for reference only):
 `apps/api/src/app/billing/*`, `libs/shared/plans/src/plans.ts`,
 `apps/api/scripts/stripe-prices.mts`, `apps/web/src/app/pricing/*`,
 `apps/web/src/app/signed-in/{plans,checkout,welcome,settings/billing-settings,plan-access.ts}`,
-`libs/shared/emails/src/templates/plan.ts`, `apps/api/src/testing/fake-stripe.ts`.
+`libs/shared/emails/src/templates/plan.ts`, `apps/api/src/testing/fake-stripe.ts` (Arrakit: `apps/api/src/billing/fake-stripe.ts`).
 
 ---
 
@@ -36,7 +36,6 @@ export const PLANS = ['free', 'pro', 'team', 'internal'] as const; // order = ra
 export type Plan = (typeof PLANS)[number];
 export const PLAN_LABELS = { free: 'Free', pro: 'Pro', team: 'Team', internal: 'Internal' };
 export const CURRENCY = 'usd'; // Stripe lowercase ISO 4217
-export function isPlan(value: unknown): value is Plan; // exact, case-sensitive match
 ```
 
 | plan     | monthlyCents | yearlyCents | seats | monthlyGrantCents |
@@ -63,16 +62,15 @@ Rules:
 
 - `TOP_UP = { minCents: 1_000, maxCents: 50_000 }` ($10 to $500).
 - `METRICS = [{ key: 'credits', label: 'Credits', unit: 'credits', kind: 'consumable', perCurrencyUnit: 100 }, { key: 'storage_gb', label: 'Storage', unit: 'GB', kind: 'capacity', perCurrencyUnit: 10 }]`.
-- Exports: `Metric`, `METRIC_KEYS`, `isMetric`, `metricOf`, `metricAmount(metric, cents)` (floor),
-  `metricAmounts(cents)`, `planGrant(plan)`, `isTopUpAmount(cents)` (integer within bounds),
+- Exports: `Metric`, `METRIC_KEYS`, `isMetric`, `metricOf`, `metricAmounts(cents)` (each metric
+  floored; the per-metric `metricAmount` is private), `planGrant(plan)`, `isTopUpAmount(cents)` (integer within bounds),
   `UsagePeriod`, `usagePeriod(anchor, now)` (Stripe-like month arithmetic, day clamped to
   month end, UTC), `splitConsumption`, `MetricSums`, `MetricBalance`, `metricBalance`.
 
 ### 1.3 Unit tests to port (`plans.spec.ts`, all of them)
 - Sold plans cheapest first by monthly price; Internal last, above Team.
 - `PLAN_LABELS.internal === 'Internal'`.
-- `isPlan` accepts the 4 ids; refuses `'enterprise'`, `'Pro'`, `'Internal'`, `'internal '`, `''`, `null`.
-- `metricAmounts(2000)` → `{ credits: 2000, storage_gb: 200 }`; `metricAmount('storage_gb', 1005)` → 100.
+- `metricAmounts(2000)` → `{ credits: 2000, storage_gb: 200 }`; `metricAmounts(1005).storage_gb` → 100.
 - `planGrant('free')` → `{ credits: 100, storage_gb: 10 }`; grants increase with rank.
 - Metric keys unique; `isMetric` refuses `'Credits'`, `'gb'`, `''`, `null`.
 - `isTopUpAmount`: accepts 1000, 2000, 50000; refuses 999, 50001, 1000.5, `'2000'`, `null`.
@@ -116,7 +114,7 @@ Tests to port (`subscription-plan.spec.ts`): all.
 An interface the app depends on, so tests inject an in-memory fake.
 `createStripeGateway(env)` never returns null:
 
-- `STRIPE_FAKE=1` → the in-memory fake (`testing/fake-stripe.ts`; refused in
+- `STRIPE_FAKE=1` → the in-memory fake (`billing/fake-stripe.ts`; refused in
   production by env parsing).
 - Any of `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`
   missing → `unconfiguredStripe()`: every call rejects with 503
@@ -216,7 +214,7 @@ The only subscription metadata the app writes and reads is `organizationId`.
 - **`endNow`**: no-op if already `canceled`; else `subscriptions.cancel(id)` (no refund).
 - **`portal`**: `billingPortal.sessions.create({ customer, configuration, return_url, ...(to === 'payment' && { flow_data: { type: 'payment_method_update' } }) })`. Configuration found among active ones by `metadata.app === 'billing'`, else created with `invoice_history`, `payment_method_update`, `customer_update` (`email`, `name`, `address`, `tax_id`) enabled and `subscription_cancel` / `subscription_update` **disabled** (plan changes stay in the app). Memoised per process, reset on failure.
 
-#### Fake gateway (`apps/api/src/testing/fake-stripe.ts`)
+#### Fake gateway (`apps/api/src/billing/fake-stripe.ts`)
 
 In-memory implementation used by every API test and by `STRIPE_FAKE=1`
 (Playwright). Records `checkouts`, `topUps`, `topUpPayments`, `changes`
@@ -231,7 +229,7 @@ in US cents; publishable key `'pk_test_fake'`; portal URLs
 `BillingEvent` JSON (kind defaults to `subscription`; `{}` = ignored event) and
 throws on any other signature.
 
-### 2.3 Applying a subscription event (`apply-billing-event.ts`) — port with tests
+### 2.3 Applying a subscription event (`applyBillingEvent` in `settle-event.ts`) — port with tests
 
 ```ts
 findOrganization(data, organizationId|null, what) -> { kind:'found', organizationId, scope, organization } | { kind:'ignored', reason }
@@ -256,7 +254,7 @@ Rules:
    id is kept on Free (a later Checkout reuses it).
 7. Return `previousPlan` (plan before the write) for the downgrade email.
 
-Tests to port (`apply-billing-event.spec.ts`): grant anchor written; active
+Tests to port (`settle-event.test.ts`): grant anchor written; active
 subscription → plan + customer + subscription recorded; previousPlan free on
 first payment and pro on replay; internal never moved (active/canceled);
 idempotent on double delivery; `canceled`/`unpaid` → free with subscription
@@ -264,9 +262,9 @@ forgotten and customer kept; replaced subscription cancelled → plan kept;
 organization from event when metadata lacks it; ignored for no subscription /
 no organization / organization gone / malformed id (no writes).
 
-### 2.4 Billing view (`billing-view.ts`) — pure, used by GET and by mutations
+### 2.4 Billing view (`billingView` in `billing-service.ts`) — pure, used by GET and by mutations
 
-`dayOf(unixSeconds) => 'YYYY-MM-DD'` (UTC).
+`dayOf(unixSeconds | Date) => 'YYYY-MM-DD'` (UTC; `apps/api/src/day.ts`).
 
 `billingView(organization, snapshot | null)`:
 - `seats = PLAN_OFFERS[organization.plan].seats`.
@@ -291,14 +289,13 @@ no organization / organization gone / malformed id (no writes).
   using the currency's own minor-unit digits, decimals only when non-integer:
   `143000 usd → '$1,430'`, `1499 usd → '$14.99'`, `143000 eur → '€1,430'`, `1430 jpy → '¥1,430'`.
   Card: `'Visa ending 4242'` (brand capitalised), or `'your card'` when none.
-- `daysUntil(unixSeconds, nowMs)`: ceil of days, minimum 1 (3 days → 3, 1 hour → 1, past → 1, 2.1 days → 3).
+- `daysUntil(date, now)` (from `@arrakit/emails`, `copy.ts`): ceil of days, minimum 1 (3 days → 3, 1 hour → 1, past → 1, 2.1 days → 3).
 - `adminsOf(members)`: emails of members whose static role manages billing (`owner`, `admin`; never `member`; custom roles are not mailed).
 - `downgradeDue({ previousPlan, plan, cancellationReason })`:
   `cancellationReason === 'payment_failed' && previousPlan !== 'free' && plan === 'free'`.
 - `billingLink(webOrigin)` = `${webOrigin}/app/billing`.
-- `mailsOf(email, to)`: one `Mail` per recipient from a rendered template
-  (templates in `@arrakit/emails`, §6).
-- `sendMails(mailer, mails, onFailure)`: sends all in parallel; each failure
+- `sendMails(mailer, email, to, onFailure)`: sends the rendered template
+  (templates in `@arrakit/emails`, §6) to each recipient in parallel; each failure
   goes to `onFailure` and never stops the others.
 
 ---
@@ -498,7 +495,7 @@ Shared copy helpers (`plan-copy.ts`): `planLabel(plan)` = `t('pricing.plan.<plan
 - monthly: `{ was: null, price: money(monthly, whole), billed: 'billed monthly', billedNote: 'Billed monthly' }`.
 - yearly: `{ was: money(monthly, whole), price: money(round(yearly/12), whole), billed: 'billed yearly', billedNote: '<total> billed yearly' }` (Pro yearly: was $20, price $16).
 `yearlySaving(offer) = round((1 - yearly/(monthly*12)) * 100)` (20);
-`leastYearlySaving(offers)` = min over paid offers or null; `twelveMonths(offer)` = monthly × 12.
+`YEARLY_SAVING` (constant next to `OFFERS` in `plan-copy.ts`) = min over paid offers; `twelveMonths(offer)` = monthly × 12.
 
 Reusable component **BillingCycleSwitch**: two toggle buttons (shadcn
 `ToggleGroup` type single) "Monthly" / "Yearly" with `aria-pressed`, group
@@ -541,7 +538,7 @@ Reusable component **BillingCycleSwitch**: two toggle buttons (shadcn
 - Footer links: "Not now" → `/app`, "Compare all plans" → `/pricing`.
 
 ### 5.3 `/app/checkout?plan=&cycle=` — Embedded Checkout
-- Guard `canCheckout` (`guardedMe`: a failed read of the person → `/unavailable?next=`): admin AND `checkoutChoice(search)` valid (plan ∈ {pro, team}, cycle ∈ {monthly, yearly}); otherwise redirect `/app/plans` (`/app/checkout`, `plan=free`, `plan=enterprise`, `plan=internal`, `plan=Internal`, `cycle=weekly`, missing cycle all redirect). Validate search params with Zod in the route's `validateSearch`.
+- Guard `canCheckout` (reads the person from the cache left by `requireUser`): admin AND `checkoutChoice(search)` valid (plan ∈ {pro, team}, cycle ∈ {monthly, yearly}); otherwise redirect `/app/plans` (`/app/checkout`, `plan=free`, `plan=enterprise`, `plan=internal`, `plan=Internal`, `cycle=weekly`, missing cycle all redirect). Validate search params with Zod in the route's `validateSearch`.
 - Left: order summary (`aria-label = checkout.orderSummary`): back link "Back" → `/app/plans`; `checkout.subscribeTo {product}` with product = `${APP_NAME} ${planLabel}`; total = full price of the cycle (`money(yearly)` or `money(monthly)`) + `checkout.per.<cycle>`; line item with `checkout.terms.<cycle>`; Subtotal; Tax → `checkout.taxFromAddress`; "Total due today" = total.
 - Right: heading `checkout.payment`; while opening `checkout.opening`; on failure an `role="alert"` with the API message or `checkout.openFailed`; a mount `<div data-stripe-checkout>`; footer `checkout.cancelAnytime`.
 - On mount (client only): `billing.checkout({ plan, cycle })` → `loadStripe(publishableKey)` (`@stripe/stripe-js`) → `stripe.createEmbeddedCheckoutPage({ clientSecret })` (or `initEmbeddedCheckout` depending on stripe-js version) → `mount(element)`. Destroy the embedded checkout on unmount (also if unmounted while opening).
@@ -622,7 +619,7 @@ Resend in production; Mailpit in dev and e2e; recording mailer in tests (tests a
 | `downgradedEmail` | Stripe cancelled after failed retries (`payment_failed`) | `{org} is back on Free` | `{plan} ended.` / `{org} is on Free.` | `We couldn't charge your card after a week of tries, so {plan} has ended. Your data stays.` | "Choose a plan" → /app/billing | `Sent to the billing email and organization admins.` | billing email + owners + admins |
 
 All links are absolute: `${WEB_URL}/app/billing` (tests stub `WEB_URL` to an https origin).
-Template tests to port (`templates/plan.spec.ts`): receipt confirms plan/paid/renews;
+Template tests to port (`templates/plan.spec.ts`; Arrakit: `packages/emails/src/templates.test.ts`): receipt confirms plan/paid/renews;
 renew says what/when/which card; failed says charge failed and retry; canceled names last day;
 downgraded says back on Free.
 
@@ -714,14 +711,14 @@ API (Vitest; integration with PGlite + Better Auth test utils to create users,
 organizations, sessions/cookies; fake Stripe; recording mailer):
 - `libs/shared/plans/src/plans.spec.ts` — all (pure).
 - `subscription-plan.spec.ts` — all (pure).
-- `billing-mail.test.ts` — all (pure: recipients, chargeOf, daysUntil, adminsOf, downgradeDue, mailsOf, sendMails).
-- `apply-billing-event.spec.ts` — all (against PGlite or an in-memory repo).
+- `billing-mail.test.ts` — all (pure: recipients, chargeOf, adminsOf, downgradeDue, sendMails; `daysUntil` in `packages/emails/src/copy.test.ts`).
+- `settle-event.test.ts` — all (against PGlite or an in-memory repo).
 - `real-stripe.test.ts` — against a mocked `Stripe` client: `createStripeGateway` (unconfigured without each env var, real with all three, fake with `STRIPE_FAKE=1`); `guardedStripe` (declined card 402, anything else 502, both logged; oRPC errors and webhook signature failures pass through); Checkout with the admin's email and returning customer; changeNow; changeAtRenewal keeps `organizationId` and discounts in both phases, `billing_cycle_anchor: 'phase_start'`; reads plan/period/item/schedule/anchor/cancellation reason; customer email and card; each price looked up once; cancel/resume; top-up Checkout and payment; endNow; `planKeyOf` from the lookup key; `mapStripeEvent` (subscription Checkout, non-top-up payment ignored, subscription changes, invoice events, no subscription ignored).
 - `routers/billing.test.ts` → `plans.list` (sold plans cheapest first, no Internal, public); `billing.checkout`: owner gets clientSecret + publishableKey and return URL; reuses customer; 502 own words; member 403; no session 401; non-Free 409 with exact message; invalid inputs 400; foreign Origin 403; no Stripe → 503 and app still boots. `billing.get` (Free asks Stripe nothing; paying org full view; cancelled; scheduled move down; back on Free keeps invoices/card; 502 own words; member 403), `previewChange` (now with FAKE_PRORATION and next invoice 48000; renewal with 0 today and next 2000 on renewal day; same plan 409; Free 409), `change` (up now → plan team at once; down at renewal → plan unchanged; 402 declined card plan unchanged; foreign Origin 403 nothing changed), cancel/resume (records both, plan stays; Internal 409 for cancel and change; Free 409; member 403), portal (URL + return URL + target; never-billed 409), cancellation email (to cancelling admin, subject `Pro ends on Oct 4, 2027`, link to /app/billing, resume sends nothing; all owners+admins never members; send failure still cancels and logs without address/body).
 - `top-up.spec.ts` → `billing.topUp` + webhook top-up paths (usage spec owns the ledger asserts).
 - `stripe-webhook.test.ts` → Hono webhook route: forged signature 401; missing signature 401; subscription paid → Pro; replay idempotent; cancelled → Free; ignored event 204; invoice events never change plan; Stripe unreadable → 500; receipt (to the billing email on a paid subscription invoice with plan/charge/PDF; names the current plan after a move; links Billing without an invoice page; none for a subscription event or a zero invoice; send failure → 204 logged); failed charge (billing + owner + admins, not members; dedupe owner = billing email; last try silent; send failure 204); downgrade (recipients; replay silent; admin cancel silent; failure 204 still Free); renewal notice (billing email only, yearly only, failure 204); no Stripe → 401.
 - `organization-settings.int.spec.ts` (setPlan / setStripeCustomer parts).
-- `packages/emails/src/templates/plan.test.ts`.
+- `packages/emails/src/templates.test.ts`.
 
 Web (Vitest + React Testing Library, API mocked at the oRPC client / MSW level):
 - `pricing.page.spec.ts`: every plan to a visitor; yearly prices vs struck monthly; switching to monthly + "Save 20%"; seats then features; CTA links (`/signup`, `/signup?plan=pro&cycle=yearly`, `/signup?plan=team&cycle=yearly`, `/signin`); signed-in "Get Team" → checkout.

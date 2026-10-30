@@ -37,7 +37,7 @@ shared-file edits the modules asked for and ran every check.
 ### Usage and credits
 
 - A `usage.get` failure in Settings > Billing shows "Couldn't load usage. Reload the page." and
-  billing still renders (`billing-section-usage.test.tsx`, through the real `BillingSection`).
+  billing still renders (`billing-usage.test.tsx`, through the real `BillingSection`).
   The Pro top-up case checks every card line against saas-base. The 5/501/empty amount bounds run
   through the Billing page.
 - `apps/web/e2e/usage-billing.spec.ts`: an admin is refused at $5, previews $45, reaches the
@@ -64,7 +64,7 @@ shared-file edits the modules asked for and ran every check.
   in `api-proxy.test.ts` are replaced by the cases for `apiProxiedPaths` and `apiOriginFrom`.
   The proxy behaviour is tested in `src/server/api-proxy-handler.test.ts`.
 - `apps/web/src/components/settings/billing-section.tsx` passes `redirect` to `<BillingUsage>`.
-  `billing-section-usage.test.tsx` now checks the Checkout URL the admin is sent to, and the test
+  `billing-usage.test.tsx` now checks the Checkout URL the admin is sent to, and the test
   fails without the change.
 - E2E stability: a client that aborts a request while its body is still uploading makes Nitro's
   dev middleware report `Internal server error: aborted`, and Vite's error overlay then covers

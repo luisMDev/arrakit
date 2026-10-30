@@ -124,7 +124,7 @@ Implementation notes for TanStack Start:
 ## 4. Signed-in shell (`/app` layout route)
 
 ### 4.1 `requireUser` guard (beforeLoad of `/app`)
-Loads the signed-in person (`me.get`, §10) through `guardedMe` (`#/lib/guards/guarded-me.ts`) before any `/app/*`
+Loads the signed-in person (`me.get`, §10) through `guardedMe` (private to `#/lib/guards.ts`) before any `/app/*`
 screen renders; the answer stays in the query cache (`orpc.me.get.queryOptions()`). Outcomes:
 
 | API result | Navigation |
@@ -372,8 +372,8 @@ fallback. Screens add no `onError` toasts of their own.
 `useApiMutation(options)` (`#/lib/use-api-mutation`) = `useMutation(options)` plus `run(variables)`, which ignores a
 second call while the first is in flight and resolves to the data or `undefined` on failure, and `busy` (pending, or
 succeeded and about to leave the screen). The same toast (same message+variant) never stacks: showing it again
-restarts its timer (`notify` passes a stable `id` of level + message + description). Durations: success 4 s,
-errors and warnings 6 s.
+restarts its timer (`notify` passes a stable `id` of level + message + description). Levels are success and error only. Durations: success 4 s,
+errors 6 s.
 
 Settings autosave (Account) is one mutation with `scope: { id: 'account' }`, so TanStack Query runs the saves one at a
 time in order; each save updates the cached account optimistically, and a failure invalidates it to put the server
@@ -405,7 +405,7 @@ External integrations: Stripe only indirectly (Welcome waits for the webhook to 
 | `PUBLIC_APP_URL` | landing | `https://app.example.com` | Host of Pricing / Sign in / Get started links |
 | `PUBLIC_SITE_URL` (Astro `site`) | landing | `https://example.com` | Canonical, og:url, og:image, sitemap |
 | `VITE_ANALYTICS_SRC` + `VITE_ANALYTICS_DOMAIN` | web | unset (off) | Plausible-compatible script (`defer`, `data-domain`) in the root head |
-| `PUBLIC_ANALYTICS_SRC` + `PUBLIC_ANALYTICS_DOMAIN` | landing | unset (off) | Same script on every landing page (`components/Analytics.astro`) |
+| `PUBLIC_ANALYTICS_SRC` + `PUBLIC_ANALYTICS_DOMAIN` | landing | unset (off) | Same script on every landing page (in the `<head>` of `layouts/Base.astro`) |
 
 Production proxy (saas-base `edge/api-proxy.ts`, Cloudflare Pages Functions): web and API must be **one site** so the
 Better Auth cookie is first-party; `BETTER_AUTH_URL` = web origin. If arrakit deploys web separately, port
@@ -442,7 +442,7 @@ Static site, the product's **front page**. Port content and links; styling with 
   link "Back home" → `/`. Must be served with HTTP 404 for unknown paths (static hosts use `404.html`).
 
 ### Legal pages (`src/pages/terms.astro`, `src/pages/privacy.astro`)
-- Layout `src/layouts/LegalPage.astro`: title "<page> · <product name>", canonical, product name linking home, "Last
+- Layout `src/layouts/LegalPage.astro` (wraps `src/layouts/Base.astro`, the shared `<head>` with favicons and analytics): title "<page> · <product name>", canonical, product name linking home, "Last
   updated" line, shared footer. Content is a template marked "replace before launch". The web's onboarding links here
   (`TERMS_URL`, `PRIVACY_URL`).
 
@@ -457,7 +457,7 @@ Static site, the product's **front page**. Port content and links; styling with 
 
 ### Empty states (web)
 - Every "nothing here yet" in the web uses `EmptyState` (`components/shell/empty-state.tsx`, over shadcn `Empty`):
-  lucide icon + title, optional description and action. Used by Settings > Billing invoices and top-ups.
+  lucide icon + title, nothing else. Used by Settings > Billing invoices and top-ups.
 
 ---
 

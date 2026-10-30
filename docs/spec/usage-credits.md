@@ -2,7 +2,7 @@
 
 Source: saas-base (`apps/api/src/app/usage`, `libs/platform/data/src/usage`,
 `libs/shared/plans`, `apps/api/src/app/billing` top-up and reversal paths,
-`apps/web/src/app/signed-in/settings/usage-settings`, the Billing settings
+the Settings > Usage screen, the Billing settings
 "Usage" section). This document is the source of truth for arrakit; implementers
 should not need to read saas-base.
 
@@ -59,14 +59,12 @@ export const METRIC_KEYS: readonly Metric[]; // ['credits', 'storage_gb'] — ME
 ### 1.2 Functions (exact algorithms)
 
 ```ts
-isPlan(v): boolean            // exact string match in PLANS ('Pro', 'internal ' refused)
 isMetric(v): boolean          // exact match in METRIC_KEYS ('Credits', 'gb', '', null refused)
 metricOf(metric): MetricDefinition // throws `no metric ${metric}` if unknown
 
-metricAmount(metric, cents) = Math.floor(cents * perCurrencyUnit / 100)
-// $20 = 2000 credits, 200 GB; metricAmount('storage_gb', 1005) === 100 (rounds DOWN)
-
-metricAmounts(cents): Record<Metric, number>  // metricAmount for every metric
+metricAmounts(cents): Record<Metric, number>
+// each metric = Math.floor(cents * perCurrencyUnit / 100) (private metricAmount)
+// $20 = 2000 credits, 200 GB; metricAmounts(1005).storage_gb === 100 (rounds DOWN)
 planGrant(plan) = metricAmounts(PLAN_OFFERS[plan].monthlyGrantCents)
 // free => { credits: 100, storage_gb: 10 }; pro => {1000, 100}; team => {3000, 300}; internal => {10000, 1000}
 
@@ -595,7 +593,7 @@ topUpPay "Continuar al pago", noTopUps "Aún no hay recargas."). i18next uses `{
 | `libs/platform/data/src/usage/usage.int.spec.ts` | `packages/db/src/organization/usage.test.ts` on PGlite (grant on read, plan-then-purchased, idempotent credit/consume, capacity, per-payment reversal caps, cascade) and `usage-locking.test.ts` (reads take no lock; uses and reversals lock the org row; concurrency on real Postgres) |
 | `apps/api/src/app/usage/usage.spec.ts` | `apps/api/src/usage/usage.test.ts` (probe router with `requiresUsage`/`consume`/`set`; 402 with data through the RPC client; `usage.get` member view; 401/404) |
 | `apps/api/src/app/billing/top-up.spec.ts` | `apps/api/src/usage/top-up.test.ts` (Checkout for an admin, 403 origin, 403 member, 502, 503 without Stripe; webhook credit idempotency, keep customer, pending payment, invalid org, proportional refund, refund + dispute capped, non-top-up reversal, 500 when the payment cannot be read) |
-| `apps/web/.../usage-settings.spec.ts` (member vs admin hint, no buttons, load error toast) | React Testing Library |
+| Settings > Usage screen spec (member vs admin hint, no buttons, load error toast) | `apps/web/src/components/settings/usage-section.test.tsx` (React Testing Library) |
 | `apps/web/.../billing-settings.spec.ts` usage cases (cards text incl. bar %, plan-then-purchased split, top-ups list ordering/empty, dialog preview 20->45, invalid "5"/"501"/"" disable submit with bounds text, Checkout failure toast, `?top_up=paid` status) | React Testing Library with an oRPC client mock |
 | `delete-organization.int.spec.ts` ledger/levels cascade | Part of the organizations integration suite |
 

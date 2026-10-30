@@ -271,8 +271,9 @@ Schema test: "every table with `organization_id` has an FK to organizations with
 ## 4. Data operations and rules
 
 Organization, member, invitation, team and role changes are Better Auth endpoints (`/api/auth/organization/*`). Our
-rules live in its options and hooks (`packages/auth/src/organization.ts`, `hooks.ts`, `organization-policy.ts`); the
-data they need comes through `OrganizationDeps` (`apps/api/src/organizations/organization-deps.ts`).
+rules live in its options and hooks (`packages/auth/src/organization.ts`, `hooks.ts`, `permissions.ts`); the data
+layer comes through `AuthDeps.data`, and what the app adds (`seats`, `beforeDelete`, `afterDelete`, `log`) through
+`OrganizationDeps` (`apps/api/src/organizations/organization-deps.ts`).
 
 ### 4.1 Data functions (`packages/db`)
 
@@ -342,7 +343,7 @@ In the magic link plugin's `sendMagicLink({ email, url })`:
 
 Opening the link: Better Auth verifies, creates the session (cookie) and 302-redirects to `${WEB_ORIGIN}/join/<id>`.
 
-### 4.5 Account (`account`, `updateAccount`, `wantsEmail`, `languageOf`)
+### 4.5 Account (`account`, `updateAccount`)
 
 - `SIGN_IN_METHODS = ['email','google','microsoft']`.
 - `account(userId, currentSessionId)`: user `{name,email,language,timeZone,emails:{productNews}}`;
@@ -351,13 +352,11 @@ Opening the link: Better Auth verifies, creates the session (cookie) and 302-red
   (`{id,userAgent,current}`). Null if user missing.
 - `updateAccount(userId, sessionId, { name?, language?, timeZone?, emails?: { productNews? } })`: writes only provided
   keys (no write when all undefined), then re-reads in the same transaction.
-- `wantsEmail(email, 'productNews')`: compares `lower(users.email)` to normalized; unknown person -> true.
-- `languageOf(userId)`: unknown -> `'en'`.
 
 ### 4.6 `deleteAccount(userId)`
 
 Transaction: lock user `FOR UPDATE` (missing -> false). If the user has ANY `members` row with role `owner` (in any org)
--> `PersonOwnsOrganizationError`, nothing deleted. Else delete all invitations addressed to their normalized email (any
+-> `DomainError('CONFLICT')`, nothing deleted. Else delete all invitations addressed to their normalized email (any
 status, any org), then delete the user row (cascades sessions on every device, accounts, memberships, team memberships,
 invitations they sent). Returns true.
 
@@ -511,8 +510,8 @@ local-part fallback).
 
 ## 9. Env vars involved
 
-`DATABASE_URL` (absent -> PGlite dir), `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` (API base URL), `WEB_ORIGIN` /
-`TRUSTED_ORIGINS` (join URL + Origin checks), `RESEND_API_KEY`, `MAIL_FROM`, `STRIPE_SECRET_KEY` (optional; missing +
+`DATABASE_URL` (absent -> PGlite dir), `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` (web origin, where `/api/auth` is reached), `WEB_URL`
+(optional; join URL; it and `BETTER_AUTH_URL` are the trusted origins for the Origin checks), `RESEND_API_KEY`, `MAIL_FROM`, `STRIPE_SECRET_KEY` (optional; missing +
 paying org -> 503 on delete), `GOOGLE_CLIENT_ID/SECRET`, `MICROSOFT_CLIENT_ID/SECRET`, `APP_NAME` (email copy),
 S3 vars (purge). Use whatever names AGENTS.md fixes; these are the needs.
 

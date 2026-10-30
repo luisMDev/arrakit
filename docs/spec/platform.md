@@ -316,8 +316,8 @@ node-postgres and the PGlite Drizzle instances (`provider: 'pg'` for both).
 
 | member | behaviour |
 | --- | --- |
-| `deleteAccount(userId)` | Transaction: lock user `FOR UPDATE`; false if none; throw `PersonOwnsOrganizationError` if they are `owner` of any org; delete invitations where `email = normalizeEmail(user.email)`; delete user (cascades sessions, accounts, members, invitations sent) |
-| `account(userId, currentSessionId)` / `updateAccount(...)` / `wantsEmail(email, kind)` / `languageOf(userId)` | Account settings area |
+| `deleteAccount(userId)` | Transaction: lock user `FOR UPDATE`; false if none; throw `DomainError('CONFLICT')` if they are `owner` of any org; delete invitations where `email = normalizeEmail(user.email)`; delete user (cascades sessions, accounts, members, invitations sent) |
+| `account(userId, currentSessionId)` / `updateAccount(...)` | Account settings area |
 | `memberOf(userId)` / `membershipIn(userId, orgId)` / `activeMembership(userId, sessionId)` | `{ organization, role }` or null: the earliest-joined membership; the one in an organization; the one in the session's active organization (else the earliest). Fresh reads |
 | `revokeGrants(orgId, userId?)` | 3.6 |
 | `invitationFor(invitationId, email)` | Members area (the invite email) |
@@ -337,13 +337,11 @@ blank, `'undefined'`, `'null'`, `*`, `%`, `a/b`, UUID with trailing slash,
 UUID with surrounding whitespace, 35-char near-UUID, UUID in braces.
 
 `forOrganization(id)` validates the id synchronously (before any query) and
-composes one scope file per domain under `packages/db/src/organization/`:
+composes the scope under `packages/db/src/organization/`:
 
-- `organization.ts`: `organization()` (own row or undefined).
-- `billing.ts`: `setPlan(plan, stripe?)`, `setStripeCustomer(customerId)`.
-- `storage.ts`: `files` (3.2).
+- `index.ts`: `organization()` (own row or undefined), `setPlan(plan, stripe?)`,
+  `setStripeCustomer(customerId)`, `files` (3.2), `customRoles()`, `teamMembers(teamId)`.
 - `members.ts`: `members` (`list`, `seatsTaken`, `markInvitationEmailSent`, `acceptTerms`).
-- `roles.ts`: `customRoles()`; `teams.ts`: `teamMembers(teamId)`.
 - `usage.ts`: `usage` (usage spec).
 
 Each scope function writes its own Drizzle queries and filters by the scope's
@@ -362,7 +360,7 @@ interface OrganizationFiles {
   removePrefix(folder: string): Promise<void>
   list(folder: string): Promise<StoredFile[]>
 }
-interface Storage { kind: 's3' | 'memory'; forOrganization(id): OrganizationFiles; probe(signal?); close() }
+interface Storage { forOrganization(id): OrganizationFiles; probe(signal?); close() }
 ```
 
 `folderPrefix(orgId, folder)` (`storage/folder.ts`): `''` → `<orgId>/` (the
@@ -407,7 +405,6 @@ interface Jobs {
   work<T>(name, handler: (data: T) => Promise<void>): Promise<void>;
 }
 interface JobsRuntime extends Jobs {
-  kind: 'pg-boss' | 'in-process' | 'memory'
   probe(signal?): Promise<void> // throws when stopped or unreachable
   stop(): Promise<void>         // graceful (waits for running handlers), idempotent
 }
@@ -426,7 +423,7 @@ timer; retries with `retryDelay` doubling when `retryBackoff`; after
 waits for running handlers; `probe` throws once stopped.
 
 Test fake (`memoryJobs()` from `@arrakit/db/testing`): records `queues`,
-`workers`, `sent` (`{ id, name, data, at }`); `sentJobs(jobs, { name, organizationId, since })`.
+`workers`, `sent` (`{ id, name, data }`).
 
 Retry policy constant `WORKER_RETRY_POLICY = { retryLimit: 5, retryDelay: 30, retryBackoff: true }`.
 
@@ -434,8 +431,8 @@ Retry policy constant `WORKER_RETRY_POLICY = { retryLimit: 5, retryDelay: 30, re
 
 Refusals the data layer raises extend `DomainError(code, message, data?)`
 (`packages/db/src/errors.ts`), `code` one of `BAD_REQUEST`, `FORBIDDEN`,
-`NOT_FOUND`, `CONFLICT`, `PAYMENT_REQUIRED`: `PersonOwnsOrganizationError` and
-`UsageLimitError` (usage scope; `PAYMENT_REQUIRED` with
+`NOT_FOUND`, `CONFLICT`, `PAYMENT_REQUIRED`: `deleteAccount` throws `DomainError('CONFLICT')`
+for an owner, and `UsageLimitError` (usage scope; `PAYMENT_REQUIRED` with
 `{ metric, requested, available }`). The API's `reportErrors` middleware maps
 every `DomainError` to an `ORPCError` with the same code, message and data
 (402 for `PAYMENT_REQUIRED`), so routers do not catch them one by one. It maps
@@ -492,7 +489,8 @@ Rules from tests:
 2. Build mailer (`createMailer(process.env)`; throws in production without
    `RESEND_API_KEY`).
 3. `openData(loadDataConfig(env))` (migrations applied).
-4. Register workers (`workers/index.ts`: the storage purge worker, section 8).
+4. Register the storage purge worker (`registerStoragePurge` from `workers/storage-purge.ts`,
+   section 8) and build the MCP handler, passed to `createApp(deps, mcp)`.
 5. Serve with `@hono/node-server`.
 6. On `SIGTERM`/`SIGINT`: stop accepting, close MCP handler, `data.close()`
    (lets running jobs finish), flush Sentry, exit. Fatal boot errors: log
@@ -530,7 +528,7 @@ Rules from tests:
 - A failing probe logs `health probe down` with `probe` and the error.
 - Never takes longer than ~3 s (test: silent TCP endpoint → between 2.9 s and 4.5 s, storage down, others up).
 - Bucket that does not exist → storage down. Queue stopped (`data.close()` called) → queue down.
-- A plain Hono route (`routes/health.ts`), not a contract procedure.
+- A plain Hono route registered in `app.ts`, not a contract procedure.
 
 ---
 
@@ -814,7 +812,7 @@ signed in.
     (`' Lucia.Gomez@Cierzo.vc '` → `lucia.gomez@cierzo.vc`), work-email
     validation error `workEmailError`; sends magic link with
     `callbackURL = resume`, `errorCallbackURL = current page`.
-    On success → state **check-your-email** (shared CheckYourEmail component:
+    On success → state **check-your-email** (CheckYourEmail, internal to `sign-in-options.tsx`:
     h1 "Check your" "email.", `sentTo` with the email, `linkWorksOnce`,
     button `useDifferentEmail` which returns to options with the last email prefilled).
     On failure → `linkNotSent`.
@@ -992,7 +990,7 @@ Data package:
   grants revoked only for that org, idempotent false, uppercase id, non-UUID throws.
 - `delete-account` – member deleted with sessions/accounts/memberships/
   invitations sent and to them; admin removed leaves org whole; owner refused
-  (`PersonOwnsOrganizationError`, nothing deleted); owner of any org refused; unknown → false.
+  (`DomainError('CONFLICT')`, nothing deleted); owner of any org refused; unknown → false.
 - `auth-database` integration – magic link sign-in writes users/sessions,
   verification consumed; two parallel clicks → exactly one session, the other
   redirected with `error=INVALID_TOKEN`; deleting user ends sessions; unauthenticated
@@ -1003,8 +1001,7 @@ API:
 - `health` route (200/503, the only route outside `/api`); `app` (unknown → 404,
   no REST or OpenAPI paths, cross-site `/api/rpc` writes → 403 `Use the app.`).
 - `mailer.spec.ts`, `mail-signin.spec.ts`, `mail-member.spec.ts`.
-- `bearer-token.spec.ts`.
-- `oauth-provider.spec.ts` (all 11 cases of 7.2) and `mcp.spec.ts`
+- `mcp.test.ts`: `bearerToken`, the OAuth provider (all 11 cases of 7.2) and the MCP endpoint
   (challenge + metadata, tools list, whoami structured content, token in URL
   refused, forged tokens refused: garbage, other key, alg none, other aud,
   other iss, no org claim, org not theirs; expiry; member removal revokes;
