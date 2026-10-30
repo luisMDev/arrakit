@@ -2,7 +2,7 @@ import type { ChangePreview, PaidChoice, PlanOfferView } from '@arrakit/contract
 import type { BillingCycle, Plan } from '@arrakit/plans'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '#/components/ui/badge'
@@ -16,11 +16,11 @@ import {
   DialogTitle,
 } from '#/components/ui/dialog'
 import { Skeleton } from '#/components/ui/skeleton'
-import { refusalMessage, reportError, toastError } from '#/lib/api-errors'
+import { apiFailed, paymentRefusal, refusalMessage } from '#/lib/api-errors'
 import { useCurrentUser } from '#/lib/current-user'
 import { orpc } from '#/lib/orpc'
+import { useFailureToast } from '#/lib/use-failure-toast'
 
-import { paymentRefusal } from './api-refusal'
 import { BillingCycleSwitch } from './billing-cycle-switch'
 import { isPaying, plansAbove } from './plan-access'
 import { FeatureList, PlanCard } from './plan-card'
@@ -63,22 +63,18 @@ export function PlansPage() {
       : null
   const cycle: BillingCycle = chosenCycle ?? paying?.cycle ?? 'yearly'
 
-  useEffect(() => {
-    if (offers.isError) toastError(t('plans.loadFailed'))
-  }, [offers.isError, t])
-  useEffect(() => {
-    if (!billing.error) return
-    reportError('[plans] billing.get failed', billing.error)
-    toastError(refusalMessage(billing.error) ?? t('plans.billingLoadFailed'))
-  }, [billing.error, t])
+  useFailureToast(offers.error, '[plans] plans.list failed', t('plans.loadFailed'))
+  useFailureToast(
+    billing.error,
+    '[plans] billing.get failed',
+    t('plans.billingLoadFailed'),
+    refusalMessage,
+  )
 
   const preview = useMutation({
     ...orpc.billing.previewChange.mutationOptions(),
     onSuccess: (result, choice) => setPending({ choice, preview: result }),
-    onError: (err) => {
-      reportError('[plans] preview failed', err)
-      toastError(refusalMessage(err) ?? t('plans.priceFailed'))
-    },
+    onError: (err) => apiFailed('[plans] preview failed', err, t('plans.priceFailed')),
   })
   const change = useMutation({
     ...orpc.billing.change.mutationOptions(),
@@ -88,10 +84,8 @@ export function PlansPage() {
       await reload()
       await navigate({ to: '/app/billing' })
     },
-    onError: (err) => {
-      reportError('[plans] switch failed', err)
-      toastError(paymentRefusal(err) ?? t('plans.switchFailed'))
-    },
+    onError: (err) =>
+      apiFailed('[plans] switch failed', err, t('plans.switchFailed'), paymentRefusal),
   })
 
   const goToCheckout = (choice: PaidChoice) =>

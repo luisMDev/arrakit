@@ -1,10 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { redirect } from '@tanstack/react-router'
-import { toast } from 'sonner'
 
 import { tr } from '#/i18n'
 import { statusOf } from '#/lib/api-errors'
 import { type ChoiceSearch, checkoutChoice } from '#/lib/checkout-choice'
+import { notify } from '#/lib/notify'
 import { orpc } from '#/lib/orpc'
 import { session } from '#/lib/session'
 
@@ -40,7 +40,7 @@ export async function skipWhenSignedIn({
     if (statusOf(err) === 401) return
     console.error('[skipWhenSignedIn] the guard failed', err)
     if (cause === 'preload') return
-    toast.error(tr(isUnreachable(err) ? 'onboarding.unreachable' : 'onboarding.failed'))
+    notify.error(tr(isUnreachable(err) ? 'onboarding.unreachable' : 'onboarding.failed'))
     return
   }
   const choice = checkoutChoice(search)

@@ -12,10 +12,10 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '#/componen
 import { Separator } from '#/components/ui/separator'
 import { Spinner } from '#/components/ui/spinner'
 import { APP_NAME } from '#/config'
-import { reportError, toastError } from '#/lib/api-errors'
+import { paymentRefusal, reportError } from '#/lib/api-errors'
 import { client, orpc } from '#/lib/orpc'
+import { useFailureToast } from '#/lib/use-failure-toast'
 
-import { paymentRefusal } from './api-refusal'
 import { money, planLabel } from './plan-copy'
 
 type Mounted = { destroy(): void }
@@ -68,9 +68,7 @@ export function CheckoutPage({ choice }: { choice: PaidChoice }) {
   const total = offer ? money(choice.cycle === 'yearly' ? offer.yearly : offer.monthly) : null
   const product = `${APP_NAME} ${planLabel(choice.plan)}`
 
-  useEffect(() => {
-    if (offers.isError) toastError(t('checkout.loadFailed'))
-  }, [offers.isError, t])
+  useFailureToast(offers.error, '[checkout] plans.list failed', t('checkout.loadFailed'))
 
   return (
     <main className="mx-auto grid w-full max-w-5xl gap-8 px-6 py-10 md:grid-cols-2">

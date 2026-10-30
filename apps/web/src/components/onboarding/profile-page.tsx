@@ -1,7 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { type FormEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
 import { Checkbox } from '#/components/ui/checkbox'
@@ -9,6 +8,7 @@ import { Field, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { PRIVACY_URL, TERMS_URL } from '#/config'
 import { type CheckoutChoice, type ChoiceSearch, checkoutChoice } from '#/lib/checkout-choice'
+import { notify } from '#/lib/notify'
 import { orpc } from '#/lib/orpc'
 
 import { useOnboardingApi } from './onboarding-api'
@@ -56,7 +56,7 @@ export function ProfilePage({
     }
     pendingRef.current = false
     setPending(false)
-    toast.error(t(failure))
+    notify.error(t(failure))
   }
 
   function next(event: FormEvent) {

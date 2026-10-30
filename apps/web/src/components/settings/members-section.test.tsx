@@ -161,7 +161,7 @@ describe('MembersSection', () => {
     ],
     [503, "Couldn't invite ana@acme.com. Try again."],
   ])('toasts the API reason or the fallback (%j), keeping the email', async (reply, message) => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     answer('invitations/invite', reply as number | [number, string])
     setup(meAs(), MEMBERS, [])
     const input = await screen.findByLabelText('Invite someone from your organization')
@@ -169,6 +169,7 @@ describe('MembersSection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Invite' }))
     expect(await screen.findByText(message)).toBeInTheDocument()
     expect(input).toHaveValue('ana@acme.com')
+    expect(report).toHaveBeenCalledWith('[members] inviting failed', expect.anything())
   })
 
   it('changes a role, and puts the select back when refused', async () => {

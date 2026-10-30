@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Receipt } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -32,8 +32,9 @@ import { Skeleton } from '#/components/ui/skeleton'
 import type { SectionProps } from '#/components/settings/settings-page'
 import { BillingUsage, TopUpsList } from '#/components/usage/billing-usage'
 import { useUsage } from '#/components/usage/use-usage'
-import { refusalMessage, reportError, toastError } from '#/lib/api-errors'
+import { apiFailed, refusalMessage } from '#/lib/api-errors'
 import { client, orpc } from '#/lib/orpc'
+import { useFailureToast } from '#/lib/use-failure-toast'
 
 const KEY = 'settings.billingSettings'
 
@@ -72,11 +73,7 @@ export function BillingSection({
   const [cancelling, setCancelling] = useState(false)
   const [portalBusy, setPortalBusy] = useState(false)
 
-  useEffect(() => {
-    if (!error) return
-    reportError('[billing] billing.get failed', error)
-    toastError(refusalMessage(error) ?? t(`${KEY}.notLoaded`))
-  }, [error, t])
+  useFailureToast(error, '[billing] billing.get failed', t(`${KEY}.notLoaded`), refusalMessage)
 
   const replace = (next: BillingView) => queryClient.setQueryData(billingQuery.queryKey, next)
 
@@ -86,18 +83,12 @@ export function BillingSection({
       replace(next)
       setCancelling(false)
     },
-    onError: (err) => {
-      reportError('[billing] cancel failed', err)
-      toastError(refusalMessage(err) ?? t(`${KEY}.notCancelled`))
-    },
+    onError: (err) => apiFailed('[billing] cancel failed', err, t(`${KEY}.notCancelled`)),
   })
   const resume = useMutation({
     ...orpc.billing.resume.mutationOptions(),
     onSuccess: replace,
-    onError: (err) => {
-      reportError('[billing] resume failed', err)
-      toastError(refusalMessage(err) ?? t(`${KEY}.notKept`))
-    },
+    onError: (err) => apiFailed('[billing] resume failed', err, t(`${KEY}.notKept`)),
   })
 
   async function portal(to: 'payment' | 'details') {
@@ -106,8 +97,7 @@ export function BillingSection({
       const { url } = await openPortal(to)
       redirect(url)
     } catch (err) {
-      reportError('[billing] portal failed', err)
-      toastError(refusalMessage(err) ?? t(`${KEY}.portalNotOpened`))
+      apiFailed('[billing] portal failed', err, t(`${KEY}.portalNotOpened`))
       setPortalBusy(false)
     }
   }

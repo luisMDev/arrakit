@@ -5,8 +5,9 @@ import { useTranslation } from 'react-i18next'
 import { Card, CardContent } from '#/components/ui/card'
 import { Field, FieldDescription, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
-import { reportError, toastError } from '#/lib/api-errors'
+import { reportError } from '#/lib/api-errors'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
+import { notify } from '#/lib/notify'
 import { client, orpc } from '#/lib/orpc'
 
 import { SettingsSectionLayout } from './settings-ui'
@@ -27,7 +28,7 @@ export function GeneralSection() {
       await queryClient.fetchQuery({ ...orpc.me.get.queryOptions(), staleTime: 0 })
     } catch (err) {
       reportError('[general] loading the organization failed', err)
-      toastError(failure)
+      notify.error(failure)
     }
   }
 
@@ -57,7 +58,7 @@ export function GeneralSection() {
       setDraft(null)
     } catch (err) {
       reportError('[general] renaming the organization failed', err)
-      toastError(t(`${K}.notSaved`))
+      notify.error(t(`${K}.notSaved`))
       setDraft(null)
       await load(t(`${K}.notSaved`))
     }

@@ -2,12 +2,12 @@ import { isWorkEmail, normalizeEmail } from '@arrakit/address'
 import type { AuthProviders } from '@arrakit/contract'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import { Alert, AlertDescription } from '#/components/ui/alert'
 import { Button } from '#/components/ui/button'
 import { Field, FieldError, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
+import { notify } from '#/lib/notify'
 
 import { EmailRefusedError, PROVIDERS_UNKNOWN, type SocialProvider, useAuthApi } from './auth-api'
 import { GoogleIcon, MicrosoftIcon } from './provider-icons'
@@ -105,7 +105,7 @@ export function SignInOptions({
     } catch (err) {
       fail()
       if (err instanceof EmailRefusedError) setRefusedByApi(true)
-      else toast.error(t('auth.signInOptions.linkNotSent'))
+      else notify.error(t('auth.signInOptions.linkNotSent'))
     }
   }
 
@@ -115,7 +115,7 @@ export function SignInOptions({
       await api.signInWith(provider, landing)
     } catch {
       fail()
-      toast.error(t('auth.signInOptions.notSignedIn'))
+      notify.error(t('auth.signInOptions.notSignedIn'))
     }
   }
 

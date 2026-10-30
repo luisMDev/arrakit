@@ -1,5 +1,6 @@
 import { fallbackORPCErrorMessage } from '@orpc/client'
-import { toast } from 'sonner'
+
+import { notify } from './notify'
 
 export function statusOf(err: unknown): number {
   if (err && typeof err === 'object' && 'status' in err && typeof err.status === 'number') {
@@ -25,13 +26,28 @@ function ownMessage(err: unknown): string | null {
   return message
 }
 
-/**
- * The API's own reason when it refused a request on its merits (400 or 403 with a message);
- * `null` for anything else (5xx, no answer, a generic message).
- */
+const is4xx = (status: number) => status >= 400 && status < 500
+
+/** The API's own message for an error answered with a status `accepts` takes, else `null`. */
+export function apiMessage(
+  err: unknown,
+  accepts: (status: number) => boolean = is4xx,
+): string | null {
+  return accepts(statusOf(err)) ? ownMessage(err) : null
+}
+
+const REFUSALS = new Set([400, 403])
+
+/** The API's own reason when it refused a request on its merits, else `null`. */
 export function refusalMessage(err: unknown): string | null {
-  const status = statusOf(err)
-  return status === 400 || status === 403 ? ownMessage(err) : null
+  return apiMessage(err, (status) => REFUSALS.has(status))
+}
+
+/** Payments also pass on 502 (Stripe refused) and 503 (payments not set up). */
+const PAYMENT_REFUSALS = new Set([400, 402, 403, 409, 502, 503])
+
+export function paymentRefusal(err: unknown): string | null {
+  return apiMessage(err, (status) => PAYMENT_REFUSALS.has(status))
 }
 
 export type ApiFailure = string | ((err: unknown) => string)
@@ -39,14 +55,15 @@ export type ApiFailure = string | ((err: unknown) => string)
 const failureText = (failure: ApiFailure, err: unknown): string =>
   typeof failure === 'string' ? failure : failure(err)
 
-/** An error toast; the same text never stacks, showing it again restarts its timer. */
-export function toastError(message: string): void {
-  toast.error(message, { id: `error:${message}`, duration: 6000 })
-}
-
-/** An info toast (3 s); the same text never stacks. */
-export function toastInfo(message: string): void {
-  toast(message, { id: `info:${message}`, duration: 3000 })
+/** Reports a failure and toasts the API's own message (`refusal`), or `failure` otherwise. */
+export function apiFailed(
+  context: string,
+  err: unknown,
+  failure: ApiFailure,
+  refusal: (err: unknown) => string | null = refusalMessage,
+): void {
+  reportError(context, err)
+  notify.error(refusal(err) ?? failureText(failure, err))
 }
 
 export interface ApiCallOptions<T> {
@@ -69,9 +86,8 @@ export async function apiCall<T>(
     next?.(value)
     return value
   } catch (err) {
-    reportError('[apiCall] a call failed', err)
     failed?.(err)
-    toastError(refusalMessage(err) ?? failureText(failure, err))
+    apiFailed('[apiCall] a call failed', err, failure)
     return undefined
   }
 }
@@ -108,7 +124,7 @@ export function saveOnChange<T, R>(
         generation++
         reportError('[saveOnChange] a save failed', err)
         failed?.(err)
-        toastError(failureText(failure, err))
+        notify.error(failureText(failure, err))
       }
     })
   }
