@@ -351,10 +351,11 @@ components), passing the navigation's target href.
 - `me.updateAccount` (settings) — language switch trigger.
 - `organization`/billing endpoints for `/app/plans`, `/app/billing`.
 
-Error toast rule for **all** screens (`apiCall` helper, shared): on a failed call, report the error (logger), run the
-optional `failed` rollback, then show an error toast: the API's own message when the error is a refusal
+Error toast rule for **all** screens (`useApiMutation` hook, shared): on a failed call, report the error (logger), show
+an error toast, then run the screen's own `onError` rollback. The toast says the API's own message when the error is a refusal
 (`BAD_REQUEST` 400 or `FORBIDDEN` 403) whose message is a non-blank string, otherwise the screen's fallback text.
-5xx, network failures (status 0) and 400 without a message use the fallback. The same toast (same message+variant)
+5xx, network failures (status 0) and 400 without a message use the fallback. A screen may pass its own `refusal`
+reader (any 4xx, payment statuses, 409 only, or none). `run()` ignores a second call while the first is in flight. The same toast (same message+variant)
 never stacks: showing it again restarts its timer (Sonner: pass a stable `id` = message). Durations: info 3 s, error 6 s.
 `saveOnChange` helper (settings autosave, no Save button): saves each valid change **sequentially in order**; on failure
 it reports, toasts the fallback, calls `failed()` to restore server values, and **drops the queued changes** made
