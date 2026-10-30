@@ -175,6 +175,33 @@ describe.each([
     expect((await serve(url)).status).toBe(403)
   })
 
+  it('serves only safe types inline and everything else as a sandboxed download', async () => {
+    await a().put('xss/page.html', text('<script>alert(1)</script>'), 'text/html')
+    await a().put('xss/logo.svg', text('<svg onload="alert(1)"/>'), 'image/svg+xml')
+    await a().put('ok/photo.png', text('png'), 'image/png')
+    for (const name of ['xss/page.html', 'xss/logo.svg']) {
+      const res = await serve(await a().getUrl(name))
+      expect(res.headers.get('content-disposition')).toBe('attachment')
+      expect(res.headers.get('x-content-type-options')).toBe('nosniff')
+      expect(res.headers.get('content-security-policy')).toContain('sandbox')
+    }
+    const png = await serve(await a().getUrl('ok/photo.png'))
+    expect(png.headers.get('content-disposition')).toBe('inline')
+  })
+
+  it('stores an upload without a signed content type as octet-stream, whatever it sends', async () => {
+    const url = await a().putUrl('up/untyped')
+    const put = await serve(url, {
+      method: 'PUT',
+      headers: { 'content-type': 'text/html' },
+      body: text('<script>alert(1)</script>'),
+    })
+    expect(put.status).toBe(200)
+    const got = await serve(await a().getUrl('up/untyped'))
+    expect(got.headers.get('content-type')).toBe('application/octet-stream')
+    expect(got.headers.get('content-disposition')).toBe('attachment')
+  })
+
   it('answers 404 for a signed URL to a file that is not there', async () => {
     expect((await serve(await a().getUrl('missing.txt'))).status).toBe(404)
   })

@@ -29,6 +29,20 @@ export interface SignedStore {
   write(key: string, bytes: Uint8Array, contentType: string): Promise<void>
 }
 
+/** Types a browser may render inline from the app's origin; anything else is served as a download. */
+const INLINE_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'image/avif',
+  'application/pdf',
+  'text/plain',
+])
+
+const isInline = (contentType: string) =>
+  INLINE_TYPES.has(contentType.split(';')[0]!.trim().toLowerCase())
+
 const sign = (secret: string, payload: string) =>
   createHmac('sha256', secret).update(`storage-url\n${payload}`).digest('base64url')
 
@@ -89,6 +103,7 @@ export function urlSigner(signing: UrlSigning) {
       return new Response(found.bytes, {
         headers: {
           'content-type': found.contentType,
+          'content-disposition': isInline(found.contentType) ? 'inline' : 'attachment',
           'x-content-type-options': 'nosniff',
           'content-security-policy': "sandbox; default-src 'none'",
         },
@@ -98,7 +113,8 @@ export function urlSigner(signing: UrlSigning) {
     if (grant.t && sent !== grant.t)
       return forbidden('The upload must send the signed content type.')
     const bytes = new Uint8Array(await request.arrayBuffer())
-    await store.write(grant.k, bytes, sent ?? grant.t ?? 'application/octet-stream')
+    // Without a signed type the uploader does not get to choose how the file is served.
+    await store.write(grant.k, bytes, grant.t ?? 'application/octet-stream')
     return new Response(null, { status: 200 })
   }
 
