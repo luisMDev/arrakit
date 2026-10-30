@@ -7,7 +7,7 @@ import { createAuth } from './auth'
 import { loadAuthConfig } from './config'
 import { microsoftVouches } from './social'
 
-const WEB = 'http://localhost:4200'
+const WEB = 'http://localhost:5200'
 const GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token'
 const MICROSOFT_TOKEN = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
 
@@ -147,8 +147,8 @@ describe('Google sign-in', () => {
   it.each([
     ['no Origin', null],
     ['null', 'null'],
-    ['a lookalike host', 'http://localhost:4200.evil.example'],
-    ['another scheme', 'https://localhost:4200'],
+    ['a lookalike host', 'http://localhost:5200.evil.example'],
+    ['another scheme', 'https://localhost:5200'],
     ['another port', 'http://localhost:4201'],
     ['another site', 'https://evil.example'],
   ])('refuses %s', async (_, origin) => {
@@ -158,8 +158,8 @@ describe('Google sign-in', () => {
   it.each([
     'https://evil.example/profile',
     '//evil.example/profile',
-    'http://localhost:4200@evil.example/profile',
-    'http://localhost:4200.evil.example/profile',
+    'http://localhost:5200@evil.example/profile',
+    'http://localhost:5200.evil.example/profile',
   ])('refuses the callback %s in either field', async (bad) => {
     expect((await startSocial(opened, 'google', { callbackURL: bad })).status).toBe(403)
     expect((await startSocial(opened, 'google', { errorCallbackURL: bad })).status).toBe(403)

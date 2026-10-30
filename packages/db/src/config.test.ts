@@ -64,9 +64,9 @@ describe('loadDataConfig', () => {
   it('signs local storage URLs with a secret derived from BETTER_AUTH_SECRET, at the web origin', () => {
     const config = loadDataConfig({
       BETTER_AUTH_SECRET: 'x'.repeat(40),
-      BETTER_AUTH_URL: 'http://localhost:4200/path',
+      BETTER_AUTH_URL: 'http://localhost:5200/path',
     })
-    expect(config.storageSigning?.baseUrl).toBe('http://localhost:4200')
+    expect(config.storageSigning?.baseUrl).toBe('http://localhost:5200')
     expect(config.storageSigning?.secret).toMatch(/^[\w-]{43}$/)
     expect(config.storageSigning?.secret).not.toContain('x'.repeat(40))
     expect(loadDataConfig({}).storageSigning).toBeUndefined()

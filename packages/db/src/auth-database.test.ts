@@ -9,7 +9,7 @@ import { type TestData, openTestData } from './testing'
 const buildAuth = (data: TestData) =>
   betterAuth({
     secret: 'test-secret-test-secret-test-secret-00',
-    baseURL: 'http://localhost:4200',
+    baseURL: 'http://localhost:5200',
     basePath: '/api/auth',
     database: data.authDatabase,
     telemetry: { enabled: false },

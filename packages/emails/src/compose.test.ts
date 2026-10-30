@@ -119,7 +119,7 @@ describe('composeEmail', () => {
     expect(withLink('http://app.example.com')).toThrow(/https: or mailto:/)
     expect(withLink('mailto:hello@example.com')).not.toThrow()
     expect(withLink('HTTPS://app.example.com')).not.toThrow()
-    expect(withLink('http://localhost:4200/api/auth/x')).not.toThrow()
+    expect(withLink('http://localhost:5200/api/auth/x')).not.toThrow()
     expect(withLink('http://127.0.0.1/x')).not.toThrow()
     expect(withLink('http://localhost.evil.com/x')).toThrow(/https: or mailto:/)
   })

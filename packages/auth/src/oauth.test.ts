@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { restoreNavigation } from './oauth'
 
-const URL_ = 'http://localhost:4200/api/auth/oauth2/authorize?client_id=a'
+const URL_ = 'http://localhost:5200/api/auth/oauth2/authorize?client_id=a'
 
 describe('restoreNavigation', () => {
   it('marks a proxied page navigation as a navigation again', () => {

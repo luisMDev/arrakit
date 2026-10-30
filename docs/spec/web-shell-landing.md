@@ -382,7 +382,7 @@ External integrations: Stripe only indirectly (Welcome waits for the webhook to 
 | --- | --- | --- | --- |
 | `VITE_SITE_URL` | web | `https://example.com` | Website URL for wordmark outside `/app` and Unavailable's Home |
 | `VITE_APP_NAME` (optional; or constant) | web | `Arrakit` | Product name |
-| `API_ORIGIN` / dev proxy target | web | `http://localhost:3000` | Vite dev server proxies `/api` **and** `/.well-known` (OAuth metadata for MCP) to the API |
+| `API_ORIGIN` / dev proxy target | web | `http://localhost:5000` | Vite dev server proxies `/api` **and** `/.well-known` (OAuth metadata for MCP) to the API |
 | `PUBLIC_APP_URL` | landing | `https://app.example.com` | Host of Pricing / Sign in / Get started links |
 | `PUBLIC_SITE_URL` (Astro `site`) | landing | `https://example.com` | Canonical, og:url, og:image, sitemap |
 | `VITE_ANALYTICS_SRC` + `VITE_ANALYTICS_DOMAIN` | web | unset (off) | Plausible-compatible script (`defer`, `data-domain`) in the root head |

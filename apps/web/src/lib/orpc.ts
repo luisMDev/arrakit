@@ -8,7 +8,7 @@ import type { Contract } from '@arrakit/contract'
 // (/api is proxied to the API); during SSR it calls API_ORIGIN directly.
 function rpcUrl(): string {
   if (typeof window !== 'undefined') return `${window.location.origin}/api/rpc`
-  const apiOrigin = process.env.API_ORIGIN ?? 'http://localhost:3000'
+  const apiOrigin = process.env.API_ORIGIN ?? 'http://localhost:5000'
   return `${apiOrigin.replace(/\/$/, '')}/api/rpc`
 }
 

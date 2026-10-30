@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { isTrustedOrigin, joinURL, loadAuthConfig, mcpResourceURL, oauthIssuer } from './config'
 
 const SECRET = 'x'.repeat(32)
-const base = { BETTER_AUTH_SECRET: SECRET, BETTER_AUTH_URL: 'http://localhost:4200' }
+const base = { BETTER_AUTH_SECRET: SECRET, BETTER_AUTH_URL: 'http://localhost:5200' }
 
 describe('loadAuthConfig', () => {
   it('names every missing variable in one error', () => {
@@ -64,16 +64,16 @@ describe('loadAuthConfig', () => {
   it('derives the trusted origins from the base and web URLs', () => {
     const config = loadAuthConfig({ ...base, WEB_URL: 'https://app.example.com/some/path/' })
     expect(config.webOrigin).toBe('https://app.example.com')
-    expect(config.trustedOrigins).toEqual(['http://localhost:4200', 'https://app.example.com'])
+    expect(config.trustedOrigins).toEqual(['http://localhost:5200', 'https://app.example.com'])
     expect(
-      loadAuthConfig({ ...base, BETTER_AUTH_URL: 'http://localhost:4200/' }).trustedOrigins,
-    ).toEqual(['http://localhost:4200'])
+      loadAuthConfig({ ...base, BETTER_AUTH_URL: 'http://localhost:5200/' }).trustedOrigins,
+    ).toEqual(['http://localhost:5200'])
   })
 })
 
 describe('URLs', () => {
   it.each([
-    'http://localhost:4200',
+    'http://localhost:5200',
     'https://app.example.com/',
     'https://app.example.com/some/path',
   ])('puts the MCP resource at the origin of %s', (url) =>
@@ -81,16 +81,16 @@ describe('URLs', () => {
   )
 
   it('derives the issuer and the join URL', () => {
-    expect(oauthIssuer('http://localhost:4200')).toBe('http://localhost:4200/api/auth')
-    expect(joinURL('http://localhost:4200', 'a b')).toBe('http://localhost:4200/join/a%20b')
+    expect(oauthIssuer('http://localhost:5200')).toBe('http://localhost:5200/api/auth')
+    expect(joinURL('http://localhost:5200', 'a b')).toBe('http://localhost:5200/join/a%20b')
   })
 })
 
 describe('isTrustedOrigin', () => {
-  const trusted = ['http://localhost:4200']
+  const trusted = ['http://localhost:5200']
   it.each([
-    ['http://localhost:4200', true],
-    ['http://localhost:4200.evil.example', false],
+    ['http://localhost:5200', true],
+    ['http://localhost:5200.evil.example', false],
     ['null', false],
     [null, false],
     [undefined, false],

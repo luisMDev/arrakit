@@ -8,7 +8,7 @@ describe('Better Auth testUtils', () => {
   it('creates a user and logs in without going through magic link', async () => {
     const auth = betterAuth({
       secret: 'test-secret-test-secret-test-secret-00',
-      baseURL: 'http://localhost:4200',
+      baseURL: 'http://localhost:5200',
       database: memoryAdapter({ user: [], session: [], account: [], verification: [] }),
       plugins: [testUtils()],
     })

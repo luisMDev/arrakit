@@ -5,7 +5,7 @@ import { AUTHORIZE_PATH, authorizeResume } from './authorize-resume'
 const resumeOf = (search: string) => {
   const resume = authorizeResume(search)
   if (!resume) throw new Error('no resume')
-  const url = new URL(resume, 'http://localhost:4200')
+  const url = new URL(resume, 'http://localhost:5200')
   return { url, params: [...url.searchParams] }
 }
 
@@ -17,7 +17,7 @@ describe('authorizeResume', () => {
 
   it('keeps the authorization parameters in order and drops the signature and the rest', () => {
     const { url, params } = resumeOf(
-      '?response_type=code&client_id=abc&redirect_uri=https%3A%2F%2Fclaude.ai%2Fcb&state=s1&code_challenge=cc&code_challenge_method=S256&resource=http%3A%2F%2Flocalhost%3A4200%2Fapi%2Fmcp&exp=1&sig=xyz&ba_iat=2&ba_pl=3&ba_param=4&next=%2Fevil&via=google&error=boom',
+      '?response_type=code&client_id=abc&redirect_uri=https%3A%2F%2Fclaude.ai%2Fcb&state=s1&code_challenge=cc&code_challenge_method=S256&resource=http%3A%2F%2Flocalhost%3A5200%2Fapi%2Fmcp&exp=1&sig=xyz&ba_iat=2&ba_pl=3&ba_param=4&next=%2Fevil&via=google&error=boom',
     )
     expect(url.pathname).toBe(AUTHORIZE_PATH)
     expect(params).toEqual([
@@ -27,7 +27,7 @@ describe('authorizeResume', () => {
       ['state', 's1'],
       ['code_challenge', 'cc'],
       ['code_challenge_method', 'S256'],
-      ['resource', 'http://localhost:4200/api/mcp'],
+      ['resource', 'http://localhost:5200/api/mcp'],
     ])
   })
 
@@ -46,7 +46,7 @@ describe('authorizeResume', () => {
       '?client_id=%2F%2Fevil.example&state=../../x',
     ]) {
       const { url } = resumeOf(search)
-      expect(url.origin).toBe('http://localhost:4200')
+      expect(url.origin).toBe('http://localhost:5200')
       expect(url.pathname).toBe(AUTHORIZE_PATH)
     }
     expect(authorizeResume('?client_id=a&state=//evil.example/x')).toBe(

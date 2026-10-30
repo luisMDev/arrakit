@@ -4,7 +4,7 @@
   "type": "module",
   "version": "0.0.0",
   "scripts": {
-    "dev": "astro dev --port 4321",
+    "dev": "astro dev --port 5321",
     "build": "astro build",
     "preview": "astro preview",
     "typecheck": "astro check",

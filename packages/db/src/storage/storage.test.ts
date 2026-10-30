@@ -105,7 +105,7 @@ describe.each([
   let clock = new Date('2026-01-01T00:00:00Z')
   const signing: UrlSigning = {
     secret: 'test-secret',
-    baseUrl: 'http://localhost:4200/',
+    baseUrl: 'http://localhost:5200/',
     now: () => clock,
   }
   let storage: Storage
@@ -129,7 +129,7 @@ describe.each([
   })
 
   it('hands out URLs under the API origin', async () => {
-    expect(await a().getUrl('x.txt')).toMatch(/^http:\/\/localhost:4200\/api\/files\/local\/[^/]+$/)
+    expect(await a().getUrl('x.txt')).toMatch(/^http:\/\/localhost:5200\/api\/files\/local\/[^/]+$/)
   })
 
   it('uploads through a signed PUT with the signed content type, then reads it back', async () => {

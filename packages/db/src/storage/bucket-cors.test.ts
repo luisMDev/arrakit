@@ -37,9 +37,9 @@ describe('bucket CORS for direct browser uploads', () => {
   })
 
   it('writes the same policy in S3 PutBucketCors form', () => {
-    expect(s3CorsRules(['https://app.example.com', 'http://localhost:4200/'])).toEqual([
+    expect(s3CorsRules(['https://app.example.com', 'http://localhost:5200/'])).toEqual([
       {
-        AllowedOrigins: ['https://app.example.com', 'http://localhost:4200'],
+        AllowedOrigins: ['https://app.example.com', 'http://localhost:5200'],
         AllowedMethods: ['PUT', 'GET'],
         AllowedHeaders: ['content-type'],
         MaxAgeSeconds: BUCKET_CORS.maxAgeSeconds,

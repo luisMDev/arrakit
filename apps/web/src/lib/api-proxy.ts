@@ -10,4 +10,4 @@ export const apiProxiedPaths = [
 ] as const
 
 export const apiOriginFrom = (value: string | undefined) =>
-  (value ?? 'http://localhost:3000').replace(/\/$/, '')
+  (value ?? 'http://localhost:5000').replace(/\/$/, '')

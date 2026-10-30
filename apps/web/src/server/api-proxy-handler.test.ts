@@ -63,12 +63,12 @@ describe('clientIpOf', () => {
 })
 
 describe('apiTargetOf', () => {
-  it('keeps path and query and defaults the origin to localhost:3000', () => {
+  it('keeps path and query and defaults the origin to localhost:5000', () => {
     const url = new URL('http://web.test/api/rpc/me/get?x=1&y=2')
     expect(apiTargetOf(url, 'https://api.example.com/')).toBe(
       'https://api.example.com/api/rpc/me/get?x=1&y=2',
     )
-    expect(apiTargetOf(url, undefined)).toBe('http://localhost:3000/api/rpc/me/get?x=1&y=2')
+    expect(apiTargetOf(url, undefined)).toBe('http://localhost:5000/api/rpc/me/get?x=1&y=2')
   })
 })
 
@@ -116,7 +116,7 @@ describe('the runtime web proxy in front of the API', () => {
       method: 'POST',
       headers: {
         cookie: 'better-auth.session_token=abc',
-        origin: 'http://localhost:4200',
+        origin: 'http://localhost:5200',
         'content-type': 'application/json',
       },
       body: '{"hello":"world"}',
@@ -132,7 +132,7 @@ describe('the runtime web proxy in front of the API', () => {
     expect(headers['x-forwarded-host']).toBe(new URL(web.origin).host)
     expect(headers['x-forwarded-proto']).toBe('http')
     expect(headers.cookie).toBe('better-auth.session_token=abc')
-    expect(headers.origin).toBe('http://localhost:4200')
+    expect(headers.origin).toBe('http://localhost:5200')
   })
 
   it('maps cf-connecting-ip to x-forwarded-for when present', async () => {

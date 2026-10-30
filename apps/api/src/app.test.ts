@@ -55,7 +55,7 @@ describe('api app', () => {
     expect((await t.app.request('/api/webhooks/stripe', { method: 'POST' })).status).toBe(401)
     const meta = await t.app.request('/.well-known/oauth-authorization-server/api/auth')
     expect(((await meta.json()) as { issuer: string }).issuer).toBe(
-      'http://localhost:4200/api/auth',
+      'http://localhost:5200/api/auth',
     )
   })
 })

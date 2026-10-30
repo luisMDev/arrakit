@@ -14,8 +14,8 @@ describe('api-proxy', () => {
     ])
   })
 
-  it('defaults the API origin to localhost:3000 and drops a trailing slash', () => {
-    expect(apiOriginFrom(undefined)).toBe('http://localhost:3000')
+  it('defaults the API origin to localhost:5000 and drops a trailing slash', () => {
+    expect(apiOriginFrom(undefined)).toBe('http://localhost:5000')
     expect(apiOriginFrom('https://api.example.com/')).toBe('https://api.example.com')
   })
 })

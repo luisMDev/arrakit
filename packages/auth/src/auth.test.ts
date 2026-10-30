@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createAuth } from './auth'
 import { loadAuthConfig } from './config'
 
-const WEB = 'http://localhost:4200'
+const WEB = 'http://localhost:5200'
 
 describe('createAuth on the real schema (PGlite)', () => {
   let data: TestData

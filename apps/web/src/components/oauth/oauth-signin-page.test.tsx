@@ -12,9 +12,9 @@ import { OAuthSignInPage } from './oauth-signin-page'
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 
 const SIGNED =
-  '?response_type=code&client_id=claude&redirect_uri=https%3A%2F%2Fclaude.ai%2Fcb&state=s&code_challenge=cc&code_challenge_method=S256&resource=http%3A%2F%2Flocalhost%3A4200%2Fapi%2Fmcp&exp=1&sig=xyz'
+  '?response_type=code&client_id=claude&redirect_uri=https%3A%2F%2Fclaude.ai%2Fcb&state=s&code_challenge=cc&code_challenge_method=S256&resource=http%3A%2F%2Flocalhost%3A5200%2Fapi%2Fmcp&exp=1&sig=xyz'
 const RESUME =
-  '/api/auth/oauth2/authorize?response_type=code&client_id=claude&redirect_uri=https%3A%2F%2Fclaude.ai%2Fcb&state=s&code_challenge=cc&code_challenge_method=S256&resource=http%3A%2F%2Flocalhost%3A4200%2Fapi%2Fmcp'
+  '/api/auth/oauth2/authorize?response_type=code&client_id=claude&redirect_uri=https%3A%2F%2Fclaude.ai%2Fcb&state=s&code_challenge=cc&code_challenge_method=S256&resource=http%3A%2F%2Flocalhost%3A5200%2Fapi%2Fmcp'
 
 function fakeApi(providers: AuthProviders = { google: true, microsoft: true }) {
   return {

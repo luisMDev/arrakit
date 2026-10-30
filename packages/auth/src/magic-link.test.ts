@@ -8,7 +8,7 @@ import { loadAuthConfig } from './config'
 import type { InvitationForMail } from './deps'
 import { expiresInDays, invitationIdOf } from './magic-link'
 
-const WEB = 'http://localhost:4200'
+const WEB = 'http://localhost:5200'
 const config = loadAuthConfig({ BETTER_AUTH_SECRET: 'x'.repeat(32), BETTER_AUTH_URL: WEB })
 
 describe('magic link sign-in (PGlite)', () => {
@@ -175,8 +175,8 @@ describe('magic link sign-in (PGlite)', () => {
   it.each([
     ['no Origin', null],
     ['null', 'null'],
-    ['a lookalike host', 'http://localhost:4200.evil.example'],
-    ['another scheme', 'https://localhost:4200'],
+    ['a lookalike host', 'http://localhost:5200.evil.example'],
+    ['another scheme', 'https://localhost:5200'],
     ['another port', 'http://localhost:4201'],
     ['another site', 'https://evil.example'],
   ])('refuses %s with 403 and sends nothing', async (_, origin) => {
