@@ -10,6 +10,8 @@ import { apiCall } from '#/lib/api-errors'
 import { authClient } from '#/lib/auth-client'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
 
+import { ThemeSwitcher } from './theme-switcher'
+
 async function signOutOrThrow(): Promise<void> {
   const result = await authClient.signOut()
   if (result.error) throw Object.assign(new Error('sign-out failed'), result.error)
@@ -108,6 +110,8 @@ export function AppMenu() {
               </li>
             ))}
           </ul>
+          <Separator className="my-1" />
+          <ThemeSwitcher />
           <Separator className="my-1" />
           <ul aria-label={t('appMenu.more')} className="flex flex-col">
             <li>

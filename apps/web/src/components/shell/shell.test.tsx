@@ -55,6 +55,24 @@ describe('Signed-in shell', () => {
     expect(within(menu).getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
   })
 
+  it('switches to dark mode from the menu and remembers it', async () => {
+    const { openMenu, user } = await open()
+    const menu = await openMenu()
+    const theme = within(menu).getByRole('radiogroup', { name: 'Theme' })
+    expect(within(theme).getByRole('radio', { name: 'System' })).toBeChecked()
+
+    await user.click(within(theme).getByRole('radio', { name: 'Dark' }))
+
+    expect(document.documentElement).toHaveClass('dark')
+    expect(localStorage.getItem('arrakit.theme')).toBe('dark')
+    expect(within(theme).getByRole('radio', { name: 'Dark' })).toBeChecked()
+    expect(menu).toBeInTheDocument()
+
+    await user.click(within(theme).getByRole('radio', { name: 'Light' }))
+    expect(document.documentElement).not.toHaveClass('dark')
+    localStorage.removeItem('arrakit.theme')
+  })
+
   it('closes the menu on Escape, giving focus back, and on a click outside it', async () => {
     const { openMenu, menu, menuButton, user } = await open()
     await openMenu()

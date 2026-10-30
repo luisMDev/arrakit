@@ -8,7 +8,11 @@
     "billing": "Billing",
     "more": "More",
     "signOut": "Sign out",
-    "notSignedOut": "Couldn't sign you out. Try again."
+    "notSignedOut": "Couldn't sign you out. Try again.",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "System"
   },
   "shell": {
     "account": "Account",

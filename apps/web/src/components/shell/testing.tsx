@@ -21,6 +21,7 @@ import { HomePage } from './home-page'
 import { NotFoundPage } from './not-found-page'
 import { onPaidPlan } from './on-paid-plan'
 import { RootLayout } from './root-layout'
+import { ThemeProvider } from './theme-provider'
 import { UnavailablePage } from './unavailable-page'
 import { viewTransitionRouterOptions } from './view-transitions'
 import { WelcomePage } from './welcome-page'
@@ -189,10 +190,12 @@ export function renderApp(url: string, { queryClient = new QueryClient() } = {})
     ...viewTransitionRouterOptions,
   })
   const view = render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-      <Toaster />
-    </QueryClientProvider>,
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+        <Toaster />
+      </QueryClientProvider>
+    </ThemeProvider>,
   )
   const location = () => router.state.location.href
   return { ...view, router, queryClient, location }

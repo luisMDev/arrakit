@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 
 import { RootLayout } from '#/components/shell/root-layout'
 import { RouteError } from '#/components/shell/route-error'
+import { ThemeProvider } from '#/components/shell/theme-provider'
 import { Toaster } from '#/components/ui/sonner'
 import { TooltipProvider } from '#/components/ui/tooltip'
 import { APP_NAME } from '#/config'
@@ -41,8 +42,10 @@ function RootDocument({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <TooltipProvider>{children}</TooltipProvider>
-        <Toaster />
+        <ThemeProvider>
+          <TooltipProvider>{children}</TooltipProvider>
+          <Toaster />
+        </ThemeProvider>
         <Scripts />
       </body>
     </html>

@@ -8,7 +8,11 @@
     "billing": "Facturación",
     "more": "Más",
     "signOut": "Cerrar sesión",
-    "notSignedOut": "No se ha podido cerrar la sesión. Inténtalo de nuevo."
+    "notSignedOut": "No se ha podido cerrar la sesión. Inténtalo de nuevo.",
+    "theme": "Tema",
+    "themeLight": "Claro",
+    "themeDark": "Oscuro",
+    "themeSystem": "Sistema"
   },
   "shell": {
     "account": "Cuenta",

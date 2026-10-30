@@ -12,6 +12,19 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver
 
+// next-themes follows prefers-color-scheme; jsdom has no matchMedia.
+globalThis.matchMedia ??= (query: string) =>
+  ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener() {},
+    removeListener() {},
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent: () => false,
+  }) as MediaQueryList
+
 afterEach(() => {
   cleanup()
 })
