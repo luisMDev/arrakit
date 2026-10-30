@@ -385,6 +385,8 @@ External integrations: Stripe only indirectly (Welcome waits for the webhook to 
 | `API_ORIGIN` / dev proxy target | web | `http://localhost:3000` | Vite dev server proxies `/api` **and** `/.well-known` (OAuth metadata for MCP) to the API |
 | `PUBLIC_APP_URL` | landing | `https://app.example.com` | Host of Pricing / Sign in / Get started links |
 | `PUBLIC_SITE_URL` (Astro `site`) | landing | `https://example.com` | Canonical, og:url, og:image, sitemap |
+| `VITE_ANALYTICS_SRC` + `VITE_ANALYTICS_DOMAIN` | web | unset (off) | Plausible-compatible script (`defer`, `data-domain`) in the root head |
+| `PUBLIC_ANALYTICS_SRC` + `PUBLIC_ANALYTICS_DOMAIN` | landing | unset (off) | Same script on every landing page (`components/Analytics.astro`) |
 
 Production proxy (saas-base `edge/api-proxy.ts`, Cloudflare Pages Functions): web and API must be **one site** so the
 Better Auth cookie is first-party; `BETTER_AUTH_URL` = web origin. If arrakit deploys web separately, port
@@ -412,7 +414,7 @@ Static site, the product's **front page**. Port content and links; styling with 
   - "Sign in" → `${APP_URL}/signin`
 - **Main**: h1 claim in two lines: "**Your product** in one line, / and **the reason** people need it." (bold on
   "Your product" and "the reason"); CTA button-link "Get started" with a right-arrow icon → `${APP_URL}/start`.
-- **Footer**: "© <product name>".
+- **Footer** (`components/Footer.astro`, shared): "© <product name>", "Terms" → `/terms`, "Privacy" → `/privacy`.
 - Responsive: stacks/shrinks under 640 px.
 - English only (no i18n on the landing in saas-base).
 
@@ -420,12 +422,23 @@ Static site, the product's **front page**. Port content and links; styling with 
 - `meta robots=noindex`, title "Page not found · <product name>", favicons, logo mark, h1 "This page does not exist.",
   link "Back home" → `/`. Must be served with HTTP 404 for unknown paths (static hosts use `404.html`).
 
+### Legal pages (`src/pages/terms.astro`, `src/pages/privacy.astro`)
+- Layout `src/layouts/LegalPage.astro`: title "<page> · <product name>", canonical, product name linking home, "Last
+  updated" line, shared footer. Content is a template marked "replace before launch". The web's onboarding links here
+  (`TERMS_URL`, `PRIVACY_URL`).
+
 ### Static files (`public/`)
 - `robots.txt`: allow everything, AI crawlers included (deliberate: marketing site; keep the explanatory comment),
   `Sitemap: ${SITE_URL}/sitemap.xml`.
 - `sitemap.xml` with `${SITE_URL}/` (or `@astrojs/sitemap`).
 - `og-card.png` (1200x630), `favicon.ico`, `favicon.svg`, `favicon-96x96.png`, `apple-touch-icon.png` (copy from
   saas-base `apps/landing/src/` or generate placeholders).
+
+---
+
+### Empty states (web)
+- Every "nothing here yet" in the web uses `EmptyState` (`components/shell/empty-state.tsx`, over shadcn `Empty`):
+  lucide icon + title, optional description and action. Used by Settings > Billing invoices and top-ups.
 
 ---
 

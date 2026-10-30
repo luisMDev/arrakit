@@ -391,7 +391,7 @@ Purpose: "Tell us about your organization." This is the first screen after a fir
   - Input "Your name" (`profile.yourName`, `autocomplete=name`), optional, prefilled empty.
   - Input "Organization" (`profile.organization`, `autocomplete=organization`), optional.
   - Checkbox: `profile.agreeTo` "I agree to the" + link-button `profile.terms` "Terms" + `profile.andThe` "and the" + link-button `profile.privacyPolicy` "Privacy Policy" + `profile.agreeEnd` ".".
-    - Clicking Terms or Privacy Policy opens a **Dialog** whose title is `profile.terms` or `profile.privacyPolicy` and whose body is `profile.termsBody` ("The Terms will be published here before launch.") or `profile.privacyBody`. It has a Close button (aria-label "Close"). Opening the dialog must **not** tick the checkbox. The text stays visible during the close animation (it does not blank out). Placeholders until real legal texts exist.
+    - Terms and Privacy Policy are links to the landing's `/terms` and `/privacy` (`TERMS_URL`, `PRIVACY_URL` in `apps/web/src/config.ts`), opened in a new tab. Following them must **not** tick the checkbox.
   - Buttons: primary **Next** (`profile.next`), disabled while the Terms box is unticked or while a request is pending. Ghost **Skip** (`profile.skip`), always enabled except while pending.
   - The page shows nothing else (no radio groups, no extra questions).
 - Actions:
