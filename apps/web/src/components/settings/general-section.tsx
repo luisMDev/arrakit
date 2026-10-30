@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { Card, CardContent } from '#/components/ui/card'
 import { Field, FieldDescription, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
-import { reportError } from '#/lib/api-errors'
+import { noRefusal, reportError } from '#/lib/api-errors'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
@@ -66,7 +66,7 @@ export function GeneralSection() {
     {
       context: '[general] renaming the organization failed',
       failure: t(`${K}.notSaved`),
-      refusal: () => null,
+      refusal: noRefusal,
     },
   )
 

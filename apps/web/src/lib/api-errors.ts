@@ -50,20 +50,23 @@ export function paymentRefusal(err: unknown): string | null {
   return apiMessage(err, (status) => PAYMENT_REFUSALS.has(status))
 }
 
-export type ApiFailure = string | ((err: unknown) => string)
+/** The API's own reason for a 409 conflict, else `null`. */
+export function conflictRefusal(err: unknown): string | null {
+  return apiMessage(err, (status) => status === 409)
+}
 
-const failureText = (failure: ApiFailure, err: unknown): string =>
-  typeof failure === 'string' ? failure : failure(err)
+/** Never the API's message: the screen's own text always. */
+export const noRefusal = (): null => null
 
 /** Reports a failure and toasts the API's own message (`refusal`), or `failure` otherwise. */
 export function apiFailed(
   context: string,
   err: unknown,
-  failure: ApiFailure,
+  failure: string,
   refusal: (err: unknown) => string | null = refusalMessage,
 ): void {
   reportError(context, err)
-  notify.error(refusal(err) ?? failureText(failure, err))
+  notify.error(refusal(err) ?? failure)
 }
 
 export interface SaveOnChange<T> {
@@ -83,7 +86,11 @@ export function saveOnChange<T, R>(
     failure,
     saved,
     failed,
-  }: { failure: ApiFailure; saved?: (result: R) => void; failed?: (err: unknown) => void },
+  }: {
+    failure: string | (() => string)
+    saved?: (result: R) => void
+    failed?: (err: unknown) => void
+  },
 ): SaveOnChange<T> {
   let queue: Promise<void> = Promise.resolve()
   let generation = 0
@@ -98,7 +105,7 @@ export function saveOnChange<T, R>(
         generation++
         reportError('[saveOnChange] a save failed', err)
         failed?.(err)
-        notify.error(failureText(failure, err))
+        notify.error(typeof failure === 'string' ? failure : failure())
       }
     })
   }
