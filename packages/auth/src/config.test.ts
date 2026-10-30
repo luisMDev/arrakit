@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isTrustedOrigin, joinURL, loadAuthConfig, mcpResourceURL, oauthIssuer } from './config'
+import { isTrustedOrigin, loadAuthConfig, mcpResourceURL, oauthIssuer } from './config'
 
 const SECRET = 'x'.repeat(32)
 const base = { BETTER_AUTH_SECRET: SECRET, BETTER_AUTH_URL: 'http://localhost:5200' }
@@ -80,9 +80,8 @@ describe('URLs', () => {
     expect(mcpResourceURL(url)).toBe(`${new URL(url).origin}/api/mcp`),
   )
 
-  it('derives the issuer and the join URL', () => {
+  it('derives the issuer', () => {
     expect(oauthIssuer('http://localhost:5200')).toBe('http://localhost:5200/api/auth')
-    expect(joinURL('http://localhost:5200', 'a b')).toBe('http://localhost:5200/join/a%20b')
   })
 })
 

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
+import { ACCOUNT_LANGUAGES } from '@arrakit/address'
 import { APP_NAME } from '@arrakit/emails'
 import { betterAuth } from 'better-auth'
 import { jwt, magicLink, organization, testUtils } from 'better-auth/plugins'
@@ -11,7 +12,7 @@ import { magicLinkSender } from './magic-link'
 import { connectorProvider } from './oauth'
 import { socialProviders, validateUserInfo } from './social'
 
-export const ORGANIZATION_SCHEMA = {
+const ORGANIZATION_SCHEMA = {
   member: {
     additionalFields: {
       termsAcceptedAt: { type: 'date', required: false, input: false },
@@ -33,7 +34,7 @@ export function createAuth(deps: AuthDeps) {
     socialProviders: socialProviders(config),
     user: {
       additionalFields: {
-        language: { type: ['en', 'es'], defaultValue: 'en', input: false },
+        language: { type: [...ACCOUNT_LANGUAGES], defaultValue: 'en', input: false },
       },
       // Only Microsoft needs it. Note: with it set, testUtils.saveUser() must run inside an
       // endpoint context, so tests that configure Microsoft create users through the API instead.

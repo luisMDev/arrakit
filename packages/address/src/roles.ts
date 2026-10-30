@@ -8,9 +8,12 @@ export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number]
 export const isAdminRole = (role: string | null | undefined): boolean =>
   role === 'owner' || role === 'admin'
 
+export const isOrganizationRole = (role: unknown): role is OrganizationRole =>
+  (ORGANIZATION_ROLES as readonly unknown[]).includes(role)
+
 /** Any stored role that is not exactly one of the three reads as 'member' (least privilege). */
 export const toOrganizationRole = (role: string): OrganizationRole =>
-  (ORGANIZATION_ROLES as readonly string[]).includes(role) ? (role as OrganizationRole) : 'member'
+  isOrganizationRole(role) ? role : 'member'
 
 export const ACCOUNT_LANGUAGES = ['en', 'es'] as const
 export type AccountLanguage = (typeof ACCOUNT_LANGUAGES)[number]

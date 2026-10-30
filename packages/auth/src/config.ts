@@ -1,11 +1,11 @@
 export const AUTH_BASE_PATH = '/api/auth'
-export const MCP_PATH = '/api/mcp'
+const MCP_PATH = '/api/mcp'
 export const MAGIC_LINK_MINUTES = 15
 export const ORGANIZATION_CLAIM = 'organization_id'
 export const COOKIE_PREFIX = 'arrakit'
 export const MICROSOFT_UNVERIFIED = 'email_not_verified'
 
-export interface OAuthClientConfig {
+interface OAuthClientConfig {
   clientId: string
   clientSecret: string
 }
@@ -72,6 +72,3 @@ export const oauthIssuer = (baseURL: string) => new URL(AUTH_BASE_PATH, baseURL)
 
 export const isTrustedOrigin = (origin: string | null | undefined, trusted: readonly string[]) =>
   typeof origin === 'string' && trusted.includes(origin)
-
-export const joinURL = (webOrigin: string, invitationId: string) =>
-  `${webOrigin}/join/${encodeURIComponent(invitationId)}`

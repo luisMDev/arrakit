@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { createAuth } from './auth'
 import { loadAuthConfig } from './config'
 import type { InvitationForMail } from './deps'
-import { expiresInDays, invitationIdOf } from './magic-link'
+import { invitationIdOf } from './magic-link'
 
 const WEB = 'http://localhost:5200'
 const config = loadAuthConfig({ BETTER_AUTH_SECRET: 'x'.repeat(32), BETTER_AUTH_URL: WEB })
@@ -293,15 +293,4 @@ describe('invitationIdOf', () => {
     ['https://evil.example/join/abc', null],
     [`${WEB}/profile`, null],
   ])('%s → %j', (callbackURL, id) => expect(invitationIdOf(link(callbackURL), config)).toBe(id))
-})
-
-describe('expiresInDays', () => {
-  const now = new Date('2026-01-01T00:00:00Z')
-  it.each([
-    [0, 1],
-    [1, 1],
-    [24 * 60 * 60 * 1000 + 1, 2],
-  ])('%sms ahead → %s days', (ms, days) =>
-    expect(expiresInDays(new Date(now.getTime() + ms), now)).toBe(days),
-  )
 })

@@ -5,8 +5,8 @@ import { type AuthConfig, isTrustedOrigin } from './config'
 
 const SIGN_IN_PATHS = new Set(['/sign-in/social', '/sign-in/magic-link'])
 
-export const SIGN_IN_FROM_APP = 'Sign in from the app.'
-export const WORK_EMAIL_REQUIRED = 'Enter a work email, like name@company.com.'
+const SIGN_IN_FROM_APP = 'Sign in from the app.'
+const WORK_EMAIL_REQUIRED = 'Enter a work email, like name@company.com.'
 
 export function beforeHook(config: AuthConfig) {
   return createAuthMiddleware(async (ctx) => {
