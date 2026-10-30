@@ -13,8 +13,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:e2e": "playwright test",
-    "generate-routes": "tsr generate"
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@arrakit/address": "workspace:*",

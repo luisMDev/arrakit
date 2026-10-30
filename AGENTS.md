@@ -59,7 +59,8 @@ apps/
                                   message} (our `orgErrors.<CODE>` copy for plugin codes) for the toasts
     src/lib/organization-queries.ts organizationQueries (`['org', …]` list/members/invitations/roles/teams)
                                   and switchOrganization() (setActive + reset queries)
-    src/lib/guards/               route guards: require-user, require-account, skip-when-signed-in
+    src/lib/guards.ts             route guards: requireUser, requireAccount, skipWhenSignedIn,
+                                  canCheckout, onPaidPlan
     src/lib/                      statusOf()/reportError()/apiMessage(), format, notify, titled(), checkoutChoice(),
                                   useCurrentUser() (`can(wanted)` from me.permissions, isOwner), grants(),
                                   useClearingForm()/registerClearing() (form errors hide while a field is edited)
@@ -67,14 +68,16 @@ apps/
                                   locales/{en,es}/<module>.json deep-merged into one namespace
     src/start.ts                  createStart({ defaultSsr: false }): screens render in the browser
     src/config.ts                 APP_NAME, SITE_URL (one place to rebrand the web)
-    e2e/                          Playwright specs (playwright.config.ts boots api + web)
+    e2e/                          Playwright specs (playwright.config.ts boots api + web; proxy.spec.ts
+                                  covers the /api and /.well-known proxy)
   api/          @arrakit/api      Hono server (port 5000)
-    src/app.ts                    createApp(deps): mounts routes/* and the oRPC router at /api/rpc,
-                                  refusing (403) any non-GET RPC call whose Origin is not trusted
+    src/app.ts                    createApp(deps, mcp): mounts /health, /api/auth/* (+ OAuth metadata),
+                                  routes/* and the oRPC router at /api/rpc, refusing (403) any non-GET
+                                  RPC call whose Origin is not trusted
     src/router.ts                 root oRPC router composing routers/<module>.ts
     src/routers/                  one oRPC router per module (implements its contract file)
     src/orpc/base.ts              builders: pub, authed, member(permissions?)
-    src/orpc/context.ts           BaseContext {deps, headers, log}, procedureContext(); reportErrors
+    src/orpc/context.ts           BaseContext {deps, headers, log}; reportErrors
                                   (maps DomainError and Better Auth APIError to ORPCError, logs and
                                   reports unexpected errors); requireSession, requireMember(permissions?)
                                   (membership in the session's active organization, read fresh);
@@ -82,43 +85,49 @@ apps/
                                   permissions, scope}
     src/organizations/            organizationDeps() (what the Better Auth organization plugin's rules
                                   need: seats, Stripe end, grants, purge) + its integration tests
-    src/routes/                   plain Hono routes: health, auth (+ OAuth metadata), stripe-webhook,
-                                  mcp (+ protected-resource metadata)
+    src/routes/                   plain Hono routes: stripe-webhook, mcp (mcpHandler() + routes +
+                                  protected-resource metadata)
     src/services.ts               buildDeps()/depsFromEnv(): AppDeps (env, data, auth, mailer, stripe)
     src/env.ts                    Zod env parsing (loadApiEnv)
     src/mail/mailer.ts            createMailer (Resend / Mailpit / console), recordingMailer()
     src/billing/                  StripeGateway interface + createStripeGateway (unconfigured / fake /
-                                  real); guardedStripe() maps every Stripe failure to 402 or 502 once
+                                  real; fakeStripe() in fake-stripe.ts); guardedStripe() maps every
+                                  Stripe failure to 402 or 502 once
     src/usage/                    requiresUsage() middleware
-    src/workers/                  background workers; workers/index.ts registers them at boot
-    src/mcp/                      MCP server factory
+    src/workers/                  background workers (storage purge, registered by main.ts at boot)
+    src/mcp/                      MCP server factory, access-token verification (tests in mcp.test.ts)
     src/observability/            createLogger() (Pino), requestLog() (X-Request-Id + access line),
-                                  createErrorReporter() (Sentry or none), isUnexpected()/reportUnexpected()
-    src/testing/                  createTestApp() (in-process app on PGlite + testUtils), fake Stripe
-    src/main.ts                   boot (logger, env, error reporter, mailer, openData, workers, serve,
-                                  graceful shutdown)
-    scripts/                      operational scripts (Stripe prices, credits product)
-  landing/      @arrakit/landing  Astro static site (port 5321)
+                                  error-reporter.ts: createErrorReporter() (Sentry or none),
+                                  isUnexpected()/reportUnexpected()
+    src/testing/                  createTestApp() (in-process app on PGlite + testUtils), people helpers
+    src/main.ts                   boot (logger, env, error reporter, mailer, openData, storage purge
+                                  worker, MCP handler, serve, graceful shutdown)
+    scripts/                      operational scripts (Stripe prices, Credits price included)
+  landing/      @arrakit/landing  Astro static site (port 5321); src/layouts/Base.astro holds the <head>
+                                  (favicons, analytics) and LegalPage.astro wraps it
 packages/
   db/           @arrakit/db       Drizzle + Postgres/PGlite. ./drizzle holds the migrations.
     src/schema/                   complete schema, one file per domain (auth, organizations, oauth, usage)
     src/open-data.ts              openData(config): connect, migrate, storage, jobs -> Data facade
     src/data/<domain>.ts          non-scoped data functions (membership, organizations (grants),
                                   invitations, account)
-    src/organization/             forOrganization(id): tenant-db guard + one scope file per domain
-                                  (organization, billing, members, roles, teams, usage, storage)
+    src/organization/             forOrganization(id): tenant-db guard; index.ts holds the organization,
+                                  billing, roles, teams and storage scope; members.ts and usage.ts
     src/jobs/, src/storage/       Jobs (pg-boss / in-process / memory), Storage (S3 / local / memory)
     src/testing.ts                `@arrakit/db/testing`: openTestData() (in-memory PGlite, migrated)
-  auth/         @arrakit/auth     createAuth(deps) (Better Auth + plugins; one file per concern: hooks,
-                                  magic-link, social, oauth, organization (+ organization-policy)),
-                                  loadAuthConfig(); `./client` (React client with organizationClient);
-                                  `./permissions` (pure access control shared with the web: statements,
-                                  ac, roles, permissionsOf, allows). The DB adapter is injected.
-  contract/     @arrakit/contract oRPC contract, one file per module + common.ts; index.ts composes them
-  plans/        @arrakit/plans    Pure plans catalog (catalog.ts) and usage arithmetic (usage.ts)
-  address/      @arrakit/address  Pure email/slug/org-name/time-zone/device-name/language rules, one file each
-  emails/       @arrakit/emails   Mail/Mailer types, composeEmail layout, copy helpers, one file per
-                                  template in templates/, APP_NAME brand
+  auth/         @arrakit/auth     createAuth({ config, data, mailer, organizations }) (Better Auth +
+                                  plugins; one file per concern: hooks, magic-link, social, oauth,
+                                  organization), loadAuthConfig(); `./client` (React client with
+                                  organizationClient); `./permissions` (pure, shared with the web:
+                                  statements, ac, roles, permissionsOf, allows, memberChangeRefusal,
+                                  organizationSchema). The data layer is injected as `data`.
+  contract/     @arrakit/contract oRPC contract: index.ts composes it (and holds auth providers,
+                                  onboarding, teams, plans); account.ts, billing.ts (with topUp),
+                                  usage.ts, common.ts
+  plans/        @arrakit/plans    Pure plans catalog and usage arithmetic (src/index.ts)
+  address/      @arrakit/address  Pure email/slug/org-name/time-zone/device-name/language rules (src/index.ts)
+  emails/       @arrakit/emails   index.ts (Mail/Mailer types, APP_NAME brand), compose.ts (composeEmail
+                                  layout), copy.ts (copy helpers), templates.ts (every template)
   tsconfig/     @arrakit/tsconfig Shared tsconfig presets: base.json, node.json, react.json
   eslint-config/@arrakit/eslint-config  Flat config: base(), react(), data-import guard
 docs/spec/      Feature specs (read the one for your area before coding)
@@ -189,7 +198,6 @@ Run from the repo root.
 | `pnpm --filter @arrakit/<pkg> test`          | One workspace's tests                                                   |
 | `pnpm --filter @arrakit/db db:generate`      | Generate a Drizzle migration from the schema                            |
 | `pnpm --filter @arrakit/api stripe:prices`   | Create/align the Stripe products and prices (needs `STRIPE_SECRET_KEY`) |
-| `pnpm --filter @arrakit/api stripe:credits`  | Create/align only the Credits top-up price                              |
 | `pnpm format`                                | Prettier                                                                |
 
 ## Conventions
@@ -213,8 +221,8 @@ Run from the repo root.
   own files; `en` and `es` must keep identical key sets and no key may be defined twice (tests).
 - **Contract first**: add the procedure to `packages/contract`, implement it in apps/api, consume
   it in apps/web via `orpc.<ns>.<proc>.queryOptions()` / `.mutationOptions()`.
-- **Toasts**: only through `notify.success/warning/error` from `#/lib/notify` (same text never
-  stacks; errors and warnings stay 6 s). Importing `sonner` anywhere else in the web is a lint error.
+- **Toasts**: only through `notify.success/error` from `#/lib/notify` (same text never
+  stacks; errors stay 6 s). Importing `sonner` anywhere else in the web is a lint error.
   Failed queries and mutations are reported and toasted once by the query client
   (`QueryCache`/`MutationCache` `onError` in `integrations/tanstack-query/root-provider.tsx`): the
   API's own message (`apiMessage()` in `#/lib/api-errors`) or the operation's `meta.failure` text;
@@ -257,7 +265,7 @@ Run from the repo root.
   raises RTL's `asyncUtilTimeout` to 5 s and stubs `ResizeObserver` globally (Radix).
 - **Database**: PGlite in-memory per test file (Docker is not available).
   `import { openTestData } from '@arrakit/db/testing'` opens a migrated in-memory `Data` with
-  memory storage and the recording `memoryJobs()` fake (`data.jobs.sent`, `sentJobs()`).
+  memory storage and the recording `memoryJobs()` fake (`data.jobs.sent`).
 - **Auth**: Better Auth `testUtils` plugin (`import { testUtils } from 'better-auth/plugins'`),
   enabled only in tests. `const { test } = await auth.$context` then `test.createUser()`,
   `test.saveUser()`, `test.login({ userId })` → `{ headers, cookies, session, user }`,
@@ -276,11 +284,13 @@ Run from the repo root.
   Microsoft provider is configured, Better Auth's `validateUserInfo` makes `testUtils.saveUser()`
   require an endpoint context, so create such users through the API.
 - **Web components**: React Testing Library + user-event; mock the API with msw or by injecting a client.
-  `src/test/rpc.tsx`: `answer(path, ...replies)` for `/api/rpc/<path>`, `answerAuth('organization/<path>',
-...replies)` for Better Auth (`[status, message, code]` is a plugin refusal), `meAs()` (permissions follow the
-  role), `renderAt(ui, { me, url })`.
-  `#/test/rpc` holds the shared kit: `api` (msw server), `answer(path, ...replies)`, `rpcError()`,
-  `meAs()`, `renderAt(ui, { me, url })` (router + query client + toaster), `withQueries()`, `quiet()`.
+  `#/test/rpc` (`src/test/rpc.tsx`) holds the shared kit: `setupTestApi()` (msw server for the file),
+  `answer(path, ...replies)` for `/api/rpc/<path>`, `answerAuth('organization/<path>', ...replies)` for
+  Better Auth (`[status, message, code]` is a plugin refusal), `meAs()` (permissions follow the role),
+  `renderAt(ui, { me, url })` (router + query client + toaster), `withQueries()`, `renderWithQueries()`,
+  `setupAuthTestApi()`, `billingOf()`, `quiet()`. `components/settings/testing.tsx` has `RoutedSettings`
+  and `components/shell/testing.tsx` has `renderApp(url)` (the real `routeTree`, other modules' screens
+  stubbed with `vi.mock`).
 - **E2E**: Playwright in `apps/web/e2e`; `playwright.config.ts` boots the API on port 5100 with a
   throwaway PGlite dir (`.data/e2e-pglite-<api port>`, reset at boot), `STRIPE_FAKE=1`,
   `NODE_ENV=test`, mail sent to a Mailpit on 5125, and the web dev server on 5200. Specs import `WEB_ORIGIN` from `e2e/origins.ts`;

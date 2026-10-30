@@ -6,22 +6,21 @@
     "DATABASE_URL",
     "TEST_DATABASE_URL",
     "PGLITE_DIR",
+    "PGLITE_RESET",
     "STRIPE_*",
     "BETTER_AUTH_*",
     "RESEND_API_KEY",
     "MAIL_FROM",
     "MAILPIT_URL",
+    "LOG_LEVEL",
+    "LOG_FORMAT",
+    "SENTRY_*",
     "R2_*",
     "S3_*",
-    "STORAGE_DIR",
     "GOOGLE_*",
     "MICROSOFT_*",
     "WEB_URL",
-    "WEB_ORIGIN",
     "API_ORIGIN",
-    "TRUSTED_ORIGINS",
-    "APP_NAME",
-    "SITE_URL",
     "PORT",
     "CI"
   ],
@@ -32,16 +31,13 @@
       "outputs": ["dist/**", ".output/**", "!.output/cache/**"],
       "env": ["VITE_*", "PUBLIC_*"]
     },
-    "typecheck": {
-      "dependsOn": ["^typecheck"]
-    },
+    "typecheck": {},
     "lint": {},
     "test": {
       "outputs": ["coverage/**"]
     },
     "test:e2e": {
       "cache": false,
-      "dependsOn": ["^build"],
       "passThroughEnv": ["E2E_WEB_PORT", "E2E_API_PORT", "E2E_MAILPIT_PORT"]
     },
     "dev": {

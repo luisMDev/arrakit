@@ -35,7 +35,7 @@ billing, prepaid credits, transactional email and an MCP server, in a pnpm + Tur
 
 ## Credits and usage
 
-The catalog is `packages/plans/src/catalog.ts`: `CURRENCY`, `TOP_UP` (the amount a top-up may
+The catalog is `packages/plans/src/index.ts`: `CURRENCY`, `TOP_UP` (the amount a top-up may
 be), `METRICS` and each plan's `monthlyGrantCents`. A metric is `consumable` (each use spends a
 balance; refused at zero, like `credits`) or `capacity` (grants and top-ups raise a limit; the app
 reports the level, like `storage_gb`), and `perCurrencyUnit` says how much of it $1 buys.
@@ -55,7 +55,7 @@ How it holds together: an append-only `credit_ledger` (grants, purchases, uses, 
 idempotent by key) and `usage_levels`. A plan's grant for the month is written on the first read or
 use in it (no job walks every organization); months count from the Stripe subscription's billing
 anchor on a paid plan and from signup on Free, and last month's unused grant lapses. Top-ups are
-Checkout in payment mode on the "Credits" product (`pnpm --filter @arrakit/api stripe:credits`
+Checkout in payment mode on the "Credits" product (`pnpm --filter @arrakit/api stripe:prices`
 creates it with its custom-amount price); the webhook credits `checkout.session.completed` (and
 `checkout.session.async_payment_succeeded`) once per session, and takes credits back on
 `refund.created` and `charge.dispute.created`. Subscribe the webhook endpoint
@@ -113,10 +113,10 @@ pnpm format:check
 ## Make it yours
 
 - The product's name: `VITE_APP_NAME` (`apps/web/src/config.ts`), `APP_NAME` in
-  `packages/emails/src/brand.ts` and `apps/landing/src/lib/config.ts`, the texts in
+  `packages/emails/src/index.ts` and `apps/landing/src/lib/config.ts`, the texts in
   `apps/web/src/i18n/locales/*/*.json`, `apps/landing` and the icons in `apps/web/public` and
   `apps/landing/public`.
-- The plans and their prices: `packages/plans/src/catalog.ts`, then the Stripe prices with
+- The plans and their prices: `packages/plans/src/index.ts`, then the Stripe prices with
   `pnpm --filter @arrakit/api stripe:prices`.
 - The product itself: its procedures in a contract file under `packages/contract/src` and a router
   under `apps/api/src/routers`, its tables in `packages/db/src/schema` (each with
