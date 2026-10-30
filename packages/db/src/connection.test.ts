@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { MIGRATION_LOCK, connect, defaultMigrationsFolder, postgresConnection } from './connection'
+import { consoleLog } from './log'
 
 /**
  * The node-postgres path of connect(). Without Docker it is driven through a scripted pool (lock
@@ -32,7 +33,7 @@ const emptyMigrations = new URL('./__no_migrations__', import.meta.url).pathname
 describe('postgresConnection (node-postgres pool)', () => {
   it('takes the advisory lock around the migrations and releases the client', async () => {
     const { pool, log, released } = scriptedPool(async () => ({ rows: [] }))
-    const connection = postgresConnection(pool as never, emptyMigrations)
+    const connection = postgresConnection(pool as never, emptyMigrations, consoleLog)
     expect(connection.driver).toBe('postgres')
     await connection.migrate().catch(() => {})
     expect(log[0]).toBe('select pg_advisory_lock($1)')
@@ -47,7 +48,7 @@ describe('postgresConnection (node-postgres pool)', () => {
       texts.push(typeof text === 'string' ? text : (text as { text: string }).text)
       return { rows: [] }
     })
-    await postgresConnection(pool as never, defaultMigrationsFolder()).migrate()
+    await postgresConnection(pool as never, defaultMigrationsFolder(), consoleLog).migrate()
     expect(texts[0]).toBe('select pg_advisory_lock($1)')
     expect(texts.at(-1)).toBe('select pg_advisory_unlock($1)')
     const inner = texts.slice(1, -1).join('\n')
@@ -57,7 +58,7 @@ describe('postgresConnection (node-postgres pool)', () => {
 
   it('passes the lock key on lock and unlock', async () => {
     const { pool, client } = scriptedPool(async () => ({ rows: [] }))
-    await postgresConnection(pool as never, emptyMigrations)
+    await postgresConnection(pool as never, emptyMigrations, consoleLog)
       .migrate()
       .catch(() => {})
     expect(client.query).toHaveBeenCalledWith('select pg_advisory_lock($1)', [MIGRATION_LOCK])
@@ -70,7 +71,7 @@ describe('postgresConnection (node-postgres pool)', () => {
       if (text.includes('unlock')) throw broken
       return { rows: [] }
     })
-    await postgresConnection(pool as never, emptyMigrations)
+    await postgresConnection(pool as never, emptyMigrations, consoleLog)
       .migrate()
       .catch(() => {})
     expect(released).toEqual([broken])
@@ -80,24 +81,24 @@ describe('postgresConnection (node-postgres pool)', () => {
     const { pool, released, log } = scriptedPool(async () => {
       throw new Error('down')
     })
-    await expect(postgresConnection(pool as never, emptyMigrations).migrate()).rejects.toThrow(
-      'down',
-    )
+    await expect(
+      postgresConnection(pool as never, emptyMigrations, consoleLog).migrate(),
+    ).rejects.toThrow('down')
     expect(log).toEqual(['select pg_advisory_lock($1)'])
     expect(released).toEqual([undefined])
   })
 
   it('closes the pool', async () => {
     const { pool } = scriptedPool(async () => ({ rows: [] }))
-    await postgresConnection(pool as never, emptyMigrations).close()
+    await postgresConnection(pool as never, emptyMigrations, consoleLog).close()
     expect(pool.end).toHaveBeenCalled()
   })
 })
 
 describe.runIf(process.env.DATABASE_URL)('connect() on real Postgres (DATABASE_URL)', () => {
   it('lets two instances migrate at once, serialized by the advisory lock', async () => {
-    const a = await connect({ databaseUrl: process.env.DATABASE_URL })
-    const b = await connect({ databaseUrl: process.env.DATABASE_URL })
+    const a = await connect({ databaseUrl: process.env.DATABASE_URL }, consoleLog)
+    const b = await connect({ databaseUrl: process.env.DATABASE_URL }, consoleLog)
     await Promise.all([a.migrate(), b.migrate()])
     await a.ping()
     await b.ping()

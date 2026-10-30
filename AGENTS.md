@@ -27,6 +27,7 @@ When a spec and this file disagree on layout or tooling, this file wins; on beha
 | Payments | Stripe (`stripe`, `@stripe/stripe-js`, `@stripe/react-stripe-js`), fake gateway in dev  |
 | Email    | Resend in production; Mailpit (local inbox) in dev and e2e; recording mailer in tests   |
 | Jobs     | pg-boss on Postgres; in-process runner with the same interface on PGlite                |
+| Logs     | Pino (JSON lines; pino-pretty in dev), request id per request; Sentry (`@sentry/node`)  |
 | Files    | S3-compatible storage (`@aws-sdk/client-s3`); local/in-memory fallback in dev/tests     |
 | MCP      | `@modelcontextprotocol/server` (v2, stateless Streamable HTTP) behind Better Auth OAuth |
 | Landing  | Astro (static) + Tailwind                                                               |
@@ -68,11 +69,13 @@ apps/
     src/router.ts                 root oRPC router composing routers/<module>.ts
     src/routers/                  one oRPC router per module (implements its contract file)
     src/orpc/base.ts              builders: pub, authed, member(level)
-    src/orpc/context.ts           BaseContext {deps, data, headers}; requireSession, requireMember(level),
+    src/orpc/context.ts           BaseContext {deps, data, headers, log}, procedureContext(); reportErrors
+                                  (logs and reports unexpected errors); requireSession, requireMember(level),
                                   requireTrustedOrigin(msg), requireStripe; MemberContext adds
                                   {user, session, activeOrganization, role, scope}
-    src/routes/                   plain Hono routes: health, auth (+ OAuth metadata), stripe-webhook,
-                                  mcp (+ protected-resource metadata), local-files
+    src/routes/                   plain Hono routes: health, rest (contract served REST-style), auth
+                                  (+ OAuth metadata), stripe-webhook, mcp (+ protected-resource
+                                  metadata), local-files
     src/services.ts               buildDeps()/depsFromEnv(): AppDeps (env, data, auth, mailer, stripe)
     src/env.ts                    Zod env parsing (loadApiEnv)
     src/mail/mailer.ts            createMailer (Resend / Mailpit / console), recordingMailer()
@@ -80,8 +83,11 @@ apps/
     src/usage/                    requiresUsage() middleware (+ UsageService)
     src/workers/                  background workers; workers/index.ts registers them at boot
     src/mcp/                      MCP server factory
+    src/observability/            createLogger() (Pino), requestLog() (X-Request-Id + access line),
+                                  createErrorReporter() (Sentry or none), isUnexpected()/reportUnexpected()
     src/testing/                  createTestApp() (in-process app on PGlite + testUtils), fake Stripe
-    src/main.ts                   boot (env, mailer, openData, workers, serve, graceful shutdown)
+    src/main.ts                   boot (logger, env, error reporter, mailer, openData, workers, serve,
+                                  graceful shutdown)
     scripts/                      operational scripts (Stripe prices, credits product, OpenAPI export, bucket CORS)
   landing/      @arrakit/landing  Astro static site (port 5321)
 packages/
@@ -204,6 +210,12 @@ Run from the repo root.
   A failed call goes through `apiFailed()` (or `apiCall()`); a failed load through
   `useFailureToast(error, context, failure)` from `#/lib/use-failure-toast`.
 - Errors from procedures use oRPC errors (`ORPCError`) with HTTP-meaningful codes (400/401/403/404/409/402).
+- **Logging (api)**: never `console.*`. Procedures log through `context.log`, Hono routes through
+  `c.get('log')` (both carry the request id), the rest through `deps.log` or an injected `Logger`;
+  `packages/db` takes a `DataLog` in `openData(config, { log })`. Put data in fields and the error
+  under `err`, with a constant message: `log.error({ err, organizationId }, 'invite email not sent')`.
+  Anything that is not an `ORPCError` (or is a 500) is logged and sent to Sentry by `app.onError`
+  and the `reportErrors` middleware on `pub` (`orpc/base.ts`); deliberate refusals are not.
 - Product name: `APP_NAME` in `apps/web/src/config.ts`, `packages/emails` and `apps/landing/src/lib/config.ts`.
 - Use shadcn components and Tailwind utility classes only; no custom design system.
 - Never `git push`. Commit only when asked.
@@ -246,7 +258,9 @@ Run from the repo root.
 - **API integration**: `const t = await createTestApp()` (`apps/api/src/testing/app.ts`) builds the
   whole app in-process: `t.signIn({ email })` → `{ headers, userId }` (session cookie + trusted
   Origin, via testUtils), `t.client(headers).me.get()`, `t.app.request(...)`, `t.sent` (recorded
-  mail), `t.data`, `t.close()`. Pass `{ stripe: fakeStripe() }` for billing. Note: when the
+  mail), `t.logs` (parsed log entries), `t.errorLog()` (error entries from now on), `t.captured`
+  (errors sent to the tracker), `t.context(headers)` (a procedure context for `call()`), `t.data`,
+  `t.close()`. Pass `{ stripe: fakeStripe() }` for billing. Note: when the
   Microsoft provider is configured, Better Auth's `validateUserInfo` makes `testUtils.saveUser()`
   require an endpoint context, so create such users through the API.
 - **Web components**: React Testing Library + user-event; mock the API with msw or by injecting a client.

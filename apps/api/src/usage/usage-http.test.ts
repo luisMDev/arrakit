@@ -62,11 +62,10 @@ function probeServer(t: TestApp) {
   const rpc = new RPCHandler(probe)
   const openapi = new OpenAPIHandler(probe)
   const server = new Hono()
-  const contextOf = (headers: Headers): BaseContext => ({ deps: t.deps, data: t.data, headers })
   server.use('/api/probe-rpc/*', async (c, next) => {
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: '/api/probe-rpc',
-      context: contextOf(c.req.raw.headers),
+      context: t.context(c.req.raw.headers),
     })
     if (matched) return c.newResponse(response.body, response)
     await next()
@@ -74,7 +73,7 @@ function probeServer(t: TestApp) {
   server.use('/api/probe/*', async (c, next) => {
     const { matched, response } = await openapi.handle(c.req.raw, {
       prefix: '/api',
-      context: contextOf(c.req.raw.headers),
+      context: t.context(c.req.raw.headers),
     })
     if (matched) return c.newResponse(response.body, response)
     await next()

@@ -20,7 +20,7 @@ export const topUpRouter = {
           cancelUrl: `${web}/app/billing`,
         })
       } catch (error) {
-        console.error(`top-up Checkout for organization ${organization.id} failed:`, error)
+        context.log.error({ err: error, organizationId: organization.id }, 'top-up Checkout failed')
         throw new ORPCError('BAD_GATEWAY', {
           message: "Couldn't load billing from Stripe. Try again in a minute.",
         })

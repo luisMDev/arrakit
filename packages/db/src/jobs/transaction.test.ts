@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import type { Database } from '../connection'
 import { type Data, openData } from '../open-data'
+import { consoleLog } from '../log'
 import { memoryStorage } from '../storage/memory'
 import { type TestData, openTestData } from '../testing'
 import { inProcessJobs } from './in-process'
@@ -113,7 +114,7 @@ describe('memory runner (openTestData)', () => {
     async () => {
       data = await openData(
         { pgliteDir: 'memory://' },
-        { storage: memoryStorage(), jobs: inProcessJobs() },
+        { storage: memoryStorage(), jobs: inProcessJobs({ log: consoleLog }) },
       )
       return { db: data.db, jobs: data.jobs, withJobs: data.transactionWithJobs }
     },
@@ -128,7 +129,7 @@ describe('memory runner (openTestData)', () => {
     'pg-boss (pglite backend)',
     async () => {
       pg = await PGlite.create()
-      jobs = await pgBossJobs({ db: fromPglite(pg), backend: 'pglite' })
+      jobs = await pgBossJobs({ db: fromPglite(pg), backend: 'pglite' }, consoleLog)
       const db = drizzle({ client: pg }) as unknown as Database
       return { db, jobs, withJobs: transactionWithJobs(db, jobs) }
     },

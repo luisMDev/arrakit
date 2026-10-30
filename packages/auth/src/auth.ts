@@ -41,6 +41,7 @@ export function createAuth(deps: AuthDeps) {
     },
     account: { encryptOAuthTokens: true, accountLinking: { trustedProviders: [] } },
     telemetry: { enabled: false },
+    ...(deps.logger ? { logger: deps.logger } : {}),
     advanced: {
       cookiePrefix: COOKIE_PREFIX,
       // Spelled out: Better Auth skips origin checks when NODE_ENV=test; tests run the real checks.

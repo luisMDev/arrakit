@@ -23,7 +23,7 @@ export function mcpRoutes(deps: AppDeps) {
   const { baseURL } = deps.authConfig
   const resource = mcpResourceURL(baseURL)
   const metadataURL = new URL(PROTECTED_RESOURCE_PATH, baseURL).toString()
-  const handler = mcpHandler(deps.data)
+  const handler = mcpHandler(deps.data, deps.log.child({ component: 'mcp' }))
   openHandlers.add(handler)
 
   return new Hono()

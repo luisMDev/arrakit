@@ -23,21 +23,24 @@ describe('health', () => {
   })
 
   it('reports storage down when the bucket probe fails, and logs it', async () => {
-    const log = quietly()
+    const log = { error: vi.fn() }
     const storage: Storage = {
       ...memoryStorage(),
       probe: async () => {
         throw new Error('NoSuchBucket')
       },
     }
-    const data = await openTestData({ storage })
+    const data = await openTestData({ storage, log })
     expect(await data.health()).toEqual({
       status: 'error',
       postgres: 'up',
       storage: 'down',
       queue: 'up',
     })
-    expect(log.mock.calls[0]?.[0]).toBe('[data] health: storage is down:')
+    expect(log.error).toHaveBeenCalledWith(
+      { err: expect.objectContaining({ message: 'NoSuchBucket' }), probe: 'storage' },
+      'health probe down',
+    )
     await data.close()
   })
 

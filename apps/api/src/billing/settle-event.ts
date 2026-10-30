@@ -2,6 +2,7 @@ import type { ScopedData } from '@arrakit/db'
 import type { Mail, Mailer } from '@arrakit/emails'
 import { PLAN_LABELS } from '@arrakit/plans'
 
+import type { Logger } from '../observability/logger'
 import {
   type BillingOutcome,
   applyBillingEvent,
@@ -34,21 +35,19 @@ export interface SettleDeps {
   stripe: StripeGateway
   mailer: Mailer
   webUrl: string
+  log: Logger
   now?: () => number
 }
 
 export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promise<void> {
-  const { data, stripe, mailer, webUrl } = deps
+  const { data, stripe, mailer, webUrl, log } = deps
   const now = deps.now ?? Date.now
   const billingLink = `${webUrl}/app/billing`
 
-  const ignored = (reason: string) => console.warn(`[billing] ignored event: ${reason}`)
+  const ignored = (reason: string) => log.warn({ reason }, 'billing event ignored')
 
   const notSent = (organizationId: string, kind: MailKind, err: unknown) =>
-    console.error(
-      `[billing] organization ${organizationId}: ${kind} email not sent`,
-      err instanceof Error ? err.stack : String(err),
-    )
+    log.error({ err, organizationId, mail: kind }, 'billing email not sent')
 
   async function sendAll(organizationId: string, kind: MailKind, mails: Mail[]) {
     for (const mail of mails) {
@@ -69,7 +68,7 @@ export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promi
     })
     if (topUp.customerId) await found.scope.setStripeCustomer(topUp.customerId)
     if (credited) {
-      console.info(`[billing] organization ${found.organizationId} topped up ${topUp.cents} cents`)
+      log.info({ organizationId: found.organizationId, cents: topUp.cents }, 'credits topped up')
     }
   }
 
@@ -92,8 +91,9 @@ export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promi
       payment: { key: reversal.paymentIntentId, cents: topUp.cents },
     })
     if (reversed) {
-      console.info(
-        `[billing] organization ${found.organizationId}: ${cents} cents of top-up taken back (${reversal.reversalId})`,
+      log.info(
+        { organizationId: found.organizationId, cents, reversalId: reversal.reversalId },
+        'top-up taken back',
       )
     }
   }
@@ -250,7 +250,7 @@ export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promi
   async function settleSubscription(event: SubscriptionEvent) {
     const outcome = await applyBillingEvent(data, stripe, event)
     if (outcome.kind === 'ignored') return ignored(outcome.reason)
-    console.info(`[billing] organization ${outcome.organizationId} is on ${outcome.plan}`)
+    log.info({ organizationId: outcome.organizationId, plan: outcome.plan }, 'plan updated')
     try {
       await settleReceipt(outcome, event)
     } catch (err) {

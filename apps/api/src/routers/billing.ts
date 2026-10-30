@@ -8,7 +8,6 @@ import {
   CHANGE_REFUSAL,
   CHECKOUT_REFUSAL,
   billingService,
-  callStripe,
   refuseInternal,
   requireGateway,
 } from '../billing/billing-service'
@@ -26,6 +25,7 @@ const serviceOf = (context: MemberContext) =>
     stripe: context.deps.stripe,
     mailer: context.deps.mailer,
     webUrl: context.deps.env.webUrl,
+    log: context.log,
   })
 
 async function organizationOf(context: MemberContext): Promise<OrganizationRow> {
@@ -43,13 +43,13 @@ async function setCancelled(context: MemberContext, cancelledBy: string | null) 
   }
   const stripe = requireGateway(context.deps.stripe)
   const cancel = cancelledBy !== null
-  await callStripe(
+  const service = serviceOf(context)
+  await service.callStripe(
     organization,
     cancel ? 'cancel' : 'resume',
     () => stripe.cancelAtPeriodEnd(subscriptionId, cancel),
     CHANGE_REFUSAL,
   )
-  const service = serviceOf(context)
   const snapshot = await service.snapshot(organization)
   if (cancelledBy) await service.sendCancellation(organization, cancelledBy, snapshot)
   return billingView(organization, snapshot)
@@ -64,7 +64,7 @@ export const billingRouter = {
         message: `Your organization is on ${PLAN_LABELS[organization.plan]}. Switch plans in Settings → Billing.`,
       })
     }
-    const { clientSecret } = await callStripe(
+    const { clientSecret } = await serviceOf(context).callStripe(
       organization,
       'checkout',
       () =>
@@ -90,11 +90,14 @@ export const billingRouter = {
     const paid = await service.paidOrganization(await organizationOf(context))
     const applies = service.applies(paid, input)
     const stripe = requireGateway(context.deps.stripe)
-    const [dueToday, nextInvoice] = await callStripe(paid.organization, 'preview a change', () =>
-      Promise.all([
-        applies === 'now' ? stripe.previewNow(paid.subscriptionId, input) : null,
-        stripe.price(input),
-      ]),
+    const [dueToday, nextInvoice] = await service.callStripe(
+      paid.organization,
+      'preview a change',
+      () =>
+        Promise.all([
+          applies === 'now' ? stripe.previewNow(paid.subscriptionId, input) : null,
+          stripe.price(input),
+        ]),
     )
     return {
       applies,
@@ -110,7 +113,7 @@ export const billingRouter = {
     const applies = service.applies(paid, input)
     const stripe = requireGateway(context.deps.stripe)
     const requestedBy = context.user.email
-    await callStripe(
+    await service.callStripe(
       paid.organization,
       `change to ${input.plan} ${input.cycle}`,
       () =>
@@ -119,7 +122,7 @@ export const billingRouter = {
           : stripe.changeAtRenewal(paid.subscriptionId, input, requestedBy),
       CHANGE_REFUSAL,
     )
-    await callStripe(paid.organization, 'read the changed subscription', () =>
+    await service.callStripe(paid.organization, 'read the changed subscription', () =>
       applyBillingEvent(context.data, stripe, {
         kind: 'subscription',
         subscriptionId: paid.subscriptionId,
@@ -145,7 +148,7 @@ export const billingRouter = {
       })
     }
     const stripe = requireGateway(context.deps.stripe)
-    const url = await callStripe(organization, 'open the portal', () =>
+    const url = await serviceOf(context).callStripe(organization, 'open the portal', () =>
       stripe.portal(customerId, `${context.deps.env.webUrl}/app/billing`, input.to),
     )
     return { url }

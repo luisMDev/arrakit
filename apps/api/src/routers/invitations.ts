@@ -2,6 +2,7 @@ import { ORPCError } from '@orpc/server'
 
 import type { OrganizationMembers, PendingInvitation } from '@arrakit/db'
 
+import type { Logger } from '../observability/logger'
 import { authed, member } from '../orpc/base'
 import { requireTrustedOrigin } from '../orpc/context'
 import { sendInviteMail } from '../organizations/invite-mail'
@@ -14,6 +15,7 @@ const fromApp = admin.use(requireTrustedOrigin('Invite from the app.'))
 const NO_SUCH_INVITATION = 'No such invitation in your organization.'
 
 type MarkSentContext = {
+  log: Logger
   activeOrganization: { id: string }
   scope: { members: Pick<OrganizationMembers, 'markEmailSent'> }
 }
@@ -31,15 +33,16 @@ async function markSent(
   try {
     const marked = await context.scope.members.markEmailSent(invitationId)
     if (!marked) {
-      console.error(
-        `organization ${organizationId} invitation ${invitationId}: sent, but no longer pending to mark`,
+      context.log.error(
+        { organizationId, invitationId },
+        'invite email sent, but the invitation is no longer pending',
       )
     }
     return marked
   } catch (err) {
-    console.error(
-      `organization ${organizationId} invitation ${invitationId}: sent, but not marked sent`,
-      err,
+    context.log.error(
+      { err, organizationId, invitationId },
+      'invite email sent, but not marked sent',
     )
     return undefined
   }
@@ -62,9 +65,9 @@ export const invitationsRouter = {
     try {
       await sendInviteMail(context.deps, context.headers, invitation)
     } catch (err) {
-      console.error(
-        `organization ${organizationId} invitation ${invitation.id}: the invite email did not go out`,
-        err,
+      context.log.error(
+        { err, organizationId, invitationId: invitation.id },
+        'invite email not sent',
       )
       return invitationView(invitation)
     }
@@ -78,9 +81,9 @@ export const invitationsRouter = {
     try {
       await sendInviteMail(context.deps, context.headers, invitation)
     } catch (err) {
-      console.error(
-        `organization ${context.activeOrganization.id} invitation ${invitation.id}: the invite email did not go out again`,
-        err,
+      context.log.error(
+        { err, organizationId: context.activeOrganization.id, invitationId: invitation.id },
+        'invite email not sent again',
       )
       throw new ORPCError('SERVICE_UNAVAILABLE', {
         message: `The invite to ${invitation.email} is saved, but its email did not go out. Press Resend to send it again.`,

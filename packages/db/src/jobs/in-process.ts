@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { Cron } from 'croner'
 
+import type { DataLog } from '../log'
 import {
   DEFAULT_EXPIRE_IN_SECONDS,
   type JobRecord,
@@ -30,8 +31,9 @@ const DEFAULT_POLICY: Required<RetryPolicy> = {
   expireInSeconds: DEFAULT_EXPIRE_IN_SECONDS,
 }
 
-export function inProcessJobs(options: { now?: () => number } = {}): JobsRuntime {
+export function inProcessJobs(options: { log: DataLog; now?: () => number }): JobsRuntime {
   const now = options.now ?? Date.now
+  const { log } = options
   const queues = new Map<string, Queue>()
   const jobs = new Map<string, StoredJob>()
   const timers = new Set<ReturnType<typeof setInterval>>()
@@ -78,7 +80,7 @@ export function inProcessJobs(options: { now?: () => number } = {}): JobsRuntime
         job.state = 'retry'
       } else {
         job.state = 'failed'
-        console.error(`[data] job ${job.id} on ${job.name} failed for good:`, err)
+        log.error({ err, jobId: job.id, queue: job.name }, 'job failed for good')
         if (queues.has(deadLetterOf(job.name))) enqueue(deadLetterOf(job.name), job.data)
       }
     }

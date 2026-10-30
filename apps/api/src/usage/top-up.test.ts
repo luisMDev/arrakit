@@ -19,8 +19,6 @@ describe('top-ups', () => {
   let organizationId: string
 
   beforeAll(async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    vi.spyOn(console, 'info').mockImplementation(() => undefined)
     stripe = fakeStripe()
     t = await createTestApp({ stripe })
     const signedIn = await t.signIn({ email: 'ana@acme.com' })
@@ -79,7 +77,6 @@ describe('top-ups', () => {
     })
 
     it('answers 502 when Stripe fails', async () => {
-      vi.spyOn(console, 'error').mockImplementation(() => undefined)
       stripe.failNext('topUpCheckout', new Error('stripe is down'))
       await expect(t.client(owner).billing.topUp({ cents: 2_000 })).rejects.toMatchObject({
         status: 502,
@@ -227,7 +224,6 @@ describe('top-ups', () => {
     })
 
     it('answers 500 when the payment cannot be read, so Stripe delivers again', async () => {
-      vi.spyOn(console, 'error').mockImplementation(() => undefined)
       stripe.failNext('topUpPayment', new Error('stripe is down'))
       expect((await deliver(t, reversal('re_3', 'pi_1', 100))).status).toBe(500)
     })

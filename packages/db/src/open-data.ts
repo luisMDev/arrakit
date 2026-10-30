@@ -13,6 +13,7 @@ import { pgBossJobs } from './jobs/pg-boss'
 import { transactionWithJobs } from './jobs/transaction'
 import type { JobsRuntime, TransactionWithJobs } from './jobs/types'
 import { forOrganization } from './organization/index'
+import { type DataLog, consoleLog } from './log'
 import { localStorage } from './storage/local'
 import { memoryStorage } from './storage/memory'
 import { s3Storage } from './storage/s3'
@@ -24,6 +25,8 @@ export interface OpenDataOptions {
   /** Replace the jobs implementation (tests: memoryJobs()). */
   jobs?: JobsRuntime
   now?: () => Date
+  /** Where recovered failures are reported (console when unset). */
+  log?: DataLog
 }
 
 function buildData(ctx: DataContext, close: () => Promise<void>, driver: 'postgres' | 'pglite') {
@@ -58,7 +61,8 @@ export type Data = ScopedData & {
 }
 
 export async function openData(config: DataConfig, options: OpenDataOptions = {}): Promise<Data> {
-  const connection = await connect(config)
+  const log = options.log ?? consoleLog
+  const connection = await connect(config, log)
   try {
     await connection.migrate()
   } catch (err) {
@@ -79,8 +83,8 @@ export async function openData(config: DataConfig, options: OpenDataOptions = {}
     jobs =
       options.jobs ??
       (connection.driver === 'postgres' && config.databaseUrl
-        ? await pgBossJobs(config.databaseUrl)
-        : inProcessJobs())
+        ? await pgBossJobs(config.databaseUrl, log)
+        : inProcessJobs({ log }))
   } catch (err) {
     await storage.close()
     await connection.close()
@@ -102,7 +106,7 @@ export async function openData(config: DataConfig, options: OpenDataOptions = {}
 
   const withJobs = transactionWithJobs(connection.db, jobs)
   const data = buildData(
-    { db: connection.db, jobs, storage, now: options.now ?? (() => new Date()) },
+    { db: connection.db, jobs, storage, now: options.now ?? (() => new Date()), log },
     close,
     connection.driver,
   )
