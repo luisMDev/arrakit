@@ -634,7 +634,7 @@ with the shared email layout (masthead `APP_NAME`, heading lead/tail, blocks:
 `rows`, `paragraph`, `actions`, footer). `APP_NAME` lives in one constant
 (saas-base `'SaaS'`; arrakit `'Arrakit'`). Amounts/cards arrive pre-formatted
 (`chargeOf`). Days rendered with `fullDay` / `shortDay` (English). Sent via
-Resend in production; console/outbox mailer in dev and tests (tests assert on
+Resend in production; Mailpit in dev and e2e; recording mailer in tests (tests assert on
 `sent[]`).
 
 | Template | When | Subject | Heading | Body | Actions | Footer | Recipients |
@@ -685,7 +685,7 @@ or `tsx`). Requires `STRIPE_SECRET_KEY`; logs `LIVE` vs `test` mode.
 | `WEB_URL` | api | web origin for return/success/cancel URLs, portal return URL, email links; also a Better Auth trusted origin. |
 | `SITE_URL` | web | landing site link on Pricing ("Home"). |
 | `STRIPE_FAKE` (optional, arrakit) | api | dev/e2e only: use the in-memory fake gateway. |
-| `RESEND_API_KEY`, `MAIL_FROM` | api | mailer (mail spec); unset → console/outbox mailer. |
+| `RESEND_API_KEY`, `MAIL_FROM` | api | mailer (mail spec); unset → Mailpit (`MAILPIT_URL`) or console. |
 
 Document all of them in `apps/api/.env.example`.
 
@@ -734,7 +734,7 @@ from Stripe). Emails are sent inline (not queued) and failures are logged only.
 ## 12. saas-base tests worth porting
 
 API (Vitest; integration with PGlite + Better Auth test utils to create users,
-organizations, sessions/cookies; fake Stripe; outbox mailer):
+organizations, sessions/cookies; fake Stripe; recording mailer):
 - `libs/shared/plans/src/plans.spec.ts` — all (pure).
 - `subscription-plan.spec.ts` — all (pure).
 - `billing-mail.spec.ts` — all (pure: recipients, chargeOf, receiptMails, shouldSendReceipt table, cycleReceiptDue, daysUntil, adminsOf, failedMails, renewMails, downgradeDue, downgradedMails).

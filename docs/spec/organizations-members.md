@@ -590,7 +590,7 @@ Inviter display = `inviter.name.trim()` or email local part.
 - Button: `Join <Org>` -> url.
 - Note: `The invite expires in <n> day|days.`
 - Organization branding block (org name) as in the layout. No Reply-To.
-Dev/tests: console/outbox mailer capturing `{ to, subject, html, text }` so tests can assert
+Tests: recording mailer capturing `{ to, subject, html, text }` so tests can assert
 `[to, subject]` and extract the link (`linkFor(email)`).
 
 ### MailSignin (for reference): subject `Your link to sign in to <APP_NAME>`.
@@ -615,7 +615,7 @@ local-part fallback).
   HTTP routes closed), user `additionalFields` (language, timeZone, emailProductNews as non-input fields), sessions with
   user agent, `revoke-other-sessions`.
 - **Stripe**: `subscriptions.cancel` on org delete when `stripe_subscription_id` set.
-- **Resend** mailer (console/outbox in dev/tests).
+- **Resend** mailer (Mailpit in dev/e2e, recording mailer in tests).
 - **pg-boss** for storage purge.
 - **S3** (purge target; files spec).
 
@@ -872,7 +872,7 @@ Known es typo to fix while porting: `ownerDeleteFirst` es "Eres el propietario d
 
 ## 13. saas-base tests worth porting
 
-API integration (Vitest + Hono `app.request` + PGlite + Better Auth test utils for users/sessions + outbox mailer + fake
+API integration (Vitest + Hono `app.request` + PGlite + Better Auth test utils for users/sessions + recording mailer + fake
 Stripe gateway + fake jobs):
 
 - `apps/api/src/app/organizations/organizations.controller.spec.ts` — ALL (create, skip naming tables, delete with
@@ -912,5 +912,5 @@ Web (Vitest + React Testing Library, mocking the oRPC client):
 - `settings/account-settings/account-settings.spec.ts` (22 cases).
 - `settings/general-settings/general-settings.spec.ts`, `settings/security-settings/security-settings.spec.ts`.
 
-E2E (Playwright): owner invites a colleague (outbox link), colleague opens link and lands in the app as member; owner
+E2E (Playwright): owner invites a colleague (link read from Mailpit), colleague opens link and lands in the app as member; owner
 changes role and removes; owner deletes the org and lands on /profile; member deletes their account and lands on /signin.

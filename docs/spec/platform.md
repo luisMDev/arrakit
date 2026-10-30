@@ -453,7 +453,7 @@ the same transaction as deleting the org (all users) and removing a member
 
 ## 4. HTTP surface of this area
 
-Route layout on the Hono app (port `PORT`, default 3000):
+Route layout on the Hono app (port `PORT`, default 5000):
 
 | Method | Path | Handler | Auth |
 | --- | --- | --- | --- |
@@ -532,11 +532,12 @@ createMailer(env, deps?: { fetch?, log? }): Mailer
   official `resend` SDK is fine if the payload stays equivalent.)
 - Non-2xx → throw `[mail] Resend refused the email: <status> <body>`. The error
   must **not** contain the subject or recipients.
-- Without a key (or empty): log-only mailer. One log line per mail:
-  `RESEND_API_KEY is not set, so nothing is sent. From <from> to <a, b>[, Cc <c>][, Reply-To <r>]: <subject>\n<text>` (link included).
-  Arrakit addition: also push every mail to an in-memory **outbox** (exposed
-  in dev at `GET /api/dev/outbox` only when `NODE_ENV !== 'production'`, used
-  by Playwright to read magic links). Tests use `recordingMailer()` (`{ mailer, sent }`).
+- Without a key, with `MAILPIT_URL` (dev, e2e): POST every mail to Mailpit's
+  `<MAILPIT_URL>/api/v1/send` (`From`, `To`, `Cc`, `ReplyTo`, `Subject`, `HTML`, `Text`).
+  Unreachable or non-2xx → throw. Playwright reads magic links from Mailpit's API.
+- Without either: log-only mailer. One log line per mail:
+  `Neither RESEND_API_KEY nor MAILPIT_URL is set, so nothing is sent. From <from> to <a, b>[, Cc <c>][, Reply-To <r>]: <subject>\n<text>` (link included).
+  Tests use `recordingMailer()` (`{ mailer, sent }`).
 - `NODE_ENV=production` without key → throw at creation:
   `[mail] missing env: RESEND_API_KEY (production never logs sign-in links)`.
 
@@ -899,7 +900,7 @@ Shared keys used: `auth.checkYourEmail.*`, `auth.signInOptions.*`,
 ### 9.4 Dev proxy and same-origin rule
 
 The web and API must be one site (session cookie is first-party).
-`BETTER_AUTH_URL` = the web origin (dev `http://localhost:3000`-style web
+`BETTER_AUTH_URL` = the web origin (dev `http://localhost:5000`-style web
 port; saas-base used 4200). Vite dev server proxies to the API:
 `/api` and `/.well-known/oauth-authorization-server`,
 `/.well-known/oauth-protected-resource` (only those `.well-known` prefixes).
@@ -928,7 +929,7 @@ cron in UTC, `missed: 'once'`, rescheduling replaces). Usage grants are lazy
 | var | required | notes |
 | --- | --- | --- |
 | `NODE_ENV` | no | `production` makes Google client, `RESEND_API_KEY`, `DATABASE_URL`, `R2_*` mandatory |
-| `PORT` | no | default 3000 |
+| `PORT` | no | default 5000 |
 | `DATABASE_URL` | prod | Postgres; absent → PGlite |
 | `PGLITE_DIR` | no | arrakit: PGlite data dir in dev, default `.data/pglite` (relative to apps/api or repo root, AGENTS.md decides) |
 | `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | prod (all or none) | S3-compatible bucket |
@@ -939,7 +940,7 @@ cron in UTC, `missed: 'once'`, rescheduling replaces). Usage grants are lazy
 | `WEB_URL` | no | web origin when different |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | pair; required in prod | redirect `<BETTER_AUTH_URL>/api/auth/callback/google` |
 | `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | pair; optional | redirect `<BETTER_AUTH_URL>/api/auth/callback/microsoft`; tenant `common` |
-| `RESEND_API_KEY` | prod | absent → log + outbox |
+| `RESEND_API_KEY` | prod | absent → Mailpit (`MAILPIT_URL`) or log |
 | `MAIL_FROM` | no | default `Arrakit <hello@example.com>` |
 | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` | no | billing; without all three Checkout answers 503 |
 | `API_ORIGIN` | web/proxy only | where the web proxies `/api` (dev default `http://localhost:3001` or as AGENTS.md sets) |
@@ -1015,8 +1016,8 @@ incomplete link, `prompt=login` dropped, open-redirect cases) and consent page
 alert + retry, no-organization back button denies, incomplete without sig).
 
 Playwright e2e: full Claude-like connector flow in the browser: register a
-client via API, open authorize URL, sign in by magic link (read from dev
-outbox), consent Allow, assert redirect to callback with `code`; then call
+client via API, open authorize URL, sign in by magic link (read from
+Mailpit), consent Allow, assert redirect to callback with `code`; then call
 `/api/mcp` `whoami` with the exchanged token.
 
 ---

@@ -25,7 +25,7 @@ When a spec and this file disagree on layout or tooling, this file wins; on beha
 | DB       | Postgres + Drizzle ORM (drizzle-kit migrations); PGlite when `DATABASE_URL` is unset    |
 | Auth     | Better Auth (magic link, Google, Microsoft, organization plugin, OAuth provider + JWT)  |
 | Payments | Stripe (`stripe`, `@stripe/stripe-js`, `@stripe/react-stripe-js`), fake gateway in dev  |
-| Email    | Resend in production; console + in-memory outbox mailer in dev and tests                |
+| Email    | Resend in production; Mailpit (local inbox) in dev and e2e; recording mailer in tests   |
 | Jobs     | pg-boss on Postgres; in-process runner with the same interface on PGlite                |
 | Files    | S3-compatible storage (`@aws-sdk/client-s3`); local/in-memory fallback in dev/tests     |
 | MCP      | `@modelcontextprotocol/server` (v2, stateless Streamable HTTP) behind Better Auth OAuth |
@@ -46,7 +46,7 @@ When a spec and this file disagree on layout or tooling, this file wins; on beha
 
 ```
 apps/
-  web/          @arrakit/web      TanStack Start app (port 4200). shadcn/ui lives here.
+  web/          @arrakit/web      TanStack Start app (port 5200). shadcn/ui lives here.
     src/routes/                   thin file routes: guard + search validation + title + one component
                                   (routeTree.gen.ts is generated, do not edit)
     src/components/ui/            shadcn/ui components (generated, keep as shadcn ships them)
@@ -61,7 +61,7 @@ apps/
     src/start.ts                  createStart({ defaultSsr: false }): screens render in the browser
     src/config.ts                 APP_NAME, SITE_URL (one place to rebrand the web)
     e2e/                          Playwright specs (playwright.config.ts boots api + web)
-  api/          @arrakit/api      Hono server (port 3000)
+  api/          @arrakit/api      Hono server (port 5000)
     src/app.ts                    createApp(deps): mounts routes/* and the oRPC router; openApiDocument()
                                   (= routes/openapi.ts generateOpenApiDocument: per-operation statuses)
     src/router.ts                 root oRPC router composing routers/<module>.ts
@@ -71,10 +71,10 @@ apps/
                                   requireTrustedOrigin(msg), requireStripe; MemberContext adds
                                   {user, session, activeOrganization, role, scope}
     src/routes/                   plain Hono routes: health, auth (+ OAuth metadata), stripe-webhook,
-                                  mcp (+ protected-resource metadata), dev-outbox
-    src/services.ts               buildDeps()/depsFromEnv(): AppDeps (env, data, auth, mailer, outbox, stripe)
+                                  mcp (+ protected-resource metadata), local-files
+    src/services.ts               buildDeps()/depsFromEnv(): AppDeps (env, data, auth, mailer, stripe)
     src/env.ts                    Zod env parsing (loadApiEnv)
-    src/mail/mailer.ts            createMailer (Resend / console + outbox), recordingMailer()
+    src/mail/mailer.ts            createMailer (Resend / Mailpit / console), recordingMailer()
     src/billing/                  StripeGateway interface + createStripeGateway (null / fake / real)
     src/usage/                    requiresUsage() middleware (+ UsageService)
     src/workers/                  background workers; workers/index.ts registers them at boot
@@ -82,7 +82,7 @@ apps/
     src/testing/                  createTestApp() (in-process app on PGlite + testUtils), fake Stripe
     src/main.ts                   boot (env, mailer, openData, workers, serve, graceful shutdown)
     scripts/                      operational scripts (Stripe prices, credits product, OpenAPI export, bucket CORS)
-  landing/      @arrakit/landing  Astro static site (port 4321)
+  landing/      @arrakit/landing  Astro static site (port 5321)
 packages/
   db/           @arrakit/db       Drizzle + Postgres/PGlite. ./drizzle holds the migrations.
     src/schema/                   complete schema, one file per domain (auth, organizations, oauth, usage)
@@ -164,7 +164,7 @@ Run from the repo root.
 | Command                                            | What it does                                                            |
 | -------------------------------------------------- | ----------------------------------------------------------------------- |
 | `pnpm install`                                     | Install                                                                 |
-| `pnpm dev`                                         | api (3000) + web (4200) + landing (4321)                                |
+| `pnpm dev`                                         | api (5000) + web (5200) + landing (5321)                                |
 | `pnpm typecheck` / `pnpm lint` / `pnpm test`       | Turborepo across all workspaces                                         |
 | `pnpm build`                                       | Build web (`.output`), api (`dist`), landing (`dist`)                   |
 | `pnpm test:e2e`                                    | Playwright (apps/web) against api + web on PGlite                       |
@@ -217,8 +217,9 @@ Run from the repo root.
   `/api/openapi.json`; health only at `/health`).
 - The fallback storages' presigned URLs are served at `/api/files/local/*`, with a sandbox CSP
   and `nosniff`.
-- `/api/dev/outbox` requires `DEV_OUTBOX=1`, which is on by default only under `NODE_ENV=test`
-  (and refused with `NODE_ENV=production`).
+- Mail in dev and e2e goes to Mailpit (`MAILPIT_URL`, HTTP send API) when `RESEND_API_KEY` is
+  unset. `pnpm dev` starts it through `scripts/mailpit.sh` (inbox at http://localhost:5025);
+  the script uses `mailpit` from PATH or downloads the pinned release into `.data/bin`.
 
 ## Testing strategy
 
@@ -243,15 +244,16 @@ Run from the repo root.
   Microsoft provider is configured, Better Auth's `validateUserInfo` makes `testUtils.saveUser()`
   require an endpoint context, so create such users through the API.
 - **Web components**: React Testing Library + user-event; mock the API with msw or by injecting a client.
-- **E2E**: Playwright in `apps/web/e2e`; `playwright.config.ts` boots the API on port 3100 with a
+- **E2E**: Playwright in `apps/web/e2e`; `playwright.config.ts` boots the API on port 5100 with a
   throwaway PGlite dir (`.data/e2e-pglite-<api port>`, reset at boot), `STRIPE_FAKE=1`,
-  `NODE_ENV=test`, and the web dev server on 4200 with `E2E=1` (turns off Vite's error overlay: a
+  `NODE_ENV=test`, mail sent to a Mailpit on 5125, and the web dev server on 5200 with `E2E=1` (turns off Vite's error overlay: a
   client that aborts mid-upload makes Nitro's dev middleware report `aborted`, and the overlay
   would cover the page). Specs import `WEB_ORIGIN` from `e2e/origins.ts`;
-  set `E2E_API_PORT` / `E2E_WEB_PORT` to run a second suite side by side (running servers on the
+  set `E2E_API_PORT` / `E2E_WEB_PORT` / `E2E_MAILPIT_PORT` to run a second suite side by side (running servers on the
   same ports are reused outside CI). Embedded Checkout cannot load with the fake gateway's client
   secret, so e2e asserts reaching `/app/checkout` and drives payments through the fake webhook.
-  Read magic links from the dev outbox: `GET /api/dev/outbox?to=<email>` (newest first; `DELETE` clears). Chromium is installed
+  Read magic links with `magicLinkFor(request, email)` from `e2e/mailpit.ts` (newest mail first;
+  `clearMailFor` deletes an address's mail). Chromium is installed
   (`pnpm --filter @arrakit/web exec playwright install chromium`).
 
 ## Features (specs)

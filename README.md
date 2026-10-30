@@ -24,8 +24,8 @@ billing, prepaid credits, transactional email and an MCP server, in a pnpm + Tur
   every metric (`credits`, `storage_gb`) by its own factor; admins top up any amount on Stripe
   Checkout, which adds to every metric at once and never expires. Uses spend the plan's grant
   first. See [Credits and usage](#credits-and-usage).
-- **Email** through Resend, rendered from `packages/emails`; without `RESEND_API_KEY` mail is
-  logged and kept in a dev outbox (`/api/dev/outbox`).
+- **Email** through Resend, rendered from `packages/emails`; without `RESEND_API_KEY` mail goes
+  to a local Mailpit inbox (http://localhost:5025, started by `pnpm dev`).
 - **MCP server** at `/api/mcp`, with OAuth 2.1 sign-in through Better Auth's OAuth provider
   (Claude's custom connectors work with it) and one example tool, `whoami`.
 - **Jobs** with pg-boss on the same Postgres (an in-process runner on PGlite); files on any
@@ -83,11 +83,11 @@ Node 24 and pnpm 12 (`engines` and `packageManager` in `package.json`).
 pnpm install
 cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env
-pnpm dev        # api :3000 (migrations applied on boot), web :4200 (/api proxied), landing :4321
+pnpm dev        # api :5000 (migrations applied on boot), web :5200 (/api proxied), landing :5321
 ```
 
 Every variable is optional in development: without `DATABASE_URL` the API uses PGlite in
-`PGLITE_DIR`, without `RESEND_API_KEY` mail goes to the console and the dev outbox, with
+`PGLITE_DIR`, without `RESEND_API_KEY` mail goes to Mailpit (`MAILPIT_URL`), or to the console when that is unset, with
 `STRIPE_FAKE=1` Stripe is faked, and without the `R2_*` keys files go to `STORAGE_DIR`. In
 production set `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`/`WEB_URL` (the web origin),
 `RESEND_API_KEY` and `MAIL_FROM`, the `STRIPE_*` keys and the `R2_*` bucket. The web reads

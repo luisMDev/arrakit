@@ -19,7 +19,7 @@ Other specs own related areas: Settings/Account (`/api/me/account`, sign out, si
 | `MAGIC_LINK_MINUTES` | `15` | Magic link lifetime. The email copy must read this same constant. |
 | `AUTH_BASE_PATH` | `/api/auth` | Better Auth `basePath`. |
 | `MCP_PATH` | `/api/mcp` | MCP resource. `mcpResourceURL(baseURL) = new URL('/api/mcp', baseURL)`, so only the origin of the base URL is used. |
-| OAuth issuer | `new URL('/api/auth', BETTER_AUTH_URL).toString()` | e.g. `http://localhost:4200/api/auth` |
+| OAuth issuer | `new URL('/api/auth', BETTER_AUTH_URL).toString()` | e.g. `http://localhost:5200/api/auth` |
 | Cookie prefix | `saas` in saas-base. Use `arrakit` | All Better Auth cookies are `<prefix>.*`, e.g. `arrakit.session_token`. This is required: on localhost, cookies are shared across ports, so another Better Auth app's `better-auth.session_token` must never be read as ours. |
 | Session lifetime | Better Auth default (7 days, refreshed on use) | A test moves the clock by 8 days and expects a 401. |
 | `ORGANIZATION_CLAIM` | `organization_id` | The claim name on connector access tokens. |
@@ -35,11 +35,11 @@ Persona vocabulary used in the copy: a "partner" means a signed-in user.
 | Var | Required | Rules |
 |---|---|---|
 | `BETTER_AUTH_SECRET` | always | Must be **at least 32 characters**, otherwise boot fails with an error that mentions `32`. It signs cookies, encrypts OAuth tokens and the JWKS private key, and is also used to derive other secrets (`derivedSecret(secret, purpose, parts) = HMAC-SHA256(secret, [purpose, ...parts].join('\n')).base64url`). |
-| `BETTER_AUTH_URL` | always | The public origin where the browser reaches `/api/auth`, and the origin of every magic link. Locally this is the **web dev server** (e.g. `http://localhost:3000` or whatever port apps/web uses), which proxies `/api` to the API so the cookie and the app share an origin. Boot fails if it is not a URL: `[auth] BETTER_AUTH_URL is not a URL: "..."`. |
+| `BETTER_AUTH_URL` | always | The public origin where the browser reaches `/api/auth`, and the origin of every magic link. Locally this is the **web dev server** (e.g. `http://localhost:5000` or whatever port apps/web uses), which proxies `/api` to the API so the cookie and the app share an origin. Boot fails if it is not a URL: `[auth] BETTER_AUTH_URL is not a URL: "..."`. |
 | `WEB_URL` | optional | The web app origin when it differs from `BETTER_AUTH_URL`. `webOrigin = origin(WEB_URL) ?? origin(BETTER_AUTH_URL)`. A trailing slash or path is stripped to the origin. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | a pair. **Required when `NODE_ENV=production`**. Optional otherwise. | Never half set: if either is set, both are required. Redirect URI: `<BETTER_AUTH_URL>/api/auth/callback/google`. |
 | `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | a pair, optional even in production | Never half set. Redirect URI: `<BETTER_AUTH_URL>/api/auth/callback/microsoft`. The Azure app must emit the optional ID token claims `email` and `xms_edov`. |
-| `RESEND_API_KEY` | required in production | Without it, the dev mailer only logs (and arrakit's console/outbox mailer collects mail). In production a missing key fails boot: `[mail] missing env: RESEND_API_KEY (production never logs sign-in links)`. |
+| `RESEND_API_KEY` | required in production | Without it, mail goes to Mailpit (`MAILPIT_URL`) in dev and e2e, else it is only logged. In production a missing key fails boot: `[mail] missing env: RESEND_API_KEY (production never logs sign-in links)`. |
 | `MAIL_FROM` | optional | Default `App <hello@example.com>`. |
 | `NODE_ENV` | | `production` makes Google and Resend mandatory. |
 
@@ -170,7 +170,7 @@ Organization naming:
 - `advanced: { cookiePrefix: 'arrakit', disableOriginCheck: false, ipAddress: { ipAddressHeaders: ['x-real-ip','x-forwarded-for'] } }`. `disableOriginCheck:false` is spelled out because Better Auth skips origin checks when `NODE_ENV=test`, and the tests must run the production checks.
 - `hooks.before` (`createAuthMiddleware`):
   1. `ctx.path.startsWith('/organization/')` → throw `APIError('NOT_FOUND')`. Every organization plugin route is closed over HTTP. Organizations, members and invitations go through our own oRPC procedures. Tested paths that must return 404: `POST /api/auth/organization/create`, `POST /organization/update`, `POST /organization/invite-member`, `GET /organization/list`.
-  2. `ctx.path === '/sign-in/social' || '/sign-in/magic-link'` → `requireTrustedOrigin`: the `Origin` header must **exactly equal** one of `trustedOrigins`, otherwise `APIError('FORBIDDEN', { message: 'Sign in from the app.' })` (403). The check runs before Google or Microsoft are contacted and before any email goes out. This includes requests with no Origin, `'null'`, a lookalike host (`http://localhost:4200.evil.example`), another scheme or another port.
+  2. `ctx.path === '/sign-in/social' || '/sign-in/magic-link'` → `requireTrustedOrigin`: the `Origin` header must **exactly equal** one of `trustedOrigins`, otherwise `APIError('FORBIDDEN', { message: 'Sign in from the app.' })` (403). The check runs before Google or Microsoft are contacted and before any email goes out. This includes requests with no Origin, `'null'`, a lookalike host (`http://localhost:5200.evil.example`), another scheme or another port.
   3. `ctx.path === '/sign-in/magic-link'`: replace the body's email with `normalizeEmail(email)`. If `!isWorkEmail`, throw `APIError('BAD_REQUEST', { message: 'Enter a work email, like name@company.com.' })` (400). No email is sent.
 - Plugins:
   - `magicLink({ expiresIn: 15*60, storeToken: 'hashed', sendMagicLink })` (see §7 for the email choice).
@@ -204,7 +204,7 @@ Trusted origin helper, exported for reuse by other procedures (invite and checko
 |---|---|---|---|---|
 | `POST /api/auth/sign-in/magic-link` | Signup, Sign in, oauth signin, invite resend | `{ email, callbackURL, errorCallbackURL }` (absolute URLs on the web origin). Optional `name` (the web never sends it). | 200 `{status:true}`. Sends the email (§7). | 403 when Origin is missing or not trusted (no email sent). 400 for an unwritable email (no email sent). 403 when callbackURL/errorCallbackURL is not on a trusted origin (Better Auth's own check). |
 | `GET /api/auth/magic-link/verify?token&callbackURL&errorCallbackURL` | the link in the email | | 302 to `callbackURL` with the session cookie set. Creates the user on first use (`emailVerified: true`, `name: ''`). | Used, expired or unknown token → 302 to `errorCallbackURL` + `?error=INVALID_TOKEN` (or `&error=` when the URL already has a query), with no cookie. |
-| `POST /api/auth/sign-in/social` | Continue with Google/Microsoft | `{ provider: 'google'|'microsoft', callbackURL, errorCallbackURL }` | 200 `{ url, redirect: true }`. The web sets `window.location.href = url`. | 403 for an untrusted or missing Origin, or for a callbackURL **or** errorCallbackURL that points off a trusted origin: another site (`https://evil.example/profile`), protocol-relative (`//evil.example/profile`), userinfo (`http://localhost:4200@evil.example/profile`), or a lookalike host. 404 when the provider is not configured. |
+| `POST /api/auth/sign-in/social` | Continue with Google/Microsoft | `{ provider: 'google'|'microsoft', callbackURL, errorCallbackURL }` | 200 `{ url, redirect: true }`. The web sets `window.location.href = url`. | 403 for an untrusted or missing Origin, or for a callbackURL **or** errorCallbackURL that points off a trusted origin: another site (`https://evil.example/profile`), protocol-relative (`//evil.example/profile`), userinfo (`http://localhost:5200@evil.example/profile`), or a lookalike host. 404 when the provider is not configured. |
 | `GET /api/auth/callback/google` / `.../microsoft` | provider redirect | `code`, `state` (+ the state cookie) | 302 to callbackURL with the cookie set. | 302 to errorCallbackURL + `error=<code>`: `access_denied` (the user said no), `email_not_verified` (new Microsoft user who is not vouched), `account_not_linked` (an existing user plus an unvouched Microsoft account). |
 | `GET /api/auth/get-session` | the web `session()` | cookie | `{ session, user } | null` (`null` without a session; this is not an error). | |
 | `POST /api/auth/sign-out` | app menu, delete account | `{}` | 200 | |
@@ -274,7 +274,7 @@ The rename/delete organization procedures and `me.account`/`me.updateAccount`/`m
 
 Mailer interface: `send(mail: { to: string|string[]; cc?; subject; html; text; from?; replyTo? }): Promise<void>`.
 - With `RESEND_API_KEY`: POST `https://api.resend.com/emails` with `from` (mail.from ?? MAIL_FROM ?? `App <hello@example.com>`), `to[]`, `subject`, `html`, `text`, `reply_to` only when set, `cc` only when non-empty.
-- Without a key (dev/test): log `"RESEND_API_KEY is not set, so nothing is sent. From … to …: <subject>\n<text>"`. In arrakit, also keep an in-memory **outbox** that tests and e2e (Playwright) read to get the magic link. Expose it in dev/e2e only, e.g. `GET /api/dev/outbox?to=` behind `NODE_ENV!=='production'`, or a file. Production without a key fails boot.
+- Without a key (dev/e2e): send to Mailpit at `MAILPIT_URL`, where Playwright reads the magic link; without that either, only log `"Neither RESEND_API_KEY nor MAILPIT_URL is set, so nothing is sent. From … to …: <subject>\n<text>"`. Tests use a recording mailer. Production without a key fails boot.
 
 ### MailSignin (`signinEmail({ minutes, links: { signIn } })`)
 - Subject: **`Your link to sign in to ${APP_NAME}`**
@@ -494,10 +494,10 @@ Copy the full en/es strings from the saas-base JSON files, replacing "SaaS" with
 
 ## 13. Tests to port (Vitest + PGlite + Better Auth `testUtils`; RTL; Playwright)
 
-Better Auth 1.7.x ships `testUtils` in `better-auth/plugins` (`ctx.test.createUser / saveUser / login({userId}) → {headers, cookies, token} / getAuthHeaders / deleteUser`, `captureOTP`), and also `better-auth/test` (`getTestInstance`). Add `testUtils()` only to a **test-only** auth instance. Use it for "signed-in as X" setups. For flows whose behaviour **is** the sign-in (magic link, social), drive the real HTTP routes as saas-base does: request a link with an Origin header, read it from the outbox, then GET it. Mock social token endpoints by stubbing `globalThis.fetch` for the token URL and returning `{ access_token, id_token: <unsigned JWT with claims>, scope, expires_in, token_type }`. Better Auth decodes the provider id_token without verifying the signature in this flow. Check this again against the installed version.
+Better Auth 1.7.x ships `testUtils` in `better-auth/plugins` (`ctx.test.createUser / saveUser / login({userId}) → {headers, cookies, token} / getAuthHeaders / deleteUser`, `captureOTP`), and also `better-auth/test` (`getTestInstance`). Add `testUtils()` only to a **test-only** auth instance. Use it for "signed-in as X" setups. For flows whose behaviour **is** the sign-in (magic link, social), drive the real HTTP routes as saas-base does: request a link with an Origin header, read it from the recording mailer, then GET it. Mock social token endpoints by stubbing `globalThis.fetch` for the token URL and returning `{ access_token, id_token: <unsigned JWT with claims>, scope, expires_in, token_type }`. Better Auth decodes the provider id_token without verifying the signature in this flow. Check this again against the installed version.
 
 API integration (port all of these):
-- `auth.config.spec` (pure): every case in §2, plus `mcpResourceURL` for `http://localhost:4200`, `https://app.example.com/` and `https://app.example.com/some/path` → `<origin>/api/mcp`.
+- `auth.config.spec` (pure): every case in §2, plus `mcpResourceURL` for `http://localhost:5200`, `https://app.example.com/` and `https://app.example.com/some/path` → `<origin>/api/mcp`.
 - `magic-link.spec`: every rule 1–7 and 15 in §12. Also: the Account endpoint shows `signInWith:'email'` and `name:''` after a magic link. X-Real-IP is used. The MailSignin vs MailMember choice. The organization routes are closed.
 - `google-signin.spec`: the consent URL and redirect_uri. Origin refusals (6 cases). Callback refusals (4 URLs × 2 fields). Success lands on `/profile`. The name and email come from Google, and `signInWith:'google'`. A denial goes to `/signup?via=google&error=access_denied`. Linking to an existing magic-link user. The encrypted token.
 - `microsoft-signin.spec`: the authorize URL uses `common`. Origin refusals. Three unvouched-claim cases create nothing. Four vouched-claim cases succeed. Account linking only when vouched. `verified_primary_email` alone → `account_not_linked`. Without an Azure app → 404, while Google and the link still work.
@@ -520,8 +520,8 @@ Web (Vitest + React Testing Library, with the API mocked via MSW or a fake clien
 - `app.routes.spec`: `/` → `/signin`. `/app` with no org → `/profile`. Unknown `/app/x` → `/app`.
 - `api-proxy.spec`: three cases.
 
-Playwright e2e (PGlite + outbox mailer, no Docker):
-1. Get started → signup → read the link from the outbox → open it → Profile → Skip → Home.
+Playwright e2e (PGlite + Mailpit, no Docker):
+1. Get started → signup → read the link from Mailpit → open it → Profile → Skip → Home.
 2. Profile → Next with terms → Home, and `me` shows the org name and the user's name.
 3. Returning user: `/signin` → link → `/app`. Then `/` and `/signin` redirect to `/app`.
 4. Used link → `/signup?error=INVALID_TOKEN` shows the refusal alert.
