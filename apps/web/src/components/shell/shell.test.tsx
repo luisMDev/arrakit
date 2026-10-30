@@ -193,6 +193,33 @@ describe('requireUser', () => {
     await waitFor(() => expect(document.documentElement.lang).toBe('en'))
   })
 
+  it("keeps the account language when this browser's own language is still loading", async () => {
+    const { i18n, loadLanguage } = await import('#/i18n')
+    const original = i18n.changeLanguage.bind(i18n)
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    // The remembered Spanish is still loading (a slow lazy chunk) when the guard runs.
+    const changeLanguage = vi
+      .spyOn(i18n, 'changeLanguage')
+      .mockImplementationOnce(async (...args) => {
+        await gate
+        return original(...args)
+      })
+    const initial = loadLanguage('es')
+    await vi.waitFor(() => expect(changeLanguage).toHaveBeenCalled())
+    expect(i18n.language).toBe('en')
+    meAnswers(meAs({ language: 'en' }))
+    renderApp('/app')
+    setTimeout(release, 20)
+    expect(await screen.findByRole('heading', { name: 'Hi, Ana Ruiz.' })).toBeInTheDocument()
+    await initial
+    await waitFor(() => expect(i18n.language).toBe('en'))
+    expect(screen.getByRole('heading', { name: 'Hi, Ana Ruiz.' })).toBeInTheDocument()
+    expect(document.documentElement.lang).toBe('en')
+    expect(window.localStorage.getItem('arrakit.lang')).toBe('en')
+    changeLanguage.mockRestore()
+  })
+
   it('opens the app in the current language when the account language will not load', async () => {
     const { i18n } = await import('#/i18n')
     const changeLanguage = vi

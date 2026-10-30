@@ -44,6 +44,8 @@ export {
 export { health, type HealthReport } from './health'
 export { authDatabase, type AuthDatabase } from './auth-database'
 export * from './jobs/types'
+export { jobConnectionOf, transactionWithJobs } from './jobs/transaction'
 export * from './storage/types'
+export { BUCKET_CORS, putBucketCors, r2CorsPolicy, s3CorsRules } from './storage/bucket-cors'
 export { toFileKey, toFolderPrefix } from './storage/file-key'
 export { ACCOUNT_LANGUAGES, TENANCY_EXCEPTIONS, type AccountLanguage } from './schema/index'

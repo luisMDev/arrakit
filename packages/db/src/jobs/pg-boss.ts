@@ -47,6 +47,20 @@ export async function pgBossJobs(source: string | ConstructorOptions): Promise<J
       if (!id) throw new Error(`[data] pg-boss did not queue a job on ${name}`)
       return id
     },
+    async sendOn(connection, name, data, opts = {}) {
+      const id = await boss.send(name, data, {
+        startAfter: opts.startAfter,
+        ...(opts.id ? { id: opts.id } : {}),
+        db: connection,
+      })
+      if (!id) throw new Error(`[data] pg-boss did not queue a job on ${name}`)
+      return id
+    },
+    async sendWithId(jobId, name, data, opts = {}) {
+      const id = await boss.send(name, data, { id: jobId, startAfter: opts.startAfter })
+      if (!id) throw new Error(`[data] pg-boss did not queue a job on ${name}`)
+      return id
+    },
     async sendOnce(name, data, key, opts = {}) {
       const id = await boss.send(name, data, { singletonKey: key, startAfter: opts.startAfter })
       return id !== null

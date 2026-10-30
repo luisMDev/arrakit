@@ -1,6 +1,5 @@
+import { oc } from '@orpc/contract'
 import { z } from 'zod'
-
-import { base } from './common'
 
 const probe = z.enum(['up', 'down'])
 export const healthReportSchema = z.object({
@@ -11,13 +10,24 @@ export const healthReportSchema = z.object({
 })
 
 export const healthContract = {
-  get: base
+  get: oc
     .route({
       method: 'GET',
       path: '/health',
       tags: ['health'],
-      // The document's server is /api, but health is served at the root (GET /health, for the host).
-      spec: (operation) => ({ ...operation, servers: [{ url: '/' }] }),
+      // Served at the root (GET /health, for the host), not under the document's /api server.
+      // A probe down answers 503 with the same body, which an output schema cannot say.
+      spec: (operation) => {
+        const ok = operation.responses?.['200']
+        return {
+          ...operation,
+          servers: [{ url: '/' }],
+          responses: {
+            ...operation.responses,
+            ...(ok && { '503': { ...ok, description: 'A dependency is down' } }),
+          },
+        }
+      },
     })
     .output(healthReportSchema),
 }

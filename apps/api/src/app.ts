@@ -1,7 +1,4 @@
-import { contract } from '@arrakit/contract'
-import { OpenAPIGenerator } from '@orpc/openapi'
 import { RPCHandler } from '@orpc/server/fetch'
-import { ZodToJsonSchemaConverter } from '@orpc/zod/zod4'
 import { Hono } from 'hono'
 
 import type { AppDeps } from './deps'
@@ -11,24 +8,11 @@ import { authRoutes } from './routes/auth'
 import { devOutboxRoutes } from './routes/dev-outbox'
 import { healthRoutes } from './routes/health'
 import { mcpRoutes } from './routes/mcp'
+import { generateOpenApiDocument } from './routes/openapi'
 import { stripeWebhookRoutes } from './routes/stripe-webhook'
 
 /** The OpenAPI document generated from the contract alone (no DB, no env). */
-export async function openApiDocument() {
-  const document = await new OpenAPIGenerator({
-    schemaConverters: [new ZodToJsonSchemaConverter()],
-  }).generate(contract, {
-    info: { title: 'Arrakit API', version: '1.0.0' },
-    servers: [{ url: '/api' }],
-  })
-  // /health answers 503 with the same body as 200 when a probe is down; the contract cannot say so.
-  const health = document.paths?.['/health']?.get
-  const ok = health?.responses?.['200']
-  if (health?.responses && ok) {
-    health.responses['503'] = { ...ok, description: 'A dependency is down' }
-  }
-  return document
-}
+export { generateOpenApiDocument as openApiDocument } from './routes/openapi'
 
 /**
  * Builds the Hono app (docs/spec/platform.md section 4):
@@ -45,7 +29,7 @@ export function createApp(deps: AppDeps) {
   const rpc = new RPCHandler(router)
 
   app.route('/', healthRoutes(deps))
-  app.get('/api/openapi.json', async (c) => c.json(await openApiDocument()))
+  app.get('/api/openapi.json', async (c) => c.json(await generateOpenApiDocument()))
   app.route('/', authRoutes(deps))
   app.route('/', stripeWebhookRoutes(deps))
   app.route('/', mcpRoutes(deps))

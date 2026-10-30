@@ -4,12 +4,13 @@ import { Hono } from 'hono'
 import type { AppDeps } from '../deps'
 import type { BaseContext } from '../orpc/context'
 import { router } from '../router'
+import { restRouter } from './openapi'
 
 /**
  * Every procedure but health, served REST-style at the paths the OpenAPI document lists
  * (server `/api`). Health is served at the root only (`GET /health`), so `/api/health` is 404.
  */
-const { health: _health, ...restRouter } = router
+const { health: _health, ...served } = router
 
 /** Paths under /api owned by other handlers; the REST handler never reads their bodies. */
 const NOT_REST = [
@@ -27,7 +28,7 @@ const NOT_REST = [
  * contract's routes and falls through otherwise, so the routes mounted after it still match.
  */
 export function healthRoutes(deps: AppDeps) {
-  const rest = new OpenAPIHandler(restRouter)
+  const rest = new OpenAPIHandler(restRouter(served))
   return new Hono()
     .get('/health', async (c) => {
       const report = await deps.data.health()

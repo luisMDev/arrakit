@@ -5,6 +5,7 @@ import {
   type JobRecord,
   type JobsRuntime,
   type RetryPolicy,
+  type SendOptions,
 } from './types'
 
 export interface SentJob {
@@ -23,6 +24,7 @@ export interface MemoryJobs extends JobsRuntime {
   sent: SentJob[]
   schedules: Map<string, { cron: string; data: object }>
   stored: Map<string, JobRecord & { name: string; key?: string }>
+  sendWithId(id: string, name: string, data: object, options?: SendOptions): Promise<string>
   moveJob(id: string, state: JobRecord['state']): void
   /** Runs the registered worker on every stored job of `name` still created. */
   run(name: string): Promise<void>
@@ -42,8 +44,10 @@ export function memoryJobs(): MemoryJobs {
       fake.queues.set(name, { expireInSeconds: DEFAULT_EXPIRE_IN_SECONDS, ...policy })
       if (opts.exclusive) fake.exclusive.add(name)
     },
-    async send(name, data, opts = {}) {
-      const id = randomUUID()
+    send(name, data, opts = {}) {
+      return fake.sendWithId(randomUUID(), name, data, opts)
+    },
+    async sendWithId(id, name, data, opts = {}) {
       fake.sent.push({ id, name, data, startAfter: opts.startAfter, at: new Date() })
       fake.stored.set(id, { id, name, data, state: 'created' })
       return id

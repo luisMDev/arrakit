@@ -46,8 +46,12 @@ export function inProcessJobs(options: { now?: () => number } = {}): JobsRuntime
     if (stopped) throw new Error('[data] the job runner is stopped')
   }
 
-  function enqueue(name: string, data: object, opts: SendOptions & { key?: string } = {}) {
-    const id = randomUUID()
+  function enqueue(
+    name: string,
+    data: object,
+    opts: SendOptions & { key?: string; id?: string } = {},
+  ) {
+    const id = opts.id ?? randomUUID()
     jobs.set(id, {
       id,
       name,
@@ -110,6 +114,10 @@ export function inProcessJobs(options: { now?: () => number } = {}): JobsRuntime
     async send(name, data, opts) {
       assertRunning()
       return enqueue(name, data, opts)
+    },
+    async sendWithId(id, name, data, opts) {
+      assertRunning()
+      return enqueue(name, data, { ...opts, id })
     },
     async sendOnce(name, data, key, opts) {
       assertRunning()

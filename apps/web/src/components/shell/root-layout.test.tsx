@@ -66,3 +66,34 @@ describe('Stale chunk recovery', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 })
+
+describe('Root route', () => {
+  it("holds every screen until this browser's initial language has loaded", async () => {
+    const { Route } = await import('#/routes/__root')
+    const { i18n, loadLanguage } = await import('#/i18n')
+    const original = i18n.changeLanguage.bind(i18n)
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    // The remembered Spanish is still loading (a slow lazy chunk).
+    const changeLanguage = vi
+      .spyOn(i18n, 'changeLanguage')
+      .mockImplementationOnce(async (...args) => {
+        await gate
+        return original(...args)
+      })
+    const initial = loadLanguage('es')
+    await vi.waitFor(() => expect(changeLanguage).toHaveBeenCalled())
+    let settled = false
+    const beforeLoad = Route.options.beforeLoad as unknown as () => Promise<void>
+    const held = beforeLoad().then(() => (settled = true))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(settled).toBe(false)
+    expect(i18n.language).toBe('en')
+    release()
+    await held
+    expect(i18n.language).toBe('es')
+    await initial
+    changeLanguage.mockRestore()
+    await loadLanguage('en')
+  })
+})

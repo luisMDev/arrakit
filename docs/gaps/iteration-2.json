@@ -1,0 +1,91 @@
+[
+  {
+    "area": "auth-onboarding",
+    "gaps": [
+      {
+        "feature": "Social sign-in reflected in Account (signInWith google/microsoft, provider name and email)",
+        "arrakitState": "untested",
+        "detail": "The behavior is implemented. packages/db/src/data/account.ts derives signInWith from the newest account row, and packages/db/src/data/account.test.ts:73 checks this on seeded rows. No integration test runs a real Google or Microsoft callback and then reads me.account.get. packages/auth/src/social.test.ts ('signs in with the name and email from Google...', 'links Google to an existing magic-link user', 'links to an existing user only when vouched') checks only the session user. apps/api/src/routers/account.test.ts:46-49 asserts signInWith 'email' only. saas-base asserts {name, email, signInWith:'google'} after the Google callback, and 'microsoft' for a user who started with a magic link and later signed in with Microsoft.",
+        "saasBaseRef": "apps/api/src/app/auth/google-signin.spec.ts:109; apps/api/src/app/auth/microsoft-signin.spec.ts:144,161"
+      },
+      {
+        "feature": "Legacy /start and /new redirects keep the whole query",
+        "arrakitState": "partial",
+        "detail": "In saas-base, apps/web/src/app/app.routes.ts:48-49 uses Angular redirectTo, which keeps every query param. The spec says '/start, /new \u2192 /signup (keep the query)'. In arrakit, apps/web/src/routes/start.tsx and apps/web/src/routes/new.tsx set validateSearch: choiceSearch (from #/lib/checkout-choice) and then redirect({ to: '/signup', search }), so only the validated plan/cycle keys reach /signup. Any other query param (e.g. utm_*) is dropped. Impact is low.",
+        "saasBaseRef": "apps/web/src/app/app.routes.ts:48-49"
+      }
+    ]
+  },
+  {
+    "area": "organizations-members",
+    "gaps": [
+      {
+        "feature": "Settings > Account autosave: one save at a time, in order, and drop the saves queued behind a failed one",
+        "arrakitState": "broken",
+        "detail": "Confirmed. In apps/web/src/components/settings/account-section.tsx, save()/apply() calls client.me.account.update for every change straight away, with no queue or generation guard, and writes the response into the cache with queryClient.setQueryData. The language and time zone Selects use value={account.*} and the product-news Switch uses checked={account.emails.productNews}, so all three show server data. If the person makes two quick changes, two PATCHes run at the same time, and whichever response arrives last wins in both the cache and the DB. After a failed save, later changes are not dropped. saveOnChange() exists in apps/web/src/lib/api-errors.ts:90, but its only consumer is lib/api-errors.test.ts; no settings section uses it. saas-base sends name, language, timeZone and productNews through injectSaveOnChange (account-settings.ts save() at L172-188, with failure going to load(NOT_SAVED)). This is tested in shared/api-call.spec.ts at L102-126.",
+        "saasBaseRef": "apps/web/src/app/shared/api-call.ts injectSaveOnChange; apps/web/src/app/signed-in/settings/account-settings/account-settings.ts save() L172-188; shared/api-call.spec.ts L102-126"
+      },
+      {
+        "feature": "Sign out everywhere: a failed devices reload says 'Couldn't load your devices'",
+        "arrakitState": "partial",
+        "detail": "Confirmed, low impact. In apps/web/src/components/settings/account-section.tsx, signOutEverywhere() calls reload(), which is queryClient.invalidateQueries. A failed refetch only appears through the shared error effect at about L83-88, and that effect toasts settings.accountSettings.notLoaded. The settings.accountSettings.devicesNotLoaded key exists in apps/web/src/i18n/locales/{en,es}/settings.json:50, but no code references it. saas-base account-settings.ts L131-132 calls this.load(tr('settings.accountSettings.devicesNotLoaded')) after a successful revoke.",
+        "saasBaseRef": "apps/web/src/app/signed-in/settings/account-settings/account-settings.ts signOutEverywhere() L124-135"
+      },
+      {
+        "feature": "Settings > General loads the organization fresh when it opens (and says so when that fails)",
+        "arrakitState": "partial",
+        "detail": "Confirmed, low impact. apps/web/src/components/settings/general-section.tsx reads me.user.organization from useCurrentUser. In apps/web/src/lib/current-user.ts:32 that query has staleTime: Infinity, and the section does not refetch when it opens. me.reload() runs only after a failed rename. As a result, a rename made elsewhere stays hidden until a full reload, and settings.generalSettings.notLoaded is never shown. No test in general-section.test.tsx covers a load failure. saas-base general-settings.ts L42 calls this.load(tr('settings.generalSettings.notLoaded')) in the constructor (a fresh getOrganizationSettings), which is tested in general-settings.spec.ts:55 'says so when the organization does not load'.",
+        "saasBaseRef": "apps/web/src/app/signed-in/settings/general-settings/general-settings.ts constructor L42 and load() L58-63; general-settings.spec.ts L55"
+      }
+    ]
+  },
+  {
+    "area": "billing-plans",
+    "gaps": []
+  },
+  {
+    "area": "usage-credits",
+    "gaps": [
+      {
+        "feature": "402 Payment Required from requiresUsage, consume and set, checked over HTTP: the status code and the message/metric/requested/available body as the client receives them",
+        "arrakitState": "untested",
+        "detail": "In /home/luismdev/Projects/arrakit/apps/api/src/usage/usage.test.ts:125-166, the usage 402 paths are tested only in process. 'guards a procedure with requiresUsage' calls the procedure with oRPC call() at lines 137-153, and 'maps limit errors on consume and set to 402' calls usageService directly at lines 155-166. Neither request goes through app.fetch, so the RPC/OpenAPI handler never serializes the usage error. The wire path does carry a 402 elsewhere: t.client in /home/luismdev/Projects/arrakit/apps/api/src/testing/app.ts:141-146 sends requests through RPCLink to app.fetch, and /home/luismdev/Projects/arrakit/apps/api/src/routers/billing.test.ts:349-360 uses it to check a card-decline 402 and its message. No HTTP test covers the usage-specific PAYMENT_REQUIRED error, which is declared in packages/contract/src/common.ts:32. That leaves its typed data payload ({metric, requested, available}) and the 'Add credits in Settings \u2192 Billing' message unchecked on the wire, and also the storage set 10 -> 200, 11 -> 402 sequence. No production procedure uses requiresUsage yet: it is defined in apps/api/src/usage/requires-usage.ts and called only from tests. So a fix needs a probe procedure mounted in a test app, called through app.request()/RPCLink. saas-base does test this over real HTTP with a probe controller. Low severity: the implementation looks right.",
+        "saasBaseRef": "/home/luismdev/Projects/saas-base/apps/api/src/app/usage/usage.spec.ts:~80-105 (probe controller: res.status 402 + body {metric:'credits', requested:40, available:30, message containing 'Add credits in Settings \u2192 Billing'}; spend 101 -> 402; PUT storage 10 -> 200, 11 -> 402)"
+      }
+    ]
+  },
+  {
+    "area": "platform",
+    "gaps": [
+      {
+        "feature": "The OpenAPI document lists the real response statuses for each operation",
+        "arrakitState": "partial",
+        "detail": "Checked by exporting the document (apps/api/scripts/openapi-export.ts <file>). Every operation lists only its success status plus 402. The 402 comes from the shared `base = oc.errors({ PAYMENT_REQUIRED })` in /home/luismdev/Projects/arrakit/packages/contract/src/common.ts:31, which is the only `.errors(` call in the contract package. That 402 also lands on GET /health, which never returns 402, so /health shows 200,402,503 (the 503 is patched in by /home/luismdev/Projects/arrakit/apps/api/src/app.ts:24-28). None of the statuses the procedures actually return (401, 403, 404, 409, 400, 502, 503) appear. Examples: GET /me shows 200,402 where saas-base expects 200,401. POST /organizations shows 201,402 where saas-base expects 201,400,401,409. DELETE /organizations shows 200,402 where saas-base expects 204,401,403,404,502,503. DELETE /me shows 200,402 where saas-base expects 204,401,409. The void DELETEs (/me, /organizations, /members/{email}, /invitations/{id}) are documented as 200 with an `anyOf:[{not:{}},{not:{}}]` body. saas-base documents them as 204 with no body. /home/luismdev/Projects/arrakit/apps/api/src/routes/health.test.ts does not check statuses per operation. Files: /home/luismdev/Projects/arrakit/packages/contract/src/{common,account,organizations,members,invitations,onboarding}.ts, /home/luismdev/Projects/arrakit/apps/api/src/app.ts (openApiDocument).",
+        "saasBaseRef": "/home/luismdev/Projects/saas-base/apps/api/src/app/openapi/openapi.spec.ts (status assertions around lines 58-115)"
+      },
+      {
+        "feature": "Sending a job inside a DB transaction (TransactionWithJobs / sendOn): the rows and the job commit together",
+        "arrakitState": "missing",
+        "detail": "The Jobs interface in /home/luismdev/Projects/arrakit/packages/db/src/jobs/types.ts has defineQueue, send, sendOnce, schedule, work, find and queuePolicy, but no transactional send. /home/luismdev/Projects/arrakit/packages/db/src/jobs/pg-boss.ts:46,51 calls boss.send without a `{ db }` connection option. Nothing in packages/ or apps/ defines sendOn, TransactionWithJobs or an after-commit queue. Spec /home/luismdev/Projects/arrakit/docs/spec/platform.md:422-430 requires sendOn, and requires the in-process runner to queue sends made in a transaction until after commit. In saas-base, createOrganization takes a TransactionWithJobs but sends no job, so no feature depends on this today. It is missing infrastructure.",
+        "saasBaseRef": "/home/luismdev/Projects/saas-base/libs/platform/data/src/jobs/jobs.ts:97-110 (TransactionWithJobs, sendOn), libs/platform/data/src/open-data.ts:227-234"
+      },
+      {
+        "feature": "Bucket CORS config for direct browser uploads to R2/S3 (r2-cors.json)",
+        "arrakitState": "missing",
+        "detail": "saas-base ships /home/luismdev/Projects/saas-base/apps/api/r2-cors.json, which allows the web origin to use PUT and GET with header content-type, maxAgeSeconds 3600. Arrakit has no equivalent: no *cors* file outside node_modules, no allowed-origins or maxAgeSeconds config, and no mention in /home/luismdev/Projects/arrakit/apps/api/.env.example. Spec /home/luismdev/Projects/arrakit/docs/spec/platform.md:372 lists it. Without it, presigned putUrl/getUrl requests from the browser fail against a real bucket. Low impact today.",
+        "saasBaseRef": "/home/luismdev/Projects/saas-base/apps/api/r2-cors.json"
+      }
+    ]
+  },
+  {
+    "area": "web-shell-landing",
+    "gaps": [
+      {
+        "feature": "The account language wins over this browser's remembered or browser language before the first signed-in render (requireUser applies me.language; the initial language is settled before any screen renders)",
+        "arrakitState": "broken",
+        "detail": "Confirmed by reading the code. /home/luismdev/Projects/arrakit/apps/web/src/i18n/index.ts:81-85 starts loadLanguage(initialLanguage()) at import time and nothing awaits it: no root beforeLoad or other code holds the `switching` promise, which grep confirms. While the lazy es bundle loads, activate() (i18n/index.ts:37-45) leaves i18n.language at 'en' until changeLanguage runs. /home/luismdev/Projects/arrakit/apps/web/src/lib/guards/require-user.ts:33 skips the switch when `me.language === i18n.language`. Failure case: localStorage 'arrakit.lang'='es' or navigator es-*, and the account language is 'en'. When /app opens, me.get can return before the es chunk loads. requireUser then sees 'en' === 'en' and does not queue a switch. The pending activate('es') finishes later, so the signed-in app renders in Spanish and stores 'es', although the account says English. Fix: always call loadLanguage(me.language) when isLanguage(me.language). It is serialized behind the initial switch, and activate() does nothing when the language is already active. Optionally, the root route can also await the initial switch, which avoids the English-then-Spanish flash on public screens. No test covers this, because in jsdom nothing is stored and navigator is en-US, so the initial switch resolves at once.",
+        "saasBaseRef": "/home/luismdev/Projects/saas-base/apps/web/src/app/shared/i18n.ts:60-64,100-105 (provideAppInitializer awaits language.use(language.initial()) before bootstrap, so activeLang is settled); /home/luismdev/Projects/saas-base/apps/web/src/app/signed-in/current-user.state.ts:37-46 (load() compares me.language against the settled activeLang)"
+      }
+    ]
+  }
+]

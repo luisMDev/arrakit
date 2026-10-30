@@ -131,6 +131,18 @@ test('a paid plan chosen before signup goes to checkout after Profile', async ({
   await expect(page).toHaveURL(/\/app\/checkout\?plan=team&cycle=monthly$/)
 })
 
+for (const legacy of ['/start', '/new']) {
+  test(`${legacy} lands on /signup keeping the whole query`, async ({ page }) => {
+    await page.goto(`${legacy}?plan=pro&cycle=yearly&utm_source=news`)
+    await expect(page).toHaveURL(/\/signup\?/)
+    expect(Object.fromEntries(new URL(page.url()).searchParams)).toEqual({
+      plan: 'pro',
+      cycle: 'yearly',
+      utm_source: 'news',
+    })
+  })
+}
+
 test('an invalid email shows the inline error and sends nothing', async ({ page }) => {
   let sent = false
   page.on('request', (request) => {

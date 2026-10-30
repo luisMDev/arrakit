@@ -18,7 +18,14 @@ import {
 } from '#/components/ui/select'
 import { Switch } from '#/components/ui/switch'
 import { type Language, isLanguage, loadLanguage } from '#/i18n'
-import { reportError, statusOf, toastError, toastInfo } from '#/lib/api-errors'
+import {
+  type SaveOnChange,
+  reportError,
+  saveOnChange,
+  statusOf,
+  toastError,
+  toastInfo,
+} from '#/lib/api-errors'
 import { authClient } from '#/lib/auth-client'
 import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
 import { client, orpc } from '#/lib/orpc'
@@ -41,6 +48,13 @@ export const TIME_ZONES: { zone: string; key: string }[] = [
 
 const K = 'settings.accountSettings'
 
+type AccountUpdate = Parameters<typeof client.me.account.update>[0]
+
+interface QueuedChange {
+  changes: AccountUpdate
+  id: number
+}
+
 type Translate = (key: string, params?: Record<string, unknown>) => string
 
 /** "This Mac and an iPhone": the current device first, the others with their article. */
@@ -54,6 +68,17 @@ export function devicesLine(devices: string[], t: Translate, language: string): 
     ),
   ]
   return new Intl.ListFormat(language, { style: 'long', type: 'conjunction' }).format(parts)
+}
+
+/** The account as it reads once `changes` are saved. */
+export function withChanges(account: AccountView, changes: AccountUpdate): AccountView {
+  return {
+    ...account,
+    name: changes.name ?? account.name,
+    language: changes.language ?? account.language,
+    timeZone: changes.timeZone ?? account.timeZone,
+    emails: { productNews: changes.emails?.productNews ?? account.emails.productNews },
+  }
 }
 
 function browserTimeZone(): string | null {
@@ -70,7 +95,13 @@ export function AccountSection({ open }: SectionProps) {
   const queryClient = useQueryClient()
   const me = useCurrentUser()
   const accountQuery = orpc.me.account.get.queryOptions()
-  const { data: account, error } = useQuery(accountQuery)
+  // Loaded when the section opens and after a failure or a sign-out, never in the background:
+  // a refetch landing between queued saves would put back a choice the person just made.
+  const { data: account, error } = useQuery({
+    ...accountQuery,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
   const [draftName, setDraftName] = useState<string | null>(null)
   const [nameError, setNameError] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
@@ -81,35 +112,61 @@ export function AccountSection({ open }: SectionProps) {
   const zoneFilled = useRef(false)
 
   useEffect(() => {
-    if (error) {
+    if (error && !account) {
       reportError('[account] loading the account failed', error)
       toastError(t(`${K}.notLoaded`))
     }
-  }, [error, t])
+  }, [error, account, t])
 
-  const reload = () => queryClient.invalidateQueries({ queryKey: accountQuery.queryKey })
+  /** The saved account, fresh; a failure says `failure` and keeps what the screen shows. */
+  async function load(failure: string) {
+    try {
+      await queryClient.fetchQuery({ ...accountQuery, staleTime: 0 })
+    } catch (err) {
+      reportError('[account] reloading the account failed', err)
+      toastError(failure)
+    }
+  }
 
-  async function apply(changes: Parameters<typeof client.me.account.update>[0]) {
-    const saved = await client.me.account.update(changes)
-    queryClient.setQueryData<AccountView>(accountQuery.queryKey, saved)
+  async function applySaved(saved: AccountView, latest: boolean) {
+    if (latest) queryClient.setQueryData<AccountView>(accountQuery.queryKey, saved)
     me.patch((current) => ({ ...current, name: saved.name, language: saved.language }))
     if (isLanguage(saved.language)) await loadLanguage(saved.language)
   }
 
-  async function save(changes: Parameters<typeof client.me.account.update>[0]) {
-    try {
-      await apply(changes)
-    } catch (err) {
-      reportError('[account] saving the account failed', err)
-      toastError(t(`${K}.notSaved`))
-      await reload()
-    }
+  const handlers = useRef({ applySaved, load, t })
+  useEffect(() => {
+    handlers.current = { applySaved, load, t }
+  })
+
+  const lastChange = useRef(0)
+  const saver = useRef<SaveOnChange<QueuedChange> | null>(null)
+
+  /** Shows the change at once and queues its save behind the ones still running. */
+  function save(changes: AccountUpdate) {
+    queryClient.setQueryData<AccountView>(accountQuery.queryKey, (current) =>
+      current ? withChanges(current, changes) : current,
+    )
+    saver.current ??= saveOnChange(
+      async ({ changes, id }: QueuedChange) => ({
+        saved: await client.me.account.update(changes),
+        id,
+      }),
+      {
+        failure: () => handlers.current.t(`${K}.notSaved`),
+        saved: ({ saved, id }) =>
+          void handlers.current.applySaved(saved, id === lastChange.current),
+        failed: () => void handlers.current.load(handlers.current.t(`${K}.notSaved`)),
+      },
+    )
+    lastChange.current += 1
+    saver.current({ changes, id: lastChange.current })
   }
 
   /** Saves the browser's zone the person never chose: a failure is only reported, never toasted. */
   async function fillZone(timeZone: string) {
     try {
-      await apply({ timeZone })
+      await applySaved(await client.me.account.update({ timeZone }), lastChange.current === 0)
     } catch (err) {
       reportError('[account] saving the browser time zone failed', err)
     }
@@ -128,7 +185,7 @@ export function AccountSection({ open }: SectionProps) {
     if (zone) void fillZoneRef.current(zone)
   }, [needsZone])
 
-  async function saveName() {
+  function saveName() {
     if (!account || draftName === null) return
     const trimmed = draftName.trim()
     if (trimmed === '') {
@@ -136,7 +193,7 @@ export function AccountSection({ open }: SectionProps) {
       return
     }
     setNameError(false)
-    if (trimmed !== account.name) await save({ name: trimmed })
+    if (trimmed !== account.name) save({ name: trimmed })
     setDraftName(null)
   }
 
@@ -148,7 +205,7 @@ export function AccountSection({ open }: SectionProps) {
       const result = await authClient.revokeOtherSessions()
       if (result?.error) throw result.error
       toastInfo(t(`${K}.signedOut`))
-      await reload()
+      void load(t(`${K}.devicesNotLoaded`))
     } catch (err) {
       reportError('[account] signing out everywhere failed', err)
       toastError(t(`${K}.notSignedOut`))
@@ -204,7 +261,7 @@ export function AccountSection({ open }: SectionProps) {
                     setDraftName(event.target.value)
                     setNameError(false)
                   }}
-                  onBlur={() => void saveName()}
+                  onBlur={saveName}
                 />
                 {nameError ? <FieldError>{t(`${K}.enterName`)}</FieldError> : null}
               </Field>
@@ -249,7 +306,7 @@ export function AccountSection({ open }: SectionProps) {
                 <Select
                   value={account.language}
                   onValueChange={(language) => {
-                    if (isLanguage(language)) void save({ language })
+                    if (isLanguage(language)) save({ language })
                   }}
                 >
                   <SelectTrigger aria-labelledby="account-language" className="w-56">
@@ -267,7 +324,7 @@ export function AccountSection({ open }: SectionProps) {
               <SettingRow label={<span id="account-time-zone">{t(`${K}.timeZone`)}</span>}>
                 <Select
                   value={account.timeZone ?? ''}
-                  onValueChange={(timeZone) => void save({ timeZone })}
+                  onValueChange={(timeZone) => save({ timeZone })}
                 >
                   <SelectTrigger aria-labelledby="account-time-zone" className="w-72">
                     <SelectValue />
@@ -298,7 +355,7 @@ export function AccountSection({ open }: SectionProps) {
                   <Switch
                     id="account-product-news"
                     checked={account.emails.productNews}
-                    onCheckedChange={(productNews) => void save({ emails: { productNews } })}
+                    onCheckedChange={(productNews) => save({ emails: { productNews } })}
                   />
                 }
               />

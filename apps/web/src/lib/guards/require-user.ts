@@ -2,7 +2,7 @@ import type { Me } from '@arrakit/contract'
 import type { QueryClient } from '@tanstack/react-query'
 import { redirect } from '@tanstack/react-router'
 
-import { i18n, isLanguage, loadLanguage } from '#/i18n'
+import { isLanguage, loadLanguage } from '#/i18n'
 import { reportError, statusOf } from '#/lib/api-errors'
 import { orpc } from '#/lib/orpc'
 
@@ -30,7 +30,10 @@ export async function requireUser({
     const me = await signedInPerson(context.queryClient)
     if (!me.organization || !me.role || !me.plan) outcome = 'profile'
     else {
-      if (isLanguage(me.language) && me.language !== i18n.language) {
+      if (isLanguage(me.language)) {
+        // Always queued, even when the account language looks active: an earlier switch (this
+        // browser's remembered or own language) may still be loading and would win otherwise.
+        // The switch is serialized behind it and does nothing when the language is already on.
         // A language file that will not load (a stale chunk, offline) keeps the current
         // language rather than hiding the app behind the Unavailable screen.
         await loadLanguage(me.language).catch((err: unknown) =>

@@ -184,6 +184,71 @@ describe('AccountSection', () => {
     )
   })
 
+  it('saves one change at a time, in order, showing each choice at once', async () => {
+    const gates: Array<() => void> = []
+    const calls = answer(
+      'me/account/update',
+      (input: unknown) =>
+        new Promise((resolve) => gates.push(() => resolve({ ...ACCOUNT, ...(input as object) }))),
+      (input: unknown) => ({ ...ACCOUNT, timeZone: 'Europe/London', ...(input as object) }),
+    )
+    setup()
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Time zone' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'UK Time (London)' }))
+    await userEvent.click(screen.getByRole('switch', { name: /Product news/ }))
+    expect(screen.getByRole('combobox', { name: 'Time zone' })).toHaveTextContent('London')
+    expect(screen.getByRole('switch', { name: /Product news/ })).toBeChecked()
+    await waitFor(() => expect(calls).toHaveLength(1))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(calls).toEqual([{ input: { timeZone: 'Europe/London' } }])
+    gates[0]!()
+    await waitFor(() =>
+      expect(calls).toEqual([
+        { input: { timeZone: 'Europe/London' } },
+        { input: { emails: { productNews: true } } },
+      ]),
+    )
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.getByRole('switch', { name: /Product news/ })).toBeChecked()
+    expect(screen.getByRole('combobox', { name: 'Time zone' })).toHaveTextContent('London')
+  })
+
+  it('drops the changes queued behind a failed save and saves the next one', async () => {
+    quiet()
+    let fail: () => void = () => undefined
+    const calls = answer(
+      'me/account/update',
+      () => new Promise((resolve) => (fail = () => resolve(new Response(null, { status: 500 })))),
+      (input: unknown) => ({ ...ACCOUNT, ...(input as object) }),
+    )
+    const loads = answer('me/account/get', ACCOUNT)
+    renderScreen(<AccountSection open={() => undefined} />, {
+      me: meAs({ role: 'member', email: 'ana@acme.com', name: 'Ana' }),
+    })
+    await userEvent.click(await screen.findByRole('switch', { name: /Product news/ }))
+    await userEvent.click(screen.getByRole('combobox', { name: 'Time zone' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'UK Time (London)' }))
+    await waitFor(() => expect(calls).toHaveLength(1))
+    fail()
+    expect(await screen.findByText("Couldn't save your settings. Try again.")).toBeInTheDocument()
+    await waitFor(() => expect(loads).toHaveLength(2))
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: /Product news/ })).not.toBeChecked(),
+    )
+    expect(screen.getByRole('combobox', { name: 'Time zone' })).toHaveTextContent('Madrid')
+    await new Promise((r) => setTimeout(r, 50))
+    expect(calls).toEqual([{ input: { emails: { productNews: true } } }])
+
+    await userEvent.click(screen.getByRole('switch', { name: /Product news/ }))
+    await waitFor(() =>
+      expect(calls).toEqual([
+        { input: { emails: { productNews: true } } },
+        { input: { emails: { productNews: true } } },
+      ]),
+    )
+    await waitFor(() => expect(screen.getByRole('switch', { name: /Product news/ })).toBeChecked())
+  })
+
   it('toasts when the account does not load', async () => {
     quiet()
     answer('me/account/get', 500)
@@ -205,6 +270,20 @@ describe('AccountSection', () => {
     expect(await screen.findByText('Signed out on your other devices.')).toBeInTheDocument()
     expect(await screen.findByText('This Mac')).toBeInTheDocument()
     expect(auth.revokeOtherSessions).toHaveBeenCalledTimes(1)
+  })
+
+  it('says so when the devices do not reload after signing out everywhere', async () => {
+    quiet()
+    auth.revokeOtherSessions.mockResolvedValue({ data: { status: true }, error: null })
+    const loads = answer('me/account/get', ACCOUNT, 500)
+    renderScreen(<AccountSection open={() => undefined} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Sign out everywhere' }))
+    expect(await screen.findByText('Signed out on your other devices.')).toBeInTheDocument()
+    expect(
+      await screen.findByText("Couldn't load your devices. Reload the page."),
+    ).toBeInTheDocument()
+    expect(loads).toHaveLength(2)
+    expect(screen.getByText('This Mac and an iPhone')).toBeInTheDocument()
   })
 
   it('keeps the devices when signing out everywhere fails', async () => {

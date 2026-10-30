@@ -14,10 +14,11 @@ afterEach(() => {
 })
 afterAll(() => api.close())
 
-const summary = { id: '0f8fad5b-d9cb-469f-a165-70867728950e', slug: 'acme', plan: 'team' }
+const summary = { id: '0f8fad5b-d9cb-469f-a165-70867728950e', slug: 'acme', plan: 'team' as const }
 
 describe('GeneralSection', () => {
   it('shows the name and slug read-only to a member', async () => {
+    answer('me/get', meAs({ role: 'member' }))
     renderScreen(<GeneralSection />, { me: meAs({ role: 'member' }) })
     expect(await screen.findByLabelText('Organization name')).toBeDisabled()
     expect(screen.getByText('Slug: acme')).toBeInTheDocument()
@@ -25,6 +26,7 @@ describe('GeneralSection', () => {
 
   it('renames on blur for an admin and patches me', async () => {
     const calls = answer('organizations/update', { ...summary, name: 'Acme Capital' })
+    answer('me/get', meAs({ role: 'admin' }))
     const { queryClient } = renderScreen(<GeneralSection />, { me: meAs({ role: 'admin' }) })
     const input = await screen.findByLabelText('Organization name')
     await userEvent.clear(input)
@@ -41,6 +43,7 @@ describe('GeneralSection', () => {
 
   it('never sends a blank name', async () => {
     const calls = answer('organizations/update', { ...summary, name: 'x' })
+    answer('me/get', meAs({ role: 'admin' }))
     renderScreen(<GeneralSection />, { me: meAs({ role: 'admin' }) })
     const input = await screen.findByLabelText('Organization name')
     await userEvent.clear(input)
@@ -52,14 +55,33 @@ describe('GeneralSection', () => {
   it('puts the saved name back when the rename fails', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     answer('organizations/update', 500)
-    answer('me/get', meAs())
+    const loads = answer('me/get', meAs())
     renderScreen(<GeneralSection />, { me: meAs({ role: 'owner' }) })
     const input = await screen.findByLabelText('Organization name')
+    await waitFor(() => expect(loads).toHaveLength(1))
     await userEvent.type(input, ' Two')
     await userEvent.tab()
     expect(
       await screen.findByText("Couldn't save the organization's settings. Try again."),
     ).toBeInTheDocument()
     await waitFor(() => expect(input).toHaveValue('Acme'))
+    expect(loads).toHaveLength(2)
+  })
+
+  it('loads the organization fresh when it opens', async () => {
+    const loads = answer('me/get', meAs({ organization: { ...summary, name: 'Acme Labs' } }))
+    renderScreen(<GeneralSection />, { me: meAs({ role: 'admin' }) })
+    await waitFor(() => expect(loads).toHaveLength(1))
+    await waitFor(() => expect(screen.getByLabelText('Organization name')).toHaveValue('Acme Labs'))
+  })
+
+  it('says so when the organization does not load', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    answer('me/get', 500)
+    renderScreen(<GeneralSection />, { me: meAs({ role: 'admin' }) })
+    expect(
+      await screen.findByText("Couldn't load your organization's settings. Reload the page."),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Organization name')).toHaveValue('Acme')
   })
 })

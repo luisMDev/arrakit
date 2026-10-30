@@ -63,6 +63,7 @@ apps/
     e2e/                          Playwright specs (playwright.config.ts boots api + web)
   api/          @arrakit/api      Hono server (port 3000)
     src/app.ts                    createApp(deps): mounts routes/* and the oRPC router; openApiDocument()
+                                  (= routes/openapi.ts generateOpenApiDocument: per-operation statuses)
     src/router.ts                 root oRPC router composing routers/<module>.ts
     src/routers/                  one oRPC router per module (implements its contract file)
     src/orpc/base.ts              builders: pub, authed, member(level)
@@ -80,7 +81,7 @@ apps/
     src/mcp/                      MCP server factory
     src/testing/                  createTestApp() (in-process app on PGlite + testUtils), fake Stripe
     src/main.ts                   boot (env, mailer, openData, workers, serve, graceful shutdown)
-    scripts/                      operational scripts (Stripe prices, credits product)
+    scripts/                      operational scripts (Stripe prices, credits product, OpenAPI export, bucket CORS)
   landing/      @arrakit/landing  Astro static site (port 4321)
 packages/
   db/           @arrakit/db       Drizzle + Postgres/PGlite. ./drizzle holds the migrations.
@@ -170,6 +171,7 @@ Run from the repo root.
 | `pnpm --filter @arrakit/<pkg> test`                | One workspace's tests                                                   |
 | `pnpm --filter @arrakit/db db:generate`            | Generate a Drizzle migration from the schema                            |
 | `pnpm --filter @arrakit/api openapi:export <file>` | Write the OpenAPI document (no DB needed)                               |
+| `pnpm --filter @arrakit/api bucket:cors [--print]` | Apply (or print) the R2/S3 bucket CORS policy for the web origin        |
 | `pnpm --filter @arrakit/api stripe:prices`         | Create/align the Stripe products and prices (needs `STRIPE_SECRET_KEY`) |
 | `pnpm --filter @arrakit/api stripe:credits`        | Create/align only the Credits top-up price                              |
 | `pnpm format`                                      | Prettier                                                                |

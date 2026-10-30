@@ -55,6 +55,11 @@ export function loadLanguage(lang: Language): Promise<void> {
   return switching
 }
 
+/** Resolves once every switch asked so far has finished, whether it worked or not. */
+export function languageSettled(): Promise<void> {
+  return switching.catch(() => undefined)
+}
+
 function storedLanguage(win: Pick<Window, 'localStorage'>): string | null {
   try {
     return win.localStorage.getItem(STORED_LANGUAGE_KEY)

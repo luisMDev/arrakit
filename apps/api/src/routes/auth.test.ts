@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 
 import type { BaseContext } from '../orpc/context'
 import { requireMember, requireSession } from '../orpc/context'
-import { TEST_WEB_ORIGIN, type TestApp, createTestApp } from '../testing/app'
+import { TEST_WEB_ORIGIN, type TestApp, createTestApp, sessionCookieOf } from '../testing/app'
 
 const WEB = TEST_WEB_ORIGIN
 
@@ -183,6 +183,124 @@ describe('Better Auth routes on Hono', () => {
         }),
       )
       expect(err.status).toBe(403)
+    })
+  })
+})
+
+describe('social sign-in reflected in the account', () => {
+  let t: TestApp
+
+  const TOKEN_URL = {
+    google: 'https://oauth2.googleapis.com/token',
+    microsoft: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+  } as const
+
+  const unsignedJwt = (claims: Record<string, unknown>) =>
+    [
+      Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url'),
+      Buffer.from(JSON.stringify({ iat: 1, exp: 4102444800, ...claims })).toString('base64url'),
+      '',
+    ].join('.')
+
+  const cookiesOf = (res: Response) =>
+    res.headers
+      .getSetCookie()
+      .map((cookie) => cookie.split(';')[0])
+      .join('; ')
+
+  async function socialSignIn(
+    provider: 'google' | 'microsoft',
+    claims: Record<string, unknown>,
+  ): Promise<string> {
+    const start = await t.request('/api/auth/sign-in/social', {
+      method: 'POST',
+      headers: { origin: WEB, 'content-type': 'application/json' },
+      body: JSON.stringify({ provider, callbackURL: `${WEB}/profile` }),
+    })
+    expect(start.status).toBe(200)
+    const state = new URL(((await start.json()) as { url: string }).url).searchParams.get('state')!
+    const realFetch = globalThis.fetch
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const target = input instanceof Request ? input.url : String(input)
+      if (target.startsWith(TOKEN_URL[provider])) {
+        return Response.json({
+          access_token: 'provider-access-token',
+          id_token: unsignedJwt(claims),
+          scope: 'openid email profile',
+          expires_in: 3600,
+          token_type: 'Bearer',
+        })
+      }
+      return realFetch(input, init)
+    })
+    const callback = await t.request(
+      `/api/auth/callback/${provider}?${new URLSearchParams({ state, code: 'the-code' })}`,
+      { headers: { cookie: cookiesOf(start) }, redirect: 'manual' },
+    )
+    vi.restoreAllMocks()
+    expect(callback.headers.get('location')).toBe(`${WEB}/profile`)
+    const cookie = sessionCookieOf(callback)
+    if (!cookie) throw new Error(`${provider} did not sign in`)
+    return cookie
+  }
+
+  const accountOf = (cookie: string) => t.client({ cookie, origin: WEB }).me.account.get()
+
+  beforeAll(async () => {
+    t = await createTestApp({
+      env: {
+        GOOGLE_CLIENT_ID: 'google-id',
+        GOOGLE_CLIENT_SECRET: 'google-secret',
+        MICROSOFT_CLIENT_ID: 'ms-id',
+        MICROSOFT_CLIENT_SECRET: 'ms-secret',
+      },
+    })
+  })
+  afterAll(() => t.close())
+  afterEach(() => vi.restoreAllMocks())
+
+  it('shows the name, email and Google after a Google sign-in', async () => {
+    const cookie = await socialSignIn('google', {
+      sub: 'google-account-1',
+      email: 'gina@acme.com',
+      email_verified: true,
+      name: 'Gina Google',
+    })
+    await expect(accountOf(cookie)).resolves.toMatchObject({
+      name: 'Gina Google',
+      email: 'gina@acme.com',
+      signInWith: 'google',
+    })
+  })
+
+  it('switches a magic-link user to Microsoft once they sign in with Microsoft', async () => {
+    const email = 'mike@acme.com'
+    const magicCookie = await t.magicLinkSignIn(email)
+    await expect(accountOf(magicCookie)).resolves.toMatchObject({ email, signInWith: 'email' })
+    const cookie = await socialSignIn('microsoft', {
+      oid: 'ms-oid-1',
+      sub: 'ms-sub-1',
+      email,
+      name: 'Mike Microsoft',
+      xms_edov: true,
+    })
+    await expect(accountOf(cookie)).resolves.toMatchObject({ email, signInWith: 'microsoft' })
+    // The earlier magic-link session reads the same account, now signing in with Microsoft.
+    await expect(accountOf(magicCookie)).resolves.toMatchObject({ email, signInWith: 'microsoft' })
+  })
+
+  it('shows the name, email and Microsoft after a first Microsoft sign-in', async () => {
+    const cookie = await socialSignIn('microsoft', {
+      oid: 'ms-oid-2',
+      sub: 'ms-sub-2',
+      email: 'sara@acme.com',
+      name: 'Sara Microsoft',
+      xms_edov: true,
+    })
+    await expect(accountOf(cookie)).resolves.toMatchObject({
+      name: 'Sara Microsoft',
+      email: 'sara@acme.com',
+      signInWith: 'microsoft',
     })
   })
 })

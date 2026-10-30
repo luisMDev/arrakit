@@ -1,6 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { i18n, initialLanguage, loadLanguage, STORED_LANGUAGE_KEY, tr } from './index'
+import {
+  i18n,
+  initialLanguage,
+  languageSettled,
+  loadLanguage,
+  STORED_LANGUAGE_KEY,
+  tr,
+} from './index'
 
 function browser(language: string, stored: string | null = null, blocked = false) {
   return {
@@ -33,6 +40,20 @@ describe('language', () => {
     void loadLanguage('es')
     await loadLanguage('en')
     expect(i18n.language).toBe('en')
+  })
+
+  it('settles once every switch asked so far has finished, even a failed one', async () => {
+    void loadLanguage('es')
+    await languageSettled()
+    expect(i18n.language).toBe('es')
+    const failing = vi
+      .spyOn(i18n, 'changeLanguage')
+      .mockRejectedValueOnce(new TypeError('Importing a module script failed.'))
+    const failed = loadLanguage('en')
+    await expect(languageSettled()).resolves.toBeUndefined()
+    await expect(failed).rejects.toThrow(TypeError)
+    expect(i18n.language).toBe('es')
+    failing.mockRestore()
   })
 
   it('falls back to English for a key Spanish lacks', async () => {

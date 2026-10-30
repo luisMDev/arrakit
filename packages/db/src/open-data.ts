@@ -10,7 +10,8 @@ import { organizationsData } from './data/organizations'
 import { health } from './health'
 import { inProcessJobs } from './jobs/in-process'
 import { pgBossJobs } from './jobs/pg-boss'
-import type { JobsRuntime } from './jobs/types'
+import { transactionWithJobs } from './jobs/transaction'
+import type { JobsRuntime, TransactionWithJobs } from './jobs/types'
 import { forOrganization } from './organization/index'
 import { localStorage } from './storage/local'
 import { memoryStorage } from './storage/memory'
@@ -50,7 +51,11 @@ function buildData(ctx: DataContext, close: () => Promise<void>, driver: 'postgr
 export type ScopedData = ReturnType<typeof buildData>
 
 /** What openData() opens: ScopedData plus the raw handles, for packages/db and test set-up. */
-export type Data = ScopedData & { db: DataContext['db']; storage: Storage }
+export type Data = ScopedData & {
+  db: DataContext['db']
+  storage: Storage
+  transactionWithJobs: TransactionWithJobs
+}
 
 export async function openData(config: DataConfig, options: OpenDataOptions = {}): Promise<Data> {
   const connection = await connect(config)
@@ -95,10 +100,11 @@ export async function openData(config: DataConfig, options: OpenDataOptions = {}
     return closing
   }
 
+  const withJobs = transactionWithJobs(connection.db, jobs)
   const data = buildData(
     { db: connection.db, jobs, storage, now: options.now ?? (() => new Date()) },
     close,
     connection.driver,
   )
-  return { ...data, db: connection.db, storage }
+  return { ...data, db: connection.db, storage, transactionWithJobs: withJobs }
 }

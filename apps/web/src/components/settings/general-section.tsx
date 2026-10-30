@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Card, CardContent } from '#/components/ui/card'
@@ -6,7 +7,7 @@ import { Field, FieldDescription, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { reportError, toastError } from '#/lib/api-errors'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
-import { client } from '#/lib/orpc'
+import { client, orpc } from '#/lib/orpc'
 
 import { SettingsSectionLayout } from './settings-ui'
 
@@ -18,6 +19,22 @@ export function GeneralSection() {
   const organization = me.user?.organization ?? null
   const [draft, setDraft] = useState<string | null>(null)
   const [invalid, setInvalid] = useState(false)
+  const queryClient = useQueryClient()
+
+  /** The organization as the API holds it now; a failure says `failure` and keeps what shows. */
+  async function load(failure: string) {
+    try {
+      await queryClient.fetchQuery({ ...orpc.me.get.queryOptions(), staleTime: 0 })
+    } catch (err) {
+      reportError('[general] loading the organization failed', err)
+      toastError(failure)
+    }
+  }
+
+  const loadOnOpen = useRef(() => load(t(`${K}.notLoaded`)))
+  useEffect(() => {
+    void loadOnOpen.current()
+  }, [])
 
   async function saveName() {
     if (!organization || !me.isAdmin || draft === null) return
@@ -42,7 +59,7 @@ export function GeneralSection() {
       reportError('[general] renaming the organization failed', err)
       toastError(t(`${K}.notSaved`))
       setDraft(null)
-      await me.reload()
+      await load(t(`${K}.notSaved`))
     }
   }
 
