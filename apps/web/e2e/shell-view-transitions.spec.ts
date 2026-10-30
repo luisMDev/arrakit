@@ -1,5 +1,6 @@
 import { type Page, expect, test } from '@playwright/test'
 
+import { magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
 
 async function signInWithOrganization(page: Page) {
@@ -9,11 +10,7 @@ async function signInWithOrganization(page: Page) {
     headers: { origin: WEB_ORIGIN },
   })
   expect(sent.ok(), await sent.text()).toBe(true)
-  const outbox = await page.request.get(`/api/dev/outbox?to=${encodeURIComponent(email)}`)
-  const [mail] = (await outbox.json()) as { text: string }[]
-  const link = mail?.text.match(/https?:\/\/\S+\/api\/auth\/magic-link\/verify\S+/)?.[0]
-  expect(link).toBeTruthy()
-  await page.goto(link!)
+  await page.goto(await magicLinkFor(page.request, email))
   const created = await page.request.post('/api/rpc/organizations/create', {
     data: { json: { name: 'Acme', personName: 'Ana Ruiz', termsAccepted: true } },
     headers: { origin: WEB_ORIGIN },

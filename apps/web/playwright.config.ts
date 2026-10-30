@@ -1,10 +1,17 @@
 import { defineConfig, devices } from '@playwright/test'
 
-import { API_ORIGIN as apiOrigin, API_PORT, WEB_ORIGIN as webOrigin, WEB_PORT } from './e2e/origins'
+import {
+  API_ORIGIN as apiOrigin,
+  API_PORT,
+  MAILPIT_ORIGIN as mailpitOrigin,
+  MAILPIT_PORT,
+  WEB_ORIGIN as webOrigin,
+  WEB_PORT,
+} from './e2e/origins'
 
-// End-to-end tests boot the API (Hono, PGlite in a throwaway dir, fake Stripe,
-// console/outbox mailer) and the web dev server, then drive Chromium. Set E2E_API_PORT and
-// E2E_WEB_PORT to run a second suite next to another one; each pair gets its own database.
+// End-to-end tests boot Mailpit, the API (Hono, PGlite in a throwaway dir, fake Stripe, mail to
+// Mailpit) and the web dev server, then drive Chromium. Set E2E_API_PORT, E2E_WEB_PORT and
+// E2E_MAILPIT_PORT to run a second suite next to another one; each set gets its own database.
 
 export default defineConfig({
   testDir: './e2e',
@@ -20,6 +27,12 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
+      command: `../../scripts/mailpit.sh --listen localhost:${MAILPIT_PORT} --smtp localhost:${MAILPIT_PORT + 1}`,
+      url: `${mailpitOrigin}/livez`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
       command: 'pnpm --filter @arrakit/api exec tsx src/main.ts',
       url: `${apiOrigin}/health`,
       reuseExistingServer: !process.env.CI,
@@ -33,7 +46,7 @@ export default defineConfig({
         BETTER_AUTH_SECRET: 'e2e-secret-e2e-secret-e2e-secret-0000',
         BETTER_AUTH_URL: webOrigin,
         WEB_URL: webOrigin,
-        DEV_OUTBOX: '1',
+        MAILPIT_URL: mailpitOrigin,
       },
     },
     {

@@ -1,25 +1,12 @@
 import { type Page, expect, test } from '@playwright/test'
 
+import { magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
 const FAKE_STRIPE_SIGNATURE = 't=1,v1=fake-stripe-signature'
 const RENEWAL = Date.UTC(2027, 9, 4) / 1000
 
 const uniqueEmail = (who: string) =>
   `${who}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@billing.test`
-
-async function magicLink(page: Page, email: string) {
-  await expect
-    .poll(async () => {
-      const res = await page.request.get(`/api/dev/outbox?to=${encodeURIComponent(email)}`)
-      return ((await res.json()) as unknown[]).length
-    })
-    .toBeGreaterThan(0)
-  const res = await page.request.get(`/api/dev/outbox?to=${encodeURIComponent(email)}`)
-  const [mail] = (await res.json()) as { text: string }[]
-  const link = mail?.text.match(/https?:\/\/\S+\/api\/auth\/magic-link\/verify\S+/)?.[0]
-  expect(link).toBeTruthy()
-  return link!
-}
 
 async function rpc<T>(page: Page, path: string, input: unknown = null): Promise<T> {
   const res = await page.request.post(`/api/rpc/${path}`, {
@@ -37,7 +24,7 @@ async function ownerOnFree(page: Page, who: string) {
     headers: { origin: WEB_ORIGIN },
   })
   expect(sent.ok(), await sent.text()).toBe(true)
-  await page.goto(await magicLink(page, email))
+  await page.goto(await magicLinkFor(page.request, email))
   const organization = await rpc<{ id: string }>(page, 'organizations/create', {
     name: 'Billing Co',
     termsAccepted: true,
@@ -106,7 +93,7 @@ test('a visitor picks Pro on Pricing, signs up, creates the organization and rea
   const email = uniqueEmail('visitor')
   await page.getByRole('textbox', { name: 'Work email' }).fill(email)
   await page.getByRole('button', { name: 'Continue' }).click()
-  await page.goto(await magicLink(page, email))
+  await page.goto(await magicLinkFor(page.request, email))
   await expect(page).toHaveURL(/\/profile\?plan=pro&cycle=yearly$/)
   await page.getByRole('button', { name: 'Skip' }).click()
 
@@ -188,7 +175,7 @@ test('a member sees Plans without buy buttons and cannot reach Billing or Checko
   const context = await browser.newContext({ baseURL: WEB_ORIGIN })
   const member = await context.newPage()
   try {
-    await member.goto(await magicLink(member, memberEmail))
+    await member.goto(await magicLinkFor(member.request, memberEmail))
     await expect(member).toHaveURL(/\/app$/)
 
     await member.goto('/app/plans')

@@ -1,24 +1,12 @@
 import { type Page, expect, test } from '@playwright/test'
 
+import { magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
 
 const FAKE_STRIPE_SIGNATURE = 't=1,v1=fake-stripe-signature'
 
 const uniqueEmail = (who: string) =>
   `${who}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@usage.test`
-
-async function linkFor(page: Page, email: string): Promise<string> {
-  let link: string | undefined
-  await expect
-    .poll(async () => {
-      const res = await page.request.get(`/api/dev/outbox?to=${encodeURIComponent(email)}`)
-      const [mail] = (await res.json()) as { text: string }[]
-      link = mail?.text.match(/https?:\/\/\S+\/api\/auth\/magic-link\/verify\S+/)?.[0]
-      return link
-    })
-    .toBeTruthy()
-  return link!
-}
 
 async function rpc<T>(page: Page, path: string, input: unknown = null): Promise<T> {
   const res = await page.request.post(`/api/rpc/${path}`, {
@@ -44,7 +32,7 @@ async function ownerWithOrganization(page: Page) {
     headers: { origin: WEB_ORIGIN },
   })
   expect(sent.ok(), await sent.text()).toBe(true)
-  await page.goto(await linkFor(page, email))
+  await page.goto(await magicLinkFor(page.request, email))
   const organization = await rpc<{ id: string }>(page, 'organizations/create', {
     name: 'Usage Co',
     termsAccepted: true,
@@ -153,7 +141,7 @@ test('a member sees the usage cards in Settings > Usage, with no Add credits', a
   await rpc(page, 'invitations/invite', { email: memberEmail, role: 'member' })
   const memberContext = await browser.newContext({ baseURL })
   const memberPage = await memberContext.newPage()
-  await memberPage.goto(await linkFor(page, memberEmail))
+  await memberPage.goto(await magicLinkFor(page.request, memberEmail))
   await expect(memberPage).toHaveURL(/\/app(\/.*)?$/)
   expect(await rpc<{ role: string }>(memberPage, 'me/get')).toMatchObject({ role: 'member' })
 

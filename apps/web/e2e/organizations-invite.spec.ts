@@ -1,5 +1,6 @@
 import { type Page, expect, test } from '@playwright/test'
 
+import { magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
 const FAKE_STRIPE_SIGNATURE = 't=1,v1=fake-stripe-signature'
 
@@ -7,20 +8,6 @@ const uniqueEmail = (who: string) =>
   `${who}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@invite.test`
 
 const localPart = (email: string) => email.split('@')[0]!
-
-/** The newest magic link mailed to `email` through the dev outbox. */
-async function linkFor(page: Page, email: string): Promise<string> {
-  let link: string | undefined
-  await expect
-    .poll(async () => {
-      const res = await page.request.get(`/api/dev/outbox?to=${encodeURIComponent(email)}`)
-      const [mail] = (await res.json()) as { text: string }[]
-      link = mail?.text.match(/https?:\/\/\S+\/api\/auth\/magic-link\/verify\S+/)?.[0]
-      return link
-    })
-    .toBeTruthy()
-  return link!
-}
 
 async function rpc<T>(page: Page, path: string, input: unknown = null): Promise<T> {
   const res = await page.request.post(`/api/rpc/${path}`, {
@@ -39,7 +26,7 @@ async function ownerOnTeam(page: Page) {
     headers: { origin: WEB_ORIGIN },
   })
   expect(sent.ok(), await sent.text()).toBe(true)
-  await page.goto(await linkFor(page, email))
+  await page.goto(await magicLinkFor(page.request, email))
   const organization = await rpc<{ id: string }>(page, 'organizations/create', {
     name: 'Halden Capital',
     personName: 'Lucía Gómez',
@@ -120,13 +107,13 @@ test('an owner invites colleagues who join by the emailed link; roles change, on
   // Each colleague opens the invite email's link in their own browser and lands in the app.
   const kimContext = await browser.newContext({ baseURL })
   const kimPage = await kimContext.newPage()
-  await kimPage.goto(await linkFor(page, kim))
+  await kimPage.goto(await magicLinkFor(page.request, kim))
   await expect(kimPage).toHaveURL(/\/app(\/.*)?$/)
   expect(await rpc<{ role: string }>(kimPage, 'me/get')).toMatchObject({ role: 'member' })
 
   const leoContext = await browser.newContext({ baseURL })
   const leoPage = await leoContext.newPage()
-  await leoPage.goto(await linkFor(page, leo))
+  await leoPage.goto(await magicLinkFor(page.request, leo))
   await expect(leoPage).toHaveURL(/\/app(\/.*)?$/)
 
   // A member sees neither Members nor Billing, and gets Account at /app/members.

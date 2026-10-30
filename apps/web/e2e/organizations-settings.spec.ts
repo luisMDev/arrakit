@@ -1,5 +1,6 @@
 import { type Page, expect, test } from '@playwright/test'
 
+import { magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
 
 const uniqueEmail = (who: string) =>
@@ -11,11 +12,7 @@ async function signIn(page: Page, email: string) {
     headers: { origin: WEB_ORIGIN },
   })
   expect(sent.ok(), await sent.text()).toBe(true)
-  const outbox = await page.request.get(`/api/dev/outbox?to=${encodeURIComponent(email)}`)
-  const [mail] = (await outbox.json()) as { text: string }[]
-  const link = mail?.text.match(/https?:\/\/\S+\/api\/auth\/magic-link\/verify\S+/)?.[0]
-  expect(link).toBeTruthy()
-  await page.goto(link!)
+  await page.goto(await magicLinkFor(page.request, email))
 }
 
 async function createOrganization(page: Page, name: string, personName: string) {

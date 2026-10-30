@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 
+import { magicLinkFor } from './mailpit'
 import { API_ORIGIN, WEB_ORIGIN } from './origins'
 
 // The web server (the Nitro handler in src/server/api-proxy-handler.ts) proxies /api/** and the OAuth metadata
@@ -42,16 +43,11 @@ test('forwards POST bodies, leaves redirects to the browser and passes the clien
   })
   expect(asked.status()).toBe(200)
 
-  const outbox = `${WEB_ORIGIN}/api/dev/outbox?to=${encodeURIComponent(email)}`
-  await expect
-    .poll(async () => ((await (await request.get(outbox)).json()) as unknown[]).length)
-    .toBe(1)
-  const [mail] = (await (await request.get(outbox)).json()) as { text: string }[]
-  const link = mail?.text.match(/https?:\/\/\S+\/api\/auth\/magic-link\/verify\S+/)?.[0]
-  expect(link?.startsWith(WEB_ORIGIN)).toBe(true)
+  const link = await magicLinkFor(request, email)
+  expect(link.startsWith(WEB_ORIGIN)).toBe(true)
 
   // The API's redirect reaches the browser as a redirect (the proxy does not follow it).
-  const opened = await request.get(link!, { maxRedirects: 0 })
+  const opened = await request.get(link, { maxRedirects: 0 })
   expect(opened.status()).toBeGreaterThanOrEqual(300)
   expect(opened.status()).toBeLessThan(400)
   expect(opened.headers().location).toContain('/profile')

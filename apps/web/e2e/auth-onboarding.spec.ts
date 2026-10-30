@@ -1,30 +1,17 @@
 import { type Page, expect, test } from '@playwright/test'
 
+import { magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
 
 const uniqueEmail = (who: string) =>
   `${who}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@acme.test`
-
-async function linkFor(page: Page, email: string) {
-  await expect
-    .poll(async () => {
-      const res = await page.request.get(`/api/dev/outbox?to=${encodeURIComponent(email)}`)
-      return ((await res.json()) as unknown[]).length
-    })
-    .toBeGreaterThan(0)
-  const res = await page.request.get(`/api/dev/outbox?to=${encodeURIComponent(email)}`)
-  const [mail] = (await res.json()) as { text: string }[]
-  const link = mail?.text.match(/https?:\/\/\S+\/api\/auth\/magic-link\/verify\S+/)?.[0]
-  expect(link).toBeTruthy()
-  return link!
-}
 
 async function askForLink(page: Page, email: string) {
   await page.getByRole('textbox', { name: 'Work email' }).fill(email)
   await page.getByRole('button', { name: 'Continue' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Check your email.' })).toBeVisible()
   await expect(page.getByText(`We sent a sign-in link to ${email}.`)).toBeVisible()
-  return linkFor(page, email)
+  return magicLinkFor(page.request, email)
 }
 
 test('a new person signs up with a magic link, skips Profile and lands on Home', async ({

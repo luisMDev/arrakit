@@ -1,24 +1,14 @@
 import { createHash, randomBytes } from 'node:crypto'
 
-import { type APIRequestContext, type Page, expect, test } from '@playwright/test'
+import { type Page, expect, test } from '@playwright/test'
 
+import { clearMailFor, magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
 const MCP_URL = `${WEB_ORIGIN}/api/mcp`
 const CALLBACK = 'https://claude.ai/api/mcp/auth_callback'
 
 const uniqueEmail = (who: string) =>
   `${who}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@acme.test`
-
-async function magicLinkFor(request: APIRequestContext, email: string) {
-  const outbox = `/api/dev/outbox?to=${encodeURIComponent(email)}`
-  await expect
-    .poll(async () => ((await (await request.get(outbox)).json()) as unknown[]).length)
-    .toBeGreaterThan(0)
-  const [mail] = (await (await request.get(outbox)).json()) as { text: string }[]
-  const link = mail?.text.match(/https?:\/\/\S+\/api\/auth\/magic-link\/verify\S+/)?.[0]
-  expect(link).toBeTruthy()
-  return link!
-}
 
 async function ownerWithOrganization(page: Page, email: string, organization: string) {
   const asked = await page.request.post('/api/auth/sign-in/magic-link', {
@@ -32,7 +22,7 @@ async function ownerWithOrganization(page: Page, email: string, organization: st
     data: { json: { name: organization, termsAccepted: true } },
   })
   expect(created.ok()).toBe(true)
-  await page.request.delete(`/api/dev/outbox`)
+  await clearMailFor(page.request, email)
   await page.context().clearCookies()
 }
 

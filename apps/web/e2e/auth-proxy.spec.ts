@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 
+import { magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
 
 const uniqueEmail = () => `proxy-${Date.now()}-${Math.floor(Math.random() * 1e6)}@acme.test`
@@ -17,18 +18,9 @@ test('a session created through the web proxy records the client IP', async ({ p
   })
   expect(asked.status(), await asked.text()).toBe(200)
 
-  await expect
-    .poll(async () => {
-      const res = await page.request.get(`/api/dev/outbox?to=${encodeURIComponent(email)}`)
-      return ((await res.json()) as unknown[]).length
-    })
-    .toBeGreaterThan(0)
-  const outbox = await page.request.get(`/api/dev/outbox?to=${encodeURIComponent(email)}`)
-  const [mail] = (await outbox.json()) as { text: string }[]
-  const link = mail?.text.match(/https?:\/\/\S+\/api\/auth\/magic-link\/verify\S+/)?.[0]
-  expect(link).toBeTruthy()
+  const link = await magicLinkFor(page.request, email)
 
-  const verify = await page.request.get(link!, {
+  const verify = await page.request.get(link, {
     maxRedirects: 0,
     headers: { 'x-real-ip': '203.0.113.9', 'x-forwarded-for': '203.0.113.9, 198.51.100.1' },
   })
