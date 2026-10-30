@@ -2,7 +2,7 @@ import { personName } from '@arrakit/address'
 import { daysUntil, memberEmail, signinEmail, toMail } from '@arrakit/emails'
 
 import { MAGIC_LINK_MINUTES, isTrustedOrigin } from './config'
-import type { AuthDeps } from './deps'
+import type { AuthDeps } from './auth'
 
 const JOIN_PATH = /^\/join\/([^/]+)$/
 
@@ -28,7 +28,7 @@ export function invitationIdOf(linkURL: string, config: AuthDeps['config']): str
 export function magicLinkSender(deps: AuthDeps, now: () => Date = () => new Date()) {
   return async ({ email, url }: { email: string; url: string }) => {
     const invitationId = invitationIdOf(url, deps.config)
-    const invitation = invitationId ? await deps.invitationFor(invitationId, email) : null
+    const invitation = invitationId ? await deps.data.invitationFor(invitationId, email) : null
     const mail = invitation
       ? memberEmail({
           organization: invitation.organization.name,

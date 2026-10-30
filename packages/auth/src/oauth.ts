@@ -2,7 +2,7 @@ import { oauthProvider } from '@better-auth/oauth-provider'
 import { APIError } from 'better-auth/api'
 
 import { ORGANIZATION_CLAIM, mcpResourceURL } from './config'
-import type { AuthDeps } from './deps'
+import type { AuthDeps } from './auth'
 
 /**
  * The web server proxies /api with fetch, which rewrites `sec-fetch-mode` to `cors`. The OAuth
@@ -26,10 +26,8 @@ async function grantedOrganization(
   session: Record<string, unknown>,
 ): Promise<string | null> {
   const active = session.activeOrganizationId
-  if (typeof active === 'string' && (await deps.organizations.isMember(userId, active))) {
-    return active
-  }
-  return deps.organizations.defaultOf(userId)
+  if (typeof active === 'string' && (await deps.data.membershipIn(userId, active))) return active
+  return (await deps.data.memberOf(userId))?.organization.id ?? null
 }
 
 export function connectorProvider(deps: AuthDeps) {

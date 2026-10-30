@@ -4,9 +4,14 @@ import { isWorkEmail, normalizeEmail, organizationNameOr, slugCandidates } from 
 import { APIError, createAuthMiddleware, getSessionFromCtx, isAPIError } from 'better-auth/api'
 
 import { type AuthConfig, isTrustedOrigin } from './config'
-import type { OrganizationDeps } from './deps'
-import { memberChangeRefusal } from './organization-policy'
-import { type Permissions, allows, parsePermissions, permissionsOf } from './permissions'
+import type { AuthDeps } from './auth'
+import {
+  type Permissions,
+  allows,
+  memberChangeRefusal,
+  parsePermissions,
+  permissionsOf,
+} from './permissions'
 
 const SIGN_IN_PATHS = new Set(['/sign-in/social', '/sign-in/magic-link'])
 
@@ -185,13 +190,13 @@ export function beforeHook(config: AuthConfig) {
  * The plugin swallows a failed invite email (it runs the sender as a background task), so the
  * sender records the failure and the invite answers 503 here, with the invitation kept.
  */
-export function afterHook(organizations: OrganizationDeps, unsentInvitations: Set<string>) {
+export function afterHook(data: AuthDeps['data'], unsentInvitations: Set<string>) {
   return createAuthMiddleware(async (ctx) => {
     const returned = ctx.context.returned
     if (!returned || isAPIError(returned) || returned instanceof Response) return
     if (ctx.path === '/organization/leave') {
       const member = returned as MemberRow
-      await organizations.revokeGrants(member.organizationId, member.userId)
+      await data.revokeGrants(member.organizationId, member.userId)
     }
     if (ctx.path === '/organization/invite-member') {
       const invitation = returned as { id: string; email: string }

@@ -30,7 +30,7 @@ const originOf = (url: string, name: string) => {
 }
 
 export function loadAuthConfig(env: Env): AuthConfig {
-  const value = (name: string) => (env[name] ? env[name] : undefined)
+  const value = (name: string) => env[name] || undefined
   const missing: string[] = []
   if (!value('BETTER_AUTH_SECRET')) missing.push('BETTER_AUTH_SECRET')
   if (!value('BETTER_AUTH_URL')) missing.push('BETTER_AUTH_URL')

@@ -28,10 +28,9 @@ async function openAuth(env: Record<string, string>) {
       BETTER_AUTH_URL: WEB,
       ...env,
     }),
-    database: data.authDatabase,
+    data,
     mailer: { send: async (mail) => void sent.push(mail) },
-    invitationFor: async () => null,
-    organizations: testOrganizationDeps(data),
+    organizations: testOrganizationDeps,
   })
   return { auth, data, sent }
 }

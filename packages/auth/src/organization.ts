@@ -1,9 +1,8 @@
 import { APIError } from 'better-auth/api'
 import { organization } from 'better-auth/plugins'
 
-import type { AuthDeps } from './deps'
-import { organizationSchema } from './organization-schema'
-import { ac, roles } from './permissions'
+import type { AuthDeps } from './auth'
+import { ac, organizationSchema, roles } from './permissions'
 
 const INVITATION_DAYS = 7
 
@@ -15,7 +14,7 @@ export function organizationPlugin(
   links: { send?: JoinLinkSender },
   unsentInvitations: Set<string>,
 ) {
-  const { organizations, config } = deps
+  const { organizations, config, data } = deps
   return organization({
     ac,
     roles,
@@ -38,7 +37,9 @@ export function organizationPlugin(
         unsentInvitations.add(id)
       }
       try {
-        await organizations.markInvitationEmailSent(organization.id, id, !unsentInvitations.has(id))
+        await data
+          .forOrganization(organization.id)
+          .members.markInvitationEmailSent(id, !unsentInvitations.has(id))
       } catch (err) {
         organizations.log.error(
           { err, organizationId: organization.id, invitationId: id },
@@ -62,17 +63,19 @@ export function organizationPlugin(
       afterDeleteOrganization: ({ organization }) => organizations.afterDelete(organization.id),
       async beforeCreateInvitation({ invitation, organization }) {
         const seats = organizations.seats(organization)
-        if ((await organizations.seatsTaken(organization.id, invitation.email)) >= seats.limit) {
+        if (
+          (await data.forOrganization(organization.id).members.seatsTaken(invitation.email)) >=
+          seats.limit
+        ) {
           throw new APIError('FORBIDDEN', { message: seats.full })
         }
       },
       async beforeAcceptInvitation({ user, organization }) {
-        if (await organizations.isMember(user.id, organization.id)) {
+        if (await data.membershipIn(user.id, organization.id)) {
           throw new APIError('CONFLICT', { message: `You're already in ${organization.name}.` })
         }
       },
-      afterRemoveMember: ({ member }) =>
-        organizations.revokeGrants(member.organizationId, member.userId),
+      afterRemoveMember: ({ member }) => data.revokeGrants(member.organizationId, member.userId),
     },
   })
 }

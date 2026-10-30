@@ -3,10 +3,9 @@ import { type TestData, openTestData } from '@arrakit/db/testing'
 import type { Mail } from '@arrakit/emails'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { createAuth } from './auth'
+import { type InvitationForMail, createAuth } from './auth'
 import { testOrganizationDeps } from './test-deps'
 import { loadAuthConfig } from './config'
-import type { InvitationForMail } from './deps'
 import { invitationIdOf } from './magic-link'
 
 const WEB = 'http://localhost:5200'
@@ -22,13 +21,15 @@ describe('magic link sign-in (PGlite)', () => {
     data = await openTestData()
     auth = createAuth({
       config,
-      database: data.authDatabase,
-      mailer: { send: async (mail) => void sent.push(mail) },
-      invitationFor: async (id, email) => {
-        const found = invitations.get(id)
-        return found && found.email === email ? found.invitation : null
+      data: {
+        ...data,
+        invitationFor: async (id, email) => {
+          const found = invitations.get(id)
+          return found && found.email === email ? found.invitation : null
+        },
       },
-      organizations: testOrganizationDeps(data),
+      mailer: { send: async (mail) => void sent.push(mail) },
+      organizations: testOrganizationDeps,
     })
   })
   afterAll(() => data.close())

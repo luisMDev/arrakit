@@ -1,3 +1,9 @@
-export * from './config'
-export type { AuthDeps, OrganizationDeps } from './deps'
-export { createAuth, type Auth } from './auth'
+export {
+  ORGANIZATION_CLAIM,
+  isTrustedOrigin,
+  loadAuthConfig,
+  mcpResourceURL,
+  oauthIssuer,
+  type AuthConfig,
+} from './config'
+export { createAuth, type Auth, type AuthDeps, type OrganizationDeps } from './auth'
