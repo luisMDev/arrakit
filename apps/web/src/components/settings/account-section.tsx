@@ -21,20 +21,14 @@ import {
 } from '#/components/ui/select'
 import { Switch } from '#/components/ui/switch'
 import { type Language, isLanguage, loadLanguage } from '#/i18n'
-import {
-  type SaveOnChange,
-  reportError,
-  saveOnChange,
-  statusOf,
-  toastError,
-  toastInfo,
-} from '#/lib/api-errors'
+import { apiMessage, reportError, type SaveOnChange, saveOnChange } from '#/lib/api-errors'
 import { authClient } from '#/lib/auth-client'
 import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing } from '#/lib/form'
+import { notify } from '#/lib/notify'
 import { client, orpc } from '#/lib/orpc'
+import { useFailureToast } from '#/lib/use-failure-toast'
 
-import { apiMessage } from './api-message'
 import { ConfirmDeleteDialog } from './confirm-delete-dialog'
 import type { SectionProps } from './settings-page'
 import { SettingRow, SettingsCard, SettingsHeading, SettingsSectionLayout } from './settings-ui'
@@ -121,12 +115,11 @@ export function AccountSection({ open }: SectionProps) {
   const deletingRef = useRef(false)
   const zoneFilled = useRef(false)
 
-  useEffect(() => {
-    if (error && !account) {
-      reportError('[account] loading the account failed', error)
-      toastError(t(`${K}.notLoaded`))
-    }
-  }, [error, account, t])
+  useFailureToast(
+    account ? null : error,
+    '[account] loading the account failed',
+    t(`${K}.notLoaded`),
+  )
 
   /** The saved account, fresh; a failure says `failure` and keeps what the screen shows. */
   async function load(failure: string) {
@@ -134,7 +127,7 @@ export function AccountSection({ open }: SectionProps) {
       await queryClient.fetchQuery({ ...accountQuery, staleTime: 0 })
     } catch (err) {
       reportError('[account] reloading the account failed', err)
-      toastError(failure)
+      notify.error(failure)
     }
   }
 
@@ -210,11 +203,11 @@ export function AccountSection({ open }: SectionProps) {
     try {
       const result = await authClient.revokeOtherSessions()
       if (result?.error) throw result.error
-      toastInfo(t(`${K}.signedOut`))
+      notify.success(t(`${K}.signedOut`))
       void load(t(`${K}.devicesNotLoaded`))
     } catch (err) {
       reportError('[account] signing out everywhere failed', err)
-      toastError(t(`${K}.notSignedOut`))
+      notify.error(t(`${K}.notSignedOut`))
     } finally {
       signingOutRef.current = false
       setSigningOut(false)
@@ -230,14 +223,14 @@ export function AccountSection({ open }: SectionProps) {
     } catch (err) {
       deletingRef.current = false
       setDeleting(false)
-      const message = statusOf(err) === 409 ? apiMessage(err) : null
+      const message = apiMessage(err, (status) => status === 409)
       if (!message) reportError('[account] deleting the account failed', err)
-      toastError(message ?? t(`${K}.notDeleted`))
+      notify.error(message ?? t(`${K}.notDeleted`))
       return
     }
     await authClient.signOut().catch(() => undefined)
     setConfirming(false)
-    toastInfo(t(`${K}.deleted`))
+    notify.success(t(`${K}.deleted`))
     me.signedOut()
     void navigate({ to: '/signin' })
   }

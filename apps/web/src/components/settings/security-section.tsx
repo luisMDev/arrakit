@@ -4,11 +4,11 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/components/ui/card'
-import { reportError, toastError, toastInfo } from '#/lib/api-errors'
+import { apiMessage, reportError } from '#/lib/api-errors'
 import { useCurrentUser } from '#/lib/current-user'
+import { notify } from '#/lib/notify'
 import { client } from '#/lib/orpc'
 
-import { apiMessage, isError } from './api-message'
 import { ConfirmDeleteDialog } from './confirm-delete-dialog'
 import { SettingsSectionLayout } from './settings-ui'
 
@@ -30,13 +30,13 @@ export function SecuritySection() {
       await client.organizations.delete()
     } catch (err) {
       reportError('[security] deleting the organization failed', err)
-      toastError(apiMessage(err, isError) ?? t(`${K}.notDeleted`))
+      notify.error(apiMessage(err, (status) => status >= 400) ?? t(`${K}.notDeleted`))
       deletingRef.current = false
       setDeleting(false)
       return
     }
     setConfirming(false)
-    toastInfo(t(`${K}.deleted`))
+    notify.success(t(`${K}.deleted`))
     me.signedOut()
     void navigate({ to: '/profile' })
   }

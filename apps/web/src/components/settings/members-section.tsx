@@ -3,11 +3,10 @@ import type { AssignableRole } from '@arrakit/auth/roles'
 import { type InvitationView, assignableRoleSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
-import { Controller, useForm } from 'react-hook-form'
 import type { TFunction } from 'i18next'
+import { useRef, useState } from 'react'
+import { Controller, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import { z } from 'zod'
 
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
@@ -23,13 +22,14 @@ import {
   SelectValue,
 } from '#/components/ui/select'
 import { Separator } from '#/components/ui/separator'
-import { reportError, toastError, toastInfo } from '#/lib/api-errors'
+import { apiFailed, apiMessage } from '#/lib/api-errors'
 import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing } from '#/lib/form'
+import { notify } from '#/lib/notify'
 import { client, orpc } from '#/lib/orpc'
+import { useFailureToast } from '#/lib/use-failure-toast'
 import { cn } from '#/lib/utils'
 
-import { apiMessage } from './api-message'
 import type { SectionProps } from './settings-page'
 import { SettingsSectionLayout } from './settings-ui'
 
@@ -96,12 +96,7 @@ export function MembersSection({ open }: SectionProps) {
   const busyRef = useRef(false)
 
   const loadError = members.error ?? invites.error
-  useEffect(() => {
-    if (loadError) {
-      reportError('[members] loading members failed', loadError)
-      toastError(t(`${K}.notLoaded`))
-    }
-  }, [loadError, t])
+  useFailureToast(loadError, '[members] loading members failed', t(`${K}.notLoaded`))
 
   if (!me.isAdmin || !me.user) return <></>
   const myEmail = me.user.email
@@ -123,11 +118,8 @@ export function MembersSection({ open }: SectionProps) {
     }
   }
 
-  function failed(context: string, err: unknown, fallback: string) {
-    const message = apiMessage(err)
-    if (!message) reportError(`[members] ${context}`, err)
-    toastError(message ?? fallback)
-  }
+  const failed = (context: string, err: unknown, fallback: string) =>
+    apiFailed(`[members] ${context}`, err, fallback, apiMessage)
 
   const manages = (member: Member) =>
     me.isAdmin &&
@@ -145,9 +137,9 @@ export function MembersSection({ open }: SectionProps) {
             : [...list, sent],
         )
         form.reset()
-        if (sent.emailSent) toastInfo(t(`${K}.inviteSent`, { email: sent.email }))
+        if (sent.emailSent) notify.success(t(`${K}.inviteSent`, { email: sent.email }))
         else
-          toast.error(t(`${K}.emailNotSent`), {
+          notify.warning(t(`${K}.emailNotSent`), {
             description: t(`${K}.inviteSavedNotSent`, { email: sent.email }),
           })
       } catch (err) {
@@ -160,7 +152,7 @@ export function MembersSection({ open }: SectionProps) {
     try {
       const changed = await client.members.changeRole({ email: member.email, role: next })
       setMembers((list) => list.map((m) => (m.email === member.email ? changed : m)))
-      toastInfo(t(changed.role === 'admin' ? `${K}.nowAdmin` : `${K}.nowMember`, { name }))
+      notify.success(t(changed.role === 'admin' ? `${K}.nowAdmin` : `${K}.nowMember`, { name }))
     } catch (err) {
       failed('changing a role failed', err, t(`${K}.roleNotChanged`, { name }))
       setMembers((list) => [...list])
@@ -173,7 +165,7 @@ export function MembersSection({ open }: SectionProps) {
       try {
         await client.members.remove({ email: member.email })
         setMembers((list) => list.filter((m) => m.email !== member.email))
-        toastInfo(t(`${K}.removed`, { name, organization: me.user?.organization?.name ?? '' }))
+        notify.success(t(`${K}.removed`, { name, organization: me.user?.organization?.name ?? '' }))
       } catch (err) {
         failed('removing failed', err, t(`${K}.notRemoved`, { name }))
       }
@@ -184,7 +176,7 @@ export function MembersSection({ open }: SectionProps) {
       try {
         const sent = await client.invitations.resend({ id: invitation.id })
         setInvites((list) => list.map((i) => (i.id === sent.id ? sent : i)))
-        toastInfo(t(`${K}.inviteResent`, { email: sent.email }))
+        notify.success(t(`${K}.inviteResent`, { email: sent.email }))
       } catch (err) {
         failed('resending failed', err, t(`${K}.notResent`))
       }
@@ -195,7 +187,7 @@ export function MembersSection({ open }: SectionProps) {
       try {
         await client.invitations.cancel({ id: invitation.id })
         setInvites((list) => list.filter((i) => i.id !== invitation.id))
-        toastInfo(t(`${K}.inviteCancelled`, { email: invitation.email }))
+        notify.success(t(`${K}.inviteCancelled`, { email: invitation.email }))
       } catch (err) {
         failed('cancelling failed', err, t(`${K}.notCancelled`))
       }

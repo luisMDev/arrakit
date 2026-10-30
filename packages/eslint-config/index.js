@@ -44,15 +44,18 @@ const restrictedSyntax = (specifier, message) => [
   },
 ]
 
-const guard = ({ internals }) => ({
+const guard = ({ internals, paths = [] }) => ({
   rules: {
     'no-restricted-imports': [
       'error',
       {
-        paths: DATA_ONLY_MODULES.filter((name) => !name.startsWith('@aws-sdk/')).map((name) => ({
-          name,
-          message: DRIVER_MESSAGE,
-        })),
+        paths: [
+          ...DATA_ONLY_MODULES.filter((name) => !name.startsWith('@aws-sdk/')).map((name) => ({
+            name,
+            message: DRIVER_MESSAGE,
+          })),
+          ...paths,
+        ],
         patterns: [
           {
             group: [
@@ -88,15 +91,19 @@ export const TEST_FILES = [
 /**
  * Keeps data access behind openData() / forOrganization(): the drivers are refused everywhere
  * (import, export-from, require, dynamic import, .cjs included), and @arrakit/db subpaths outside
- * test files.
+ * test files. `restrictedPaths` adds workspace-specific `no-restricted-imports` paths, allowed in
+ * test files and in `restrictedPathsAllowedIn`.
  */
-export const restrictDataImports = [
-  guard({ internals: true }),
+const restrictImports = ({ restrictedPaths = [], restrictedPathsAllowedIn = [] }) => [
+  guard({ internals: true, paths: restrictedPaths }),
+  ...(restrictedPathsAllowedIn.length > 0
+    ? [{ files: restrictedPathsAllowedIn, ...guard({ internals: true }) }]
+    : []),
   { files: TEST_FILES, ...guard({ internals: false }) },
 ]
 
 /** Base config: JS + TypeScript recommended rules, Prettier last. */
-export function base({ restrictData = true } = {}) {
+export function base({ restrictData = true, ...restricted } = {}) {
   return tseslint.config(
     {
       ignores: [
@@ -123,7 +130,7 @@ export function base({ restrictData = true } = {}) {
         ],
       },
     },
-    ...(restrictData ? restrictDataImports : []),
+    ...(restrictData ? restrictImports(restricted) : []),
     prettier,
   )
 }

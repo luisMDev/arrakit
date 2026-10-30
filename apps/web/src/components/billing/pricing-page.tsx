@@ -1,14 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import type { BillingCycle } from '@arrakit/plans'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
 import { Skeleton } from '#/components/ui/skeleton'
 import { APP_NAME, SITE_URL } from '#/config'
 import { orpc } from '#/lib/orpc'
+import { useFailureToast } from '#/lib/use-failure-toast'
 
 import { BillingCycleSwitch } from './billing-cycle-switch'
 import { FeatureList, PlanCard } from './plan-card'
@@ -17,11 +17,9 @@ import { leastYearlySaving, planLabel, pricingCopy } from './plan-copy'
 export function PricingPage() {
   const { t } = useTranslation()
   const [cycle, setCycle] = useState<BillingCycle>('yearly')
-  const { data: offers, isError } = useQuery(orpc.plans.list.queryOptions())
+  const { data: offers, error } = useQuery(orpc.plans.list.queryOptions())
 
-  useEffect(() => {
-    if (isError) toast.error(t('pricing.loadFailed'))
-  }, [isError, t])
+  useFailureToast(error, '[pricing] plans.list failed', t('pricing.loadFailed'))
 
   return (
     <div className="flex min-h-svh flex-col">

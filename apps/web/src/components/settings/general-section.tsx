@@ -9,9 +9,10 @@ import { z } from 'zod'
 import { Card, CardContent } from '#/components/ui/card'
 import { Field, FieldDescription, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
-import { reportError, toastError } from '#/lib/api-errors'
+import { reportError } from '#/lib/api-errors'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing } from '#/lib/form'
+import { notify } from '#/lib/notify'
 import { client, orpc } from '#/lib/orpc'
 
 import { SettingsSectionLayout } from './settings-ui'
@@ -38,7 +39,7 @@ export function GeneralSection() {
       await queryClient.fetchQuery({ ...orpc.me.get.queryOptions(), staleTime: 0 })
     } catch (err) {
       reportError('[general] loading the organization failed', err)
-      toastError(failure)
+      notify.error(failure)
     }
   }
 
@@ -63,7 +64,7 @@ export function GeneralSection() {
       form.reset({ name: saved.name })
     } catch (err) {
       reportError('[general] renaming the organization failed', err)
-      toastError(t(`${K}.notSaved`))
+      notify.error(t(`${K}.notSaved`))
       form.reset()
       await load(t(`${K}.notSaved`))
     }

@@ -4,13 +4,13 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import { z } from 'zod'
 
 import { Alert, AlertDescription } from '#/components/ui/alert'
 import { Button } from '#/components/ui/button'
 import { Field, FieldError, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
+import { notify } from '#/lib/notify'
 
 import { EmailRefusedError, PROVIDERS_UNKNOWN, type SocialProvider, useAuthApi } from './auth-api'
 import { GoogleIcon, MicrosoftIcon } from './provider-icons'
@@ -109,7 +109,7 @@ export function SignInOptions({
     } catch (err) {
       fail()
       if (err instanceof EmailRefusedError) form.setError('email', { type: 'refused' })
-      else toast.error(t('auth.signInOptions.linkNotSent'))
+      else notify.error(t('auth.signInOptions.linkNotSent'))
     }
   }
 
@@ -119,7 +119,7 @@ export function SignInOptions({
       await api.signInWith(provider, landing)
     } catch {
       fail()
-      toast.error(t('auth.signInOptions.notSignedIn'))
+      notify.error(t('auth.signInOptions.notSignedIn'))
     }
   }
 

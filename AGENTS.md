@@ -55,7 +55,7 @@ apps/
     src/lib/orpc.ts               typed oRPC client + TanStack Query utils (`orpc.x.y.queryOptions()`)
     src/lib/auth-client.ts        Better Auth React client (`@arrakit/auth/client`)
     src/lib/guards/               route guards: require-user, require-account, skip-when-signed-in
-    src/lib/                      session(), statusOf()/reportError(), useCurrentUser(), titled(), checkoutChoice()
+    src/lib/                      session(), statusOf()/reportError()/apiMessage(), notify, useCurrentUser(), titled(), checkoutChoice()
     src/i18n/                     i18next setup, `tr()`, `loadLanguage()`;
                                   locales/{en,es}/<module>.json deep-merged into one namespace
     src/start.ts                  createStart({ defaultSsr: false }): screens render in the browser
@@ -112,7 +112,7 @@ docs/ownership.md  Which files each feature module owns (parallel work without c
 - **Only `packages/db` imports** `drizzle-orm`, `drizzle-kit`, `pg`, `pg-boss`, `@electric-sql/pglite`
   and `@aws-sdk/*`. Everyone else (apps/api included) goes through `openData()` /
   `forOrganization(id)` from `@arrakit/db`. ESLint `no-restricted-imports` enforces it
-  (`@arrakit/eslint-config` → `restrictDataImports`); packages/db opts out with `base({ restrictData: false })`.
+  (`@arrakit/eslint-config` → `base()`); packages/db opts out with `base({ restrictData: false })`.
 - `packages/contract` is the only place where procedure inputs/outputs are declared. The API
   implements it with `implement(contract)`; the web consumes it through `#/lib/orpc`.
 - `packages/plans`, `packages/address`, `packages/emails` are pure (no I/O, no framework), usable from web and api.
@@ -197,6 +197,11 @@ Run from the repo root.
   own files; `en` and `es` must keep identical key sets and no key may be defined twice (tests).
 - **Contract first**: add the procedure to `packages/contract`, implement it in apps/api, consume
   it in apps/web via `orpc.<ns>.<proc>.queryOptions()` / `.mutationOptions()`.
+- **Toasts**: only through `notify.success/info/warning/error` from `#/lib/notify` (same text never
+  stacks; errors and warnings stay 6 s). Importing `sonner` anywhere else in the web is a lint error.
+  The API's own error text comes from `apiMessage()` / `refusalMessage()` / `paymentRefusal()` in `#/lib/api-errors`.
+  A failed call goes through `apiFailed()` (or `apiCall()`); a failed load through
+  `useFailureToast(error, context, failure)` from `#/lib/use-failure-toast`.
 - Errors from procedures use oRPC errors (`ORPCError`) with HTTP-meaningful codes (400/401/403/404/409/402).
 - Product name: `APP_NAME` in `apps/web/src/config.ts`, `packages/emails` and `apps/landing/src/lib/config.ts`.
 - Use shadcn components and Tailwind utility classes only; no custom design system.
