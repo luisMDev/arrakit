@@ -1,5 +1,5 @@
 import { ACCOUNT_LANGUAGES } from '@arrakit/address'
-import { BILLING_CYCLES, METRIC_KEYS, PAID_PLANS, PLANS } from '@arrakit/plans'
+import { BILLING_CYCLES, METRIC_KEYS, type Metric, PAID_PLANS, PLANS } from '@arrakit/plans'
 import { oc } from '@orpc/contract'
 import { z } from 'zod'
 
@@ -7,7 +7,7 @@ export const planSchema = z.enum(PLANS)
 export const paidPlanSchema = z.enum(PAID_PLANS)
 export const billingCycleSchema = z.enum(BILLING_CYCLES)
 export const languageSchema = z.enum(ACCOUNT_LANGUAGES)
-export const metricSchema = z.enum(METRIC_KEYS as [string, ...string[]])
+export const metricSchema = z.enum(METRIC_KEYS as [Metric, ...Metric[]])
 
 /** A calendar day, `YYYY-MM-DD` (UTC). */
 export const daySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -20,7 +20,6 @@ export const organizationSummarySchema = z.object({
   slug: z.string(),
   plan: planSchema,
 })
-export type OrganizationSummary = z.infer<typeof organizationSummarySchema>
 
 /**
  * Base contract builder. Every procedure may answer 402 when it spends usage

@@ -1,10 +1,11 @@
+import { CURRENCY, METRIC_KINDS } from '@arrakit/plans'
 import { z } from 'zod'
 
 import { base, daySchema, metricSchema } from './common'
 
-export const metricUsageSchema = z.object({
+const metricUsageSchema = z.object({
   metric: metricSchema,
-  kind: z.enum(['consumable', 'capacity']),
+  kind: z.enum(METRIC_KINDS),
   granted: z.number().int(),
   plan: z.number().int(),
   purchased: z.number().int(),
@@ -14,8 +15,8 @@ export const metricUsageSchema = z.object({
   resetsOn: daySchema,
 })
 
-export const usageSchema = z.object({
-  currency: z.literal('usd'),
+const usageSchema = z.object({
+  currency: z.literal(CURRENCY),
   metrics: z.array(metricUsageSchema),
   /** Newest first. */
   topUps: z.array(
