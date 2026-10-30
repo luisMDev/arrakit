@@ -1,11 +1,11 @@
 import { defineConfig, devices } from '@playwright/test'
 
 import {
-  API_ORIGIN as apiOrigin,
+  API_ORIGIN,
   API_PORT,
-  MAILPIT_ORIGIN as mailpitOrigin,
+  MAILPIT_ORIGIN,
   MAILPIT_PORT,
-  WEB_ORIGIN as webOrigin,
+  WEB_ORIGIN,
   WEB_PORT,
 } from './e2e/origins'
 
@@ -21,20 +21,20 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
-    baseURL: webOrigin,
+    baseURL: WEB_ORIGIN,
     trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
       command: `../../scripts/mailpit.sh --listen localhost:${MAILPIT_PORT} --smtp localhost:${MAILPIT_PORT + 1}`,
-      url: `${mailpitOrigin}/livez`,
+      url: `${MAILPIT_ORIGIN}/livez`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
     {
       command: 'pnpm --filter @arrakit/api exec tsx src/main.ts',
-      url: `${apiOrigin}/health`,
+      url: `${API_ORIGIN}/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
       env: {
@@ -44,17 +44,17 @@ export default defineConfig({
         PGLITE_RESET: '1',
         STRIPE_FAKE: '1',
         BETTER_AUTH_SECRET: 'e2e-secret-e2e-secret-e2e-secret-0000',
-        BETTER_AUTH_URL: webOrigin,
-        WEB_URL: webOrigin,
-        MAILPIT_URL: mailpitOrigin,
+        BETTER_AUTH_URL: WEB_ORIGIN,
+        WEB_URL: WEB_ORIGIN,
+        MAILPIT_URL: MAILPIT_ORIGIN,
       },
     },
     {
       command: `pnpm exec vite dev --port ${WEB_PORT}`,
-      url: webOrigin,
+      url: WEB_ORIGIN,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
-      env: { API_ORIGIN: apiOrigin, E2E: '1' },
+      env: { API_ORIGIN: API_ORIGIN, E2E: '1' },
     },
   ],
 })
