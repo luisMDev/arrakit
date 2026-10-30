@@ -18,3 +18,16 @@ export async function consent(accept: boolean, oauthQuery: string): Promise<stri
   if (!url) throw new Error('[oauth] the consent answer named no redirect')
   return url
 }
+
+export interface ConsentOrganization {
+  id: string
+  name: string
+}
+
+/** The person's organizations, read without the page's signed OAuth query. */
+export const listOrganizations = () => authFetch<ConsentOrganization[]>('/organization/list')
+
+/** Makes `organizationId` the one the connector is granted. */
+export async function chooseOrganization(organizationId: string): Promise<void> {
+  await authFetch('/organization/set-active', { organizationId })
+}

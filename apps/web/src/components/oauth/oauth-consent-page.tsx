@@ -1,15 +1,23 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '#/components/ui/button'
+import { Field, FieldLabel } from '#/components/ui/field'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '#/components/ui/select'
 import { APP_NAME } from '#/config'
 import { leave } from '#/lib/leave'
 import { orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
-import { consent, publicClientName } from './oauth-api'
+import { chooseOrganization, consent, listOrganizations, publicClientName } from './oauth-api'
 
 function Message({ title, body }: { title: string; body: string }) {
   return (
@@ -31,7 +39,20 @@ export function OAuthConsentPage({ search = window.location.search }: { search?:
     queryFn: () => publicClientName(clientId),
     enabled: complete,
   })
-  const me = useQuery({ ...orpc.me.get.queryOptions(), enabled: complete })
+  const queryClient = useQueryClient()
+  const meQuery = orpc.me.get.queryOptions()
+  const me = useQuery({ ...meQuery, enabled: complete })
+  const organizations = useQuery({
+    queryKey: ['oauth', 'organizations'],
+    queryFn: listOrganizations,
+    enabled: complete && !!me.data?.organization,
+  })
+  const choose = useApiMutation({
+    mutationKey: ['oauth', 'organization'],
+    mutationFn: chooseOrganization,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: meQuery.queryKey }),
+    meta: { failure: t('oauth.oauthConsent.notSwitched') },
+  })
   const answer = useApiMutation({
     mutationKey: ['oauth', 'consent'],
     mutationFn: (accept: boolean) => consent(accept, oauthQuery),
@@ -68,8 +89,35 @@ export function OAuthConsentPage({ search = window.location.search }: { search?:
                   })}
                 </p>
               </div>
+              {organizations.data && organizations.data.length > 1 ? (
+                <Field className="text-left">
+                  <FieldLabel htmlFor="oauth-organization">
+                    {t('oauth.oauthConsent.organization')}
+                  </FieldLabel>
+                  <Select
+                    value={me.data.organization.id}
+                    disabled={choose.isPending || answer.busy}
+                    onValueChange={(id) => void choose.run(id)}
+                  >
+                    <SelectTrigger id="oauth-organization" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {organizations.data.map((organization) => (
+                        <SelectItem key={organization.id} value={organization.id}>
+                          {organization.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              ) : null}
               <div className="flex flex-col gap-2">
-                <Button size="lg" disabled={answer.busy} onClick={() => void answer.run(true)}>
+                <Button
+                  size="lg"
+                  disabled={answer.busy || choose.isPending}
+                  onClick={() => void answer.run(true)}
+                >
                   {t('oauth.oauthConsent.allow')}
                 </Button>
                 <Button

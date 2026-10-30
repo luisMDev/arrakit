@@ -13,7 +13,7 @@
       "roleAdmin": "Admin",
       "roleMember": "Member",
       "invite": "Invite",
-      "rolesHint": "Admins manage members and billing. Members use the app.",
+      "rolesHint": "Admins manage members and billing. Members use the app. Roles in Settings give other sets of permissions.",
       "remove": "Remove",
       "invitedToday": "Invited today",
       "invitedYesterday": "Invited yesterday",
@@ -24,7 +24,6 @@
       "notLoaded": "Couldn't load your organization's members. Reload the page.",
       "notInvited": "Couldn't invite {{email}}. Try again.",
       "inviteSent": "Invite sent to {{email}}.",
-      "inviteSavedNotSent": "The invite to {{email}} is saved, but the email didn't go out. Resend it from the list.",
       "roleNotChanged": "Couldn't change {{name}}'s role. Try again.",
       "nowAdmin": "{{name}} is now an admin.",
       "nowMember": "{{name}} is now a member.",
@@ -36,7 +35,8 @@
       "inviteCancelled": "Invite to {{email}} cancelled.",
       "enterWorkEmail": "Enter their work email, like {{example}}.",
       "alreadyInOrganization": "{{email}} is already in the organization.",
-      "alreadyInvited": "{{email}} is already invited."
+      "alreadyInvited": "{{email}} is already invited.",
+      "nowRole": "{{name}} now has the {{role}} role."
     }
   }
 }

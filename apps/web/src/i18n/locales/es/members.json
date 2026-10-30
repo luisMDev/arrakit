@@ -13,7 +13,7 @@
       "roleAdmin": "Administrador",
       "roleMember": "Miembro",
       "invite": "Invitar",
-      "rolesHint": "Los administradores gestionan los miembros y la facturación. Los miembros usan la app.",
+      "rolesHint": "Los administradores gestionan los miembros y la facturación. Los miembros usan la app. Los roles de Ajustes dan otros permisos.",
       "remove": "Quitar",
       "invitedToday": "Invitado hoy",
       "invitedYesterday": "Invitado ayer",
@@ -24,7 +24,6 @@
       "notLoaded": "No se han podido cargar los miembros de tu organización. Recarga la página.",
       "notInvited": "No se ha podido invitar a {{email}}. Inténtalo de nuevo.",
       "inviteSent": "Invitación enviada a {{email}}.",
-      "inviteSavedNotSent": "La invitación a {{email}} está guardada, pero el email no ha salido. Reenvíala desde la lista.",
       "roleNotChanged": "No se ha podido cambiar el rol de {{name}}. Inténtalo de nuevo.",
       "nowAdmin": "{{name}} ahora es administrador.",
       "nowMember": "{{name}} ahora es miembro.",
@@ -36,7 +35,8 @@
       "inviteCancelled": "Invitación a {{email}} cancelada.",
       "enterWorkEmail": "Escribe su email de trabajo, como {{example}}.",
       "alreadyInOrganization": "{{email}} ya está en la organización.",
-      "alreadyInvited": "{{email}} ya está invitado."
+      "alreadyInvited": "{{email}} ya está invitado.",
+      "nowRole": "{{name}} ahora tiene el rol {{role}}."
     }
   }
 }

@@ -29,6 +29,7 @@ import { Card, CardContent } from '#/components/ui/card'
 import { Skeleton } from '#/components/ui/skeleton'
 import { BillingUsage, TopUpsList } from '#/components/usage/billing-usage'
 import { useUsage } from '#/components/usage/use-usage'
+import { useCurrentUser } from '#/lib/current-user'
 import { fullDay, money } from '#/lib/format'
 import { leave } from '#/lib/leave'
 import { client, orpc } from '#/lib/orpc'
@@ -44,6 +45,7 @@ export function BillingSection() {
   const billingQuery = orpc.billing.get.queryOptions({ meta: { failure: t(`${KEY}.notLoaded`) } })
   const { data: billing, error } = useQuery(billingQuery)
   const usage = useUsage()
+  const { can, managesBilling } = useCurrentUser()
   const [cancelling, setCancelling] = useState(false)
 
   const replace = (next: BillingView) => queryClient.setQueryData(billingQuery.queryKey, next)
@@ -75,7 +77,7 @@ export function BillingSection() {
   const scheduled = billing ? scheduledLine(billing) : null
 
   const edit = (to: 'payment' | 'details') =>
-    billed ? (
+    billed && managesBilling ? (
       <Button
         size="sm"
         variant="outline"
@@ -93,22 +95,28 @@ export function BillingSection() {
           <SettingRow
             label={t(`${KEY}.plan`)}
             action={
-              <span className="flex gap-2">
-                <Button asChild size="sm" variant="outline">
-                  <Link to="/app/plans">{t(`${KEY}.switchPlan`)}</Link>
-                </Button>
-                {billing.endsOn ? (
-                  <Button size="sm" disabled={resume.isPending} onClick={() => void resume.run({})}>
-                    {t(`${KEY}.keepMyPlan`)}
+              managesBilling && (
+                <span className="flex gap-2">
+                  <Button asChild size="sm" variant="outline">
+                    <Link to="/app/plans">{t(`${KEY}.switchPlan`)}</Link>
                   </Button>
-                ) : (
-                  isPaidPlan(billing.plan) && (
-                    <Button size="sm" variant="destructive" onClick={() => setCancelling(true)}>
-                      {t(`${KEY}.cancel`)}
+                  {billing.endsOn ? (
+                    <Button
+                      size="sm"
+                      disabled={resume.isPending}
+                      onClick={() => void resume.run({})}
+                    >
+                      {t(`${KEY}.keepMyPlan`)}
                     </Button>
-                  )
-                )}
-              </span>
+                  ) : (
+                    isPaidPlan(billing.plan) && (
+                      <Button size="sm" variant="destructive" onClick={() => setCancelling(true)}>
+                        {t(`${KEY}.cancel`)}
+                      </Button>
+                    )
+                  )}
+                </span>
+              )
             }
           >
             {planLine(billing)}
@@ -136,7 +144,7 @@ export function BillingSection() {
         !error && <Skeleton className="h-48" />
       )}
 
-      <BillingUsage usage={usage.data} />
+      {can({ usage: ['read'] }) && <BillingUsage usage={usage.data} />}
 
       {billing && (
         <SettingsCard>

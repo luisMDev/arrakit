@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 import { magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
-import { payFor, rpc, signedInOwner, uniqueEmail } from './session'
+import { inviteMember, payFor, signedInOwner, uniqueEmail } from './session'
 
 test('a visitor picks Pro on Pricing, signs up, creates the organization and reaches Checkout', async ({
   page,
@@ -98,7 +98,7 @@ test('a member sees Plans without buy buttons and cannot reach Billing or Checko
   const { organizationId } = await signedInOwner(page, { who: 'owner', organization: 'Billing Co' })
   await payFor(page, organizationId, 'pro_yearly')
   const memberEmail = uniqueEmail('member')
-  await rpc(page, 'invitations/invite', { email: memberEmail, role: 'member' })
+  await inviteMember(page, organizationId, memberEmail)
 
   const context = await browser.newContext({ baseURL: WEB_ORIGIN })
   const member = await context.newPage()

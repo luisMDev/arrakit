@@ -7,7 +7,7 @@ import { useCurrentUser } from '#/lib/current-user'
 /** The first screen once signed in: where the product's own dashboard starts. */
 export function HomePage() {
   const { t } = useTranslation()
-  const { user, name, isAdmin, planLabel } = useCurrentUser()
+  const { user, name, managesMembers, managesBilling, planLabel } = useCurrentUser()
   if (!user?.organization) return null
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6">
@@ -21,17 +21,17 @@ export function HomePage() {
         <Button asChild>
           <Link to="/app/settings">{t('home.settings')}</Link>
         </Button>
-        {isAdmin ? (
-          <>
-            <Button asChild variant="outline">
-              <Link to="/app/settings" search={{ section: 'members' }}>
-                {t('home.members')}
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link to="/app/plans">{t('home.plans')}</Link>
-            </Button>
-          </>
+        {managesMembers ? (
+          <Button asChild variant="outline">
+            <Link to="/app/settings" search={{ section: 'members' }}>
+              {t('home.members')}
+            </Link>
+          </Button>
+        ) : null}
+        {managesBilling ? (
+          <Button asChild variant="outline">
+            <Link to="/app/plans">{t('home.plans')}</Link>
+          </Button>
         ) : null}
       </div>
     </main>

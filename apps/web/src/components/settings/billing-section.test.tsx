@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { billingOf, meOn } from '#/components/billing/testing'
 import { usageFixture } from '#/components/usage/fixtures'
-import { answer, quiet, renderAt, setupTestApi } from '#/test/rpc'
+import { answer, meAs, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
 import { leave } from '#/lib/leave'
 
@@ -242,5 +242,19 @@ describe('Settings > Billing', () => {
   it('embeds the usage cards with Add credits', async () => {
     await setup(billingOf())
     expect(await screen.findByRole('button', { name: 'Add credits' })).toBeInTheDocument()
+  })
+
+  it('shows a role that only reads billing the plan and invoices, with nothing to change', async () => {
+    answer('billing/get', billingOf())
+    const usage = answer('usage/get', usageFixture())
+    renderAt(<BillingSection />, {
+      me: meAs({ role: 'finance', permissions: { billing: ['read'] } }),
+      url: '/app/billing',
+    })
+    expect(await screen.findByText('Pro · yearly')).toBeInTheDocument()
+    expect(within(row('Payment')).getByText('Visa ending 4242')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Switch plan' })).toBeNull()
+    expect(usage).toHaveLength(0)
   })
 })

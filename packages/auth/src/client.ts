@@ -8,6 +8,7 @@ import { ac, roles } from './permissions'
 export const createArrakitAuthClient = () =>
   createAuthClient({
     basePath: '/api/auth',
+    fetchOptions: { customFetchImpl: (input, init) => globalThis.fetch(input, init) },
     plugins: [
       oauthProviderClient(),
       organizationClient({

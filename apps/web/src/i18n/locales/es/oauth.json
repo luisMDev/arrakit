@@ -19,7 +19,9 @@
       "noOrganizationTitle": "Aún no estás en ninguna organización.",
       "noOrganizationBody": "{{client}} actúa dentro de una organización. Únete a la tuya, o crea una, y vuelve a conectar.",
       "backTo": "Volver a {{client}}",
-      "failed": "No se ha podido completar la conexión. Inténtalo de nuevo."
+      "failed": "No se ha podido completar la conexión. Inténtalo de nuevo.",
+      "organization": "Organización",
+      "notSwitched": "No se ha podido cambiar de organización. Inténtalo de nuevo."
     }
   }
 }

@@ -19,12 +19,12 @@ async function signOutOrThrow(): Promise<void> {
 
 /**
  * A disclosure (a button and the links it shows), not an ARIA menu. Escape, a click outside and
- * a click on a link close it. Members and Billing are for admins.
+ * a click on a link close it. Members and Billing show to those their role lets in.
  */
 export function AppMenu() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { user, name, isAdmin, planLabel, signedOut } = useCurrentUser()
+  const { user, name, can, managesMembers, planLabel, signedOut } = useCurrentUser()
   const [open, setOpen] = useState(false)
   const host = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
@@ -67,13 +67,17 @@ export function AppMenu() {
   const links: { to: '/app' | '/app/settings'; search?: SettingsSearch; label: string }[] = [
     { to: '/app', label: t('appMenu.home') },
     { to: '/app/settings', search: {}, label: t('appMenu.settings') },
-    ...(isAdmin
+    ...(managesMembers
       ? [
           {
             to: '/app/settings' as const,
             search: { section: 'members' as const },
             label: t('appMenu.members'),
           },
+        ]
+      : []),
+    ...(can({ billing: ['read'] })
+      ? [
           {
             to: '/app/settings' as const,
             search: { section: 'billing' as const },

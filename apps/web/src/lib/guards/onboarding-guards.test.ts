@@ -21,6 +21,7 @@ const me = (organization: Me['organization']): Me => ({
   language: 'en',
   organization,
   role: organization ? 'owner' : null,
+  permissions: {},
   plan: organization ? 'free' : null,
   seats: organization ? 1 : null,
 })

@@ -23,8 +23,10 @@ describe('locales', () => {
       'oauth.json',
       'onboarding.json',
       'organizations.json',
+      'roles.json',
       'settings.json',
       'shell.json',
+      'teams.json',
       'usage.json',
     ])
   })

@@ -1,0 +1,54 @@
+{
+  "settings": {
+    "rolesSettings": {
+      "title": "Roles",
+      "hint": "A custom role gives the permissions you pick. You can only give permissions you have.",
+      "builtIn": "Built-in roles",
+      "builtInHint": "Owner, Admin and Member come with Arrakit and can't be changed.",
+      "custom": "Custom roles",
+      "empty": "No custom roles yet.",
+      "newRole": "New role",
+      "editRole": "Edit {{role}}",
+      "roleName": "Role name",
+      "enterName": "Enter the role's name.",
+      "noComma": "Keep commas out of the role's name.",
+      "pickPermission": "Pick at least one permission.",
+      "permissions": "Permissions",
+      "permissionCountOne": "{{count}} permission",
+      "permissionCountMany": "{{count}} permissions",
+      "permission": "{{resource}}: {{action}}",
+      "create": "Create role",
+      "save": "Save",
+      "cancel": "Cancel",
+      "edit": "Edit",
+      "editOf": "Edit {{role}}",
+      "deleteOf": "Delete {{role}}",
+      "confirmDeleteTitle": "Delete the {{role}} role?",
+      "created": "{{role}} role created.",
+      "notCreated": "Couldn't create the role. Try again.",
+      "saved": "{{role}} role saved.",
+      "notSaved": "Couldn't save the role. Try again.",
+      "deleted": "{{role}} role deleted.",
+      "notDeleted": "Couldn't delete the role. Try again.",
+      "notLoaded": "Couldn't load the organization's roles. Reload the page.",
+      "resources": {
+        "organization": "Organization",
+        "member": "Members",
+        "invitation": "Invitations",
+        "team": "Teams",
+        "ac": "Roles",
+        "billing": "Billing",
+        "usage": "Usage"
+      },
+      "actions": {
+        "create": "Create",
+        "read": "View",
+        "update": "Change",
+        "delete": "Delete",
+        "cancel": "Cancel",
+        "manage": "Manage"
+      },
+      "delete": "Delete"
+    }
+  }
+}

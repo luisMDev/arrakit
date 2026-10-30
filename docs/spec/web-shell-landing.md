@@ -98,7 +98,7 @@ The app has **no front page of its own**: the website (landing) is the front pag
 | `/oauth/signin` | Connector sign-in (no `skipWhenSignedIn`) | – | oauth-mcp |
 | `/oauth/consent` | Connector consent | – | oauth-mcp |
 | `/app` | Signed-in shell (§4) + Home (§7) | `requireUser` | this |
-| `/app/settings?section=<id>` | Settings on that section (`account` default; `general`, `usage`, `members`, `billing`, `security`) | `requireUser` | settings |
+| `/app/settings?section=<id>` | Settings on that section (`account` default; `general`, `usage`, `members`, `teams`, `roles`, `billing`, `security`) | `requireUser` | settings |
 | `/app/members` | Redirect to `/app/settings?section=members` | `requireUser` | settings |
 | `/app/billing` | Redirect to `/app/settings?section=billing`, keeping `top_up` (Stripe's top-up URLs and email links use it) | `requireUser` | settings |
 | `/app/plans` | Plans | `requireUser` | billing-plans |
@@ -139,14 +139,17 @@ A 403 or a 5xx is **never** treated as a sign-out.
 ### 4.2 Current-user state (`useCurrentUser()` hook)
 Derived from the `me` query:
 - `user: Me | null`
-- `role: 'owner' | 'admin' | 'member' | null`
-- `isAdmin = role === 'owner' || role === 'admin'` (owners and admins invite, remove, pay)
-- `isOwner = role === 'owner'`
+- `role: string | null`: Better Auth's role string (`owner`, `admin`, `member`, a custom role, or several joined by `,`)
+- `can(wanted)`: `allows(me.permissions, wanted)` from `@arrakit/auth/permissions` (e.g. `can({ billing: ['manage'] })`);
+  every permission-gated screen, link and button reads it. `grants(me, wanted)` is the same outside React (guards).
+- `isOwner = isOwnerRole(role)`
+- `managesMembers = can({ member: ['update'] }) || can({ invitation: ['create'] })`,
+  `managesBilling = can({ billing: ['manage'] })`
 - `planLabel = t('pricing.plan.<plan>')` (Free / Pro / Team / Internal; es: same words), `''` when none
 - `refresh()`: invalidate `me` so it refetches (a count/setting moved behind the screen's back).
 - `patch(fn)`: optimistic local update after a save the API already accepted (e.g. Settings renames the person → menu shows new name at once). Use `queryClient.setQueryData`.
-- `signedOut()`: clear the `me` cache (`queryClient.removeQueries`/`clear`).
-- Before anyone signs in: `isAdmin` and `isOwner` are false.
+- `signedOut()`: clear every query (`queryClient.removeQueries()`), so nothing of the previous person lingers.
+- Before anyone signs in: `can(...)` is false for everything and `isOwner` is false.
 
 Display name rule (`Me.name`): Better Auth's `user.name` trimmed; when blank, the local part of the email
 (`ana@acme.com` → `ana`). Apply in the API mapper or the client, consistently.
@@ -154,8 +157,8 @@ Display name rule (`Me.name`): Better Auth's `user.name` trimmed; when blank, th
 ### 4.3 Shell layout
 Renders, on the same row as the root header's wordmark (right-aligned), only when the person is loaded:
 - A `<nav aria-label={t('shell.account')}>` ("Account" / "Cuenta") containing:
-  - **Usage label** `t('shell.usage', { organization, plan: planLabel })` → "Acme · Pro". Visible from the `lg`
-    breakpoint only (`hidden lg:inline`); tests read it from the DOM text, so keep it in the DOM.
+  - The **organization switcher** (§4.5): a button `aria-label={t('orgSwitcher.label', { organization })}`
+    ("Organization: Acme") showing `t('shell.usage', { organization, plan: planLabel })` → "Acme · Pro".
   - The **app menu** (§4.4).
 - Then the `<Outlet />` with the signed-in screens.
 
@@ -175,8 +178,8 @@ Panel (`id="app-menu"`), only in the DOM while open:
 2. List `aria-label={t('appMenu.yourOrganization')}` ("Your organization"):
    - `Home` → `/app` (`appMenu.home`)
    - `Settings` → `/app/settings` (`appMenu.settings`)
-   - `Members` → `/app/settings?section=members` (`appMenu.members`) — **admins only** (owner or admin)
-   - `Billing` → `/app/settings?section=billing` (`appMenu.billing`) — **admins only**
+   - `Members` → `/app/settings?section=members` (`appMenu.members`) — when `managesMembers`
+   - `Billing` → `/app/settings?section=billing` (`appMenu.billing`) — when `can({ billing: ['read'] })`
 3. Theme switcher (`appMenu.theme`, "Theme"): a single-choice toggle group Light / Dark / System
    (`appMenu.themeLight|themeDark|themeSystem`), default System.
 4. List `aria-label={t('appMenu.more')}` ("More"):
@@ -194,6 +197,21 @@ Behaviour:
 - **Sign out**: closes menu, calls Better Auth `authClient.signOut()` (`POST /api/auth/sign-out`). On success: clear
   current user (`signedOut()`), navigate to `/signin`. On failure: error toast `t('appMenu.notSignedOut')`
   ("Couldn't sign you out. Try again.") and stay.
+
+### 4.5 Organization switcher (`components/shell/org-switcher.tsx`)
+A person may belong to several organizations; the session's **active organization** (Better Auth
+`session.activeOrganizationId`) is the one every screen and procedure works in.
+- shadcn `DropdownMenu`. It loads `authClient.organization.list()` (query `['org', 'list']`) when opened, and lists each
+  organization as a radio item (name + plan label), the active one checked, under `orgSwitcher.organizations`.
+- Picking another: `switchOrganization(queryClient, id)` (`#/lib/organization-queries`: `organization.setActive`
+  then `queryClient.resetQueries()`, so every screen reloads for the new organization), then `/app`. Failure: toast
+  `orgSwitcher.notSwitched`.
+- Last item `orgSwitcher.create` "Create organization" opens `CreateOrganizationDialog`: a name (required,
+  `createOrganization.enterName`), `organization.create({ name, slug })` (the API replaces the slug with the first free
+  one), then `switchOrganization(newId)`, toast `createOrganization.created`, `/app`. Failure: toast
+  `createOrganization.notCreated` (or the API's words), the dialog stays open.
+- Better Auth changes the active organization in the database on create, accept, delete and leave without refreshing
+  the cookie cache, so the web always calls `setActive` after those (`switchOrganization`).
 
 ---
 
@@ -260,8 +278,8 @@ Content (only when the person is loaded):
   (es "{{organization}} está en {{plan}}. Aquí empieza tu producto.")
 - Actions (links styled as buttons):
   - `home.settings` "Settings" → `/app/settings` (primary) — everyone
-  - `home.members` "Members" → `/app/settings?section=members` — admins only
-  - `home.plans` "Plans" → `/app/plans` — admins only
+  - `home.members` "Members" → `/app/settings?section=members` — when `managesMembers`
+  - `home.plans` "Plans" → `/app/plans` — when `managesBilling`
 - A `member` sees only Settings.
 
 ---
@@ -323,13 +341,15 @@ components), passing the navigation's target href.
     name: string;               // Better Auth user.name; may be '' (client falls back to email local part)
     language: 'en' | 'es';
     organization: { id: string; name: string; slug: string; plan: Plan } | null;
-    role: 'owner' | 'admin' | 'member' | null;   // null with no organization
+    role: string | null;                         // null with no organization
+    permissions: Record<string, string[]>;       // what the role grants there; {} with no organization
     plan: Plan | null;                           // organization.plan
     seats: number | null;                        // PLAN_OFFERS[plan].seats: free 1, pro 3, team 10, internal 100
   }
   ```
   `Plan = 'free' | 'pro' | 'team' | 'internal'`.
-- Logic: membership lookup of the session user (one organization per person); with none → all organization fields null.
+- Logic: the session's active organization (the earliest joined when none is active or it is no longer the person's);
+  with none → all organization fields null and `permissions` `{}`.
 - Errors: `UNAUTHORIZED`. Any other failure sends the web to Unavailable.
 - Client mapping: if `organization|role|plan` is null → guard → `/profile`.
 
@@ -448,14 +468,17 @@ Static site, the product's **front page**. Port content and links; styling with 
 3. `/` → `/signin` when signed out (the front page is the website).
 4. Signed-in with org: shell shows "Acme · Pro" and trigger text "A"; `aria-expanded="false"` initially, `"true"` when open.
 5. Open menu shows "Ana Ruiz", "Acme · Pro", links Home/Settings/Members/Billing (owner/admin), button Sign out.
-6. Member's menu: no "Members", no "Billing", has "Settings". Owner's: has both.
+6. Member's menu: no "Members", no "Billing", has "Settings". Owner's: has both. A custom role sees what its
+   permissions open (`billing:read` → Billing).
+6b. The switcher lists the person's organizations; picking one makes it active and reloads; "Create organization"
+    makes a new one, active at once (`org-switcher.test.tsx`, e2e `organizations-switch.spec.ts`).
 7. Escape and outside click close the menu; link click navigates and closes; Home link from `/app/settings` goes to `/app`.
 8. Sign out → `/signin`.
 9. `me` 401 → `/signin`; 500 (or 403) → `/unavailable?next=%2Fapp` with h1 "Couldn't reach SaaS." and the error reported.
 10. Signed in, no organization (or removed) → `/profile`, never into `/app`.
 11. Unavailable: Try again returns to `next` once the API answers; stays (same URL) while still down; invalid `next` → `/app`;
     `next=/profile` → `/profile`.
-12. Home: "Hi, Ana Ruiz.", "Acme is on Pro."; admin sees Members and Plans links; member sees neither; Settings → `/app/settings`.
+12. Home: "Hi, Ana Ruiz.", "Acme is on Pro."; owner/admin see Members and Plans links (by permission); member sees neither; Settings → `/app/settings`.
 13. Welcome: "Welcome to Pro." / "Welcome to Team."; free without `session_id` → `/app/plans`; "Go to the app →" → `/app`;
     "Settings" → `/app/settings?section=billing`; free with `session_id` polls up to 15 s.
 14. Menu → Settings/Members/Billing each show h1 "Settings" and an h2 section heading "Account"/"Members"/"Billing" at
@@ -479,7 +502,7 @@ Static site, the product's **front page**. Port content and links; styling with 
 | `signed-in/shell/shell.spec.ts` | RTL | all cases (menu content, roles, Escape/outside click, navigation, sign out, 401/500 routing) |
 | `signed-in/home/home.page.spec.ts` | RTL | add the missing "member sees neither" assertion |
 | `signed-in/welcome/welcome.page.spec.ts` | RTL | plus a fake-timers test for the 15-try polling |
-| `signed-in/current-user.state.spec.ts` | Vitest | role → isAdmin/isOwner table; account language applied before set; neither before sign-in |
+| `signed-in/current-user.state.spec.ts` | Vitest | role → isOwner/managesMembers/managesBilling table; custom role read from permissions; account language applied before set; nothing granted before sign-in |
 | `signed-in/plan-access.spec.ts` | Vitest | `checkout-choice.test.ts`: `checkoutChoice` (shared with billing-plans) |
 | `unavailable/unavailable.page.spec.ts` | RTL | flaky API fake; `next` sanitising it.each |
 | `signed-in.flow.spec.ts` | Playwright e2e (PGlite + seeded user via Better Auth test utils) | one header; menu reaches Settings/Members/Billing with right h2; plan switch flow (billing area) |

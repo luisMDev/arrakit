@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import '#/i18n'
 import { renderWithQueries } from '#/components/auth/testing'
-import { answer, meAs, quiet, setupTestApi } from '#/test/rpc'
+import { answer, answerAuth, meAs, quiet, setupTestApi } from '#/test/rpc'
 import type { ChoiceSearch } from '#/lib/checkout-choice'
 
 import { ProfilePage } from './profile-page'
@@ -19,9 +19,11 @@ const ORG = {
 const NO_ORGANIZATION = meAs({ organization: null, role: null, plan: null, seats: null })
 
 setupTestApi()
+let activated: { input: Record<string, unknown> }[]
 beforeEach(() => {
   quiet()
   answer('me/get', NO_ORGANIZATION)
+  activated = answerAuth('organization/set-active', ORG)
 })
 
 function renderPage(search: ChoiceSearch = {}) {
@@ -63,7 +65,7 @@ describe('ProfilePage', () => {
   })
 
   it('sends the trimmed name and organization on Next and goes to /app', async () => {
-    const created = answer('organizations/create', ORG)
+    const created = answer('onboarding/create', ORG)
     const onDone = renderPage()
     await userEvent.type(screen.getByRole('textbox', { name: 'Your name' }), '  Ana Ibarra ')
     await userEvent.type(screen.getByRole('textbox', { name: 'Organization' }), ' Seaya ')
@@ -75,10 +77,11 @@ describe('ProfilePage', () => {
       ]),
     )
     await waitFor(() => expect(onDone).toHaveBeenCalledWith({ to: '/app' }))
+    expect(activated).toEqual([{ input: { organizationId: ORG.id } }])
   })
 
   it('allows blank fields', async () => {
-    const created = answer('organizations/create', ORG)
+    const created = answer('onboarding/create', ORG)
     renderPage()
     await userEvent.click(terms())
     await userEvent.click(next())
@@ -88,8 +91,8 @@ describe('ProfilePage', () => {
   })
 
   it('skips without asking anything and goes to /app', async () => {
-    const skipped = answer('organizations/skip', ORG)
-    const created = answer('organizations/create', ORG)
+    const skipped = answer('onboarding/skip', ORG)
+    const created = answer('onboarding/create', ORG)
     const onDone = renderPage()
     await userEvent.click(skip())
     await waitFor(() => expect(onDone).toHaveBeenCalledWith({ to: '/app' }))
@@ -98,7 +101,7 @@ describe('ProfilePage', () => {
   })
 
   it('goes to checkout with a paid plan', async () => {
-    answer('organizations/skip', ORG)
+    answer('onboarding/skip', ORG)
     const onDone = renderPage({ plan: 'team', cycle: 'monthly' })
     await userEvent.click(skip())
     await waitFor(() =>
@@ -109,18 +112,19 @@ describe('ProfilePage', () => {
     )
   })
 
-  it('continues after a 409 when the person now has an organization', async () => {
-    answer('organizations/create', 409)
+  it('continues after a lost answer when the person now has an organization', async () => {
+    answer('onboarding/create', 502)
     answer('me/get', meAs())
     const onDone = renderPage()
     await userEvent.click(terms())
     await userEvent.click(next())
     await waitFor(() => expect(onDone).toHaveBeenCalledWith({ to: '/app' }))
+    expect(activated).toEqual([{ input: { organizationId: meAs().organization!.id } }])
     expect(console.error).not.toHaveBeenCalled()
   })
 
   it('toasts a failed Next and lets the person retry', async () => {
-    answer('organizations/create', 500)
+    answer('onboarding/create', 500)
     const onDone = renderPage()
     await userEvent.click(terms())
     await userEvent.click(next())
@@ -132,7 +136,7 @@ describe('ProfilePage', () => {
   })
 
   it('toasts a failed Skip and lets the person retry', async () => {
-    const skipped = answer('organizations/skip', 500, ORG)
+    const skipped = answer('onboarding/skip', 500, ORG)
     const onDone = renderPage()
     await userEvent.click(skip())
     expect(await screen.findByText("Couldn't skip this step. Try again.")).toBeInTheDocument()
@@ -144,8 +148,8 @@ describe('ProfilePage', () => {
 
   it('sends one request at a time', async () => {
     let finish!: (org: typeof ORG) => void
-    const skipped = answer('organizations/skip', () => new Promise((resolve) => (finish = resolve)))
-    renderPage()
+    const skipped = answer('onboarding/skip', () => new Promise((resolve) => (finish = resolve)))
+    const onDone = renderPage()
     await userEvent.click(terms())
     await userEvent.click(skip())
     expect(skip()).toBeDisabled()
@@ -153,6 +157,7 @@ describe('ProfilePage', () => {
     await userEvent.click(skip())
     await waitFor(() => expect(skipped).toHaveLength(1))
     await act(async () => finish(ORG))
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith({ to: '/app' }))
   })
 
   it.each([

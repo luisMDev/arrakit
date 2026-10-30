@@ -1,6 +1,12 @@
 import { domainOf, isWorkEmail, normalizeEmail, personName } from '@arrakit/address'
-import type { AssignableRole } from '@arrakit/address'
-import { type InvitationView, type Member, assignableRoleSchema } from '@arrakit/contract'
+import {
+  type Permissions,
+  allows,
+  isOwnerRole,
+  isStaticRole,
+  permissionsOf,
+  rolesOf,
+} from '@arrakit/auth/permissions'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
@@ -22,10 +28,17 @@ import {
   SelectValue,
 } from '#/components/ui/select'
 import { Separator } from '#/components/ui/separator'
+import { authCall } from '#/lib/auth-call'
+import { authClient } from '#/lib/auth-client'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
-import { client, orpc } from '#/lib/orpc'
+import {
+  type CustomRole,
+  type OrganizationMember,
+  type PendingInvitation,
+  organizationQueries,
+} from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
 import { cn } from '#/lib/utils'
 
@@ -33,28 +46,43 @@ import { SettingsSectionLayout } from './settings-ui'
 
 const K = 'settings.membersSettings'
 
-const displayName = (member: Member) => personName(member.name, member.email)
+const org = authClient.organization
 
-const ROLE_LABEL = { owner: 'roleOwner', admin: 'roleAdmin', member: 'roleMember' } as const
+type InviteBody = { email: string; role: string; organizationId: string; resend?: boolean }
+
+/** Better Auth's client types `emailSent` as an input, though the server sets it. */
+const inviteMember = (body: InviteBody) =>
+  authCall(org.inviteMember(body as Parameters<typeof org.inviteMember>[0]))
+
+const displayName = (member: OrganizationMember) => personName(member.user.name, member.user.email)
+
+const STATIC_ROLE_LABEL = { owner: 'roleOwner', admin: 'roleAdmin', member: 'roleMember' } as const
+
+/** A role string as people read it: built-in roles translated, custom ones by name. */
+export function roleLabel(t: TFunction, role: string): string {
+  return rolesOf(role)
+    .map((name) => (isStaticRole(name) ? t(`${K}.${STATIC_ROLE_LABEL[name]}`) : name))
+    .join(', ')
+}
 
 const MORE_SEATS: Partial<Record<string, string>> = { free: 'moreSeatsFree', pro: 'moreSeatsPro' }
 
 const DAY_MS = 86_400_000
 
-/** Calendar days between `invitedOn` (YYYY-MM-DD) and `today`, local. */
-export function daysSince(invitedOn: string, today = new Date()): number {
-  const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
-  return Math.max(0, Math.round((todayUtc - Date.parse(`${invitedOn}T00:00:00Z`)) / DAY_MS))
+/** Calendar days, local, from `invitedAt` to `today`. */
+export function daysSince(invitedAt: Date, today = new Date()): number {
+  const midnight = (date: Date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+  return Math.max(0, Math.round((midnight(today) - midnight(invitedAt)) / DAY_MS))
 }
 
 function inviteForm(
   t: TFunction,
   placeholder: string,
-  members: readonly { email: string }[],
-  invites: readonly { email: string }[],
+  memberEmails: readonly string[],
+  invitedEmails: readonly string[],
 ) {
-  const listed = (list: readonly { email: string }[], lower: string) =>
-    list.some((entry) => normalizeEmail(entry.email) === lower)
+  const listed = (emails: readonly string[], lower: string) =>
+    emails.some((email) => normalizeEmail(email) === lower)
   return z.object({
     email: z
       .string()
@@ -63,94 +91,131 @@ function inviteForm(
         const lower = normalizeEmail(address)
         const fail = (message: string) => ctx.addIssue({ code: 'custom', message })
         if (!isWorkEmail(address)) return fail(t(`${K}.enterWorkEmail`, { example: placeholder }))
-        if (listed(members, lower)) return fail(t(`${K}.alreadyInOrganization`, { email: lower }))
-        if (listed(invites, lower)) return fail(t(`${K}.alreadyInvited`, { email: lower }))
+        if (listed(memberEmails, lower))
+          return fail(t(`${K}.alreadyInOrganization`, { email: lower }))
+        if (listed(invitedEmails, lower)) return fail(t(`${K}.alreadyInvited`, { email: lower }))
       }),
-    role: assignableRoleSchema,
+    role: z.string(),
   })
+}
+
+/** The roles `actorRole` may give: never owner, admin only from the owner, nothing beyond theirs. */
+export function assignableRoles(
+  actorRole: string,
+  granted: Permissions,
+  custom: readonly CustomRole[],
+): string[] {
+  const owner = isOwnerRole(actorRole)
+  const customMap = Object.fromEntries(custom.map((r) => [r.role, r.permission]))
+  return ['member', ...(owner ? ['admin'] : []), ...custom.map((r) => r.role)].filter(
+    (role) => owner || allows(granted, permissionsOf(role, customMap)),
+  )
 }
 
 export function MembersSection() {
   const { t } = useTranslation()
   const me = useCurrentUser()
   const queryClient = useQueryClient()
-  const membersQuery = orpc.members.list.queryOptions()
-  const invitesQuery = orpc.invitations.list.queryOptions()
+  const organizationId = me.user?.organization?.id ?? ''
   const meta = { failure: t(`${K}.notLoaded`) }
-  const members = useQuery({ ...membersQuery, enabled: me.isAdmin, meta })
-  const invites = useQuery({ ...invitesQuery, enabled: me.isAdmin, meta })
+  const enabled = me.managesMembers && organizationId !== ''
+  const membersQuery = organizationQueries.members(organizationId)
+  const invitesQuery = organizationQueries.invitations(organizationId)
+  const members = useQuery({ ...membersQuery, enabled, meta })
+  const invites = useQuery({ ...invitesQuery, enabled, meta })
+  const roles = useQuery({
+    ...organizationQueries.roles(organizationId),
+    enabled: enabled && me.can({ ac: ['read'] }),
+    meta,
+  })
 
   const myEmail = me.user?.email ?? ''
   const placeholder = `name@${domainOf(myEmail)}`
   const memberList = members.data ?? []
   const inviteList = invites.data ?? []
+  const customRoles = roles.data ?? []
+  const customMap = Object.fromEntries(customRoles.map((r) => [r.role, r.permission]))
+  const granted = (me.user?.permissions ?? {}) as Permissions
+  const assignable = assignableRoles(me.role ?? '', granted, customRoles)
   const form = useClearingForm({
-    resolver: zodResolver(inviteForm(t, placeholder, memberList, inviteList)),
-    defaultValues: { email: '', role: 'member' as const },
+    resolver: zodResolver(
+      inviteForm(
+        t,
+        placeholder,
+        memberList.map((m) => m.user.email),
+        inviteList.map((i) => i.email),
+      ),
+    ),
+    defaultValues: { email: '', role: 'member' },
   })
   const emailError = form.formState.errors.email?.message
 
-  const setMembers = (fn: (list: Member[]) => Member[]) =>
-    queryClient.setQueryData<Member[]>(membersQuery.queryKey, (list) => fn(list ?? []))
-  const setInvites = (fn: (list: InvitationView[]) => InvitationView[]) =>
-    queryClient.setQueryData<InvitationView[]>(invitesQuery.queryKey, (list) => fn(list ?? []))
+  const reloadMembers = () => queryClient.invalidateQueries({ queryKey: membersQuery.queryKey })
+  const reloadInvites = () => queryClient.invalidateQueries({ queryKey: invitesQuery.queryKey })
 
   const invite = useApiMutation({
-    ...orpc.invitations.invite.mutationOptions(),
+    mutationKey: ['org', 'invite'],
+    mutationFn: ({ email, role }: { email: string; role: string }) =>
+      inviteMember({ email, role, organizationId }),
     onSuccess: (sent) => {
-      setInvites((list) =>
-        list.some((i) => i.id === sent.id)
-          ? list.map((i) => (i.id === sent.id ? sent : i))
-          : [...list, sent],
-      )
       form.reset()
-      if (sent.emailSent) notify.success(t(`${K}.inviteSent`, { email: sent.email }))
-      else
-        notify.warning(t(`${K}.emailNotSent`), {
-          description: t(`${K}.inviteSavedNotSent`, { email: sent.email }),
-        })
+      notify.success(t(`${K}.inviteSent`, { email: sent.email }))
     },
+    onSettled: reloadInvites,
     meta: { failure: ({ email }: { email: string }) => t(`${K}.notInvited`, { email }) },
   })
 
   const changeRole = useApiMutation({
-    mutationFn: ({ member, role }: { member: Member; role: AssignableRole }) =>
-      client.members.changeRole({ email: member.email, role }),
-    onSuccess: (changed, { member }) => {
-      setMembers((list) => list.map((m) => (m.email === member.email ? changed : m)))
-      const key = changed.role === 'admin' ? `${K}.nowAdmin` : `${K}.nowMember`
-      notify.success(t(key, { name: displayName(member) }))
+    mutationKey: ['org', 'updateMemberRole'],
+    mutationFn: ({ member, role }: { member: OrganizationMember; role: string }) =>
+      authCall(org.updateMemberRole({ memberId: member.id, role, organizationId })),
+    onSuccess: (_, { member, role }) => {
+      const name = displayName(member)
+      if (role === 'admin') notify.success(t(`${K}.nowAdmin`, { name }))
+      else if (role === 'member') notify.success(t(`${K}.nowMember`, { name }))
+      else notify.success(t(`${K}.nowRole`, { name, role }))
     },
-    onError: () => setMembers((list) => [...list]),
+    onSettled: reloadMembers,
     meta: {
-      failure: ({ member }: { member: Member }) =>
+      failure: ({ member }: { member: OrganizationMember }) =>
         t(`${K}.roleNotChanged`, { name: displayName(member) }),
     },
   })
 
   const remove = useApiMutation({
-    mutationFn: (member: Member) => client.members.remove({ email: member.email }),
-    onSuccess: (_, member) => {
-      setMembers((list) => list.filter((m) => m.email !== member.email))
+    mutationKey: ['org', 'removeMember'],
+    mutationFn: (member: OrganizationMember) =>
+      authCall(org.removeMember({ memberIdOrEmail: member.id, organizationId })),
+    onSuccess: async (_, member) => {
+      await reloadMembers()
       const organization = me.user?.organization?.name ?? ''
       notify.success(t(`${K}.removed`, { name: displayName(member), organization }))
     },
-    meta: { failure: (member: Member) => t(`${K}.notRemoved`, { name: displayName(member) }) },
+    meta: {
+      failure: (member: OrganizationMember) => t(`${K}.notRemoved`, { name: displayName(member) }),
+    },
   })
 
   const resend = useApiMutation({
-    ...orpc.invitations.resend.mutationOptions(),
-    onSuccess: (sent) => {
-      setInvites((list) => list.map((i) => (i.id === sent.id ? sent : i)))
-      notify.success(t(`${K}.inviteResent`, { email: sent.email }))
-    },
+    mutationKey: ['org', 'resendInvitation'],
+    mutationFn: (invitation: PendingInvitation) =>
+      inviteMember({
+        email: invitation.email,
+        role: invitation.role,
+        organizationId,
+        resend: true,
+      }),
+    onSuccess: (sent) => notify.success(t(`${K}.inviteResent`, { email: sent.email })),
+    onSettled: reloadInvites,
     meta: { failure: t(`${K}.notResent`) },
   })
 
   const cancel = useApiMutation({
-    mutationFn: (invitation: InvitationView) => client.invitations.cancel({ id: invitation.id }),
-    onSuccess: (_, invitation) => {
-      setInvites((list) => list.filter((i) => i.id !== invitation.id))
+    mutationKey: ['org', 'cancelInvitation'],
+    mutationFn: (invitation: PendingInvitation) =>
+      authCall(org.cancelInvitation({ invitationId: invitation.id })),
+    onSuccess: async (_, invitation) => {
+      await reloadInvites()
       notify.success(t(`${K}.inviteCancelled`, { email: invitation.email }))
     },
     meta: { failure: t(`${K}.notCancelled`) },
@@ -158,20 +223,33 @@ export function MembersSection() {
 
   const busy = invite.isPending || remove.isPending || resend.isPending || cancel.isPending
 
-  if (!me.isAdmin || !me.user) return <></>
+  if (!me.managesMembers || !me.user) return <></>
 
-  const manages = (member: Member) =>
-    me.isAdmin &&
-    member.email !== myEmail &&
-    member.role !== 'owner' &&
-    (member.role !== 'admin' || me.isOwner)
+  const outranks = (member: OrganizationMember) =>
+    me.isOwner || allows(granted, permissionsOf(member.role, customMap))
+  const manages = (member: OrganizationMember) =>
+    member.user.email !== myEmail &&
+    !isOwnerRole(member.role) &&
+    (!rolesOf(member.role).includes('admin') || me.isOwner) &&
+    outranks(member)
+  const canChangeRoles = me.can({ member: ['update'] })
+  const canRemove = me.can({ member: ['delete'] })
+  const canInvite = me.can({ invitation: ['create'] })
+  const canCancel = me.can({ invitation: ['cancel'] })
 
-  const invitedLine = (invitation: InvitationView) => {
-    const days = daysSince(invitation.invitedOn)
+  const invitedLine = (invitation: PendingInvitation) => {
+    const days = daysSince(invitation.createdAt)
     if (days === 0) return t(`${K}.invitedToday`)
     if (days === 1) return t(`${K}.invitedYesterday`)
     return t(`${K}.invitedDaysAgo`, { days })
   }
+
+  const roleOptions = (current?: string) =>
+    [...new Set([...(current ? [current] : []), ...assignable])].map((role) => (
+      <SelectItem key={role} value={role}>
+        {roleLabel(t, role)}
+      </SelectItem>
+    ))
 
   const moreSeats = me.user.plan ? MORE_SEATS[me.user.plan] : undefined
   const count = memberList.length
@@ -198,59 +276,58 @@ export function MembersSection() {
         ) : null
       }
     >
-      <Card>
-        <CardContent>
-          <form
-            noValidate
-            onSubmit={(event) => void form.handleSubmit((values) => invite.run(values))(event)}
-            className="flex flex-col gap-2"
-          >
-            <Field data-invalid={emailError ? true : undefined}>
-              <FieldLabel htmlFor="invite-email">{t(`${K}.inviteLabel`)}</FieldLabel>
-              <div className="flex flex-wrap gap-2">
-                <Input
-                  id="invite-email"
-                  type="email"
-                  autoComplete="off"
-                  placeholder={placeholder}
-                  className="min-w-56 flex-1"
-                  aria-invalid={emailError ? true : undefined}
-                  {...registerClearing(form, 'email')}
-                />
-                <Controller
-                  control={form.control}
-                  name="role"
-                  render={({ field }) => (
-                    <Select name={field.name} value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger ref={field.ref} aria-label={t(`${K}.role`)} className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="member">{t(`${K}.roleMember`)}</SelectItem>
-                        <SelectItem value="admin">{t(`${K}.roleAdmin`)}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                <Button type="submit" disabled={busy}>
-                  {t(`${K}.invite`)}
-                </Button>
-              </div>
-              {emailError ? <FieldError>{emailError}</FieldError> : null}
-              <FieldDescription>{t(`${K}.rolesHint`)}</FieldDescription>
-            </Field>
-          </form>
-        </CardContent>
-      </Card>
+      {canInvite ? (
+        <Card>
+          <CardContent>
+            <form
+              noValidate
+              onSubmit={(event) => void form.handleSubmit((values) => invite.run(values))(event)}
+              className="flex flex-col gap-2"
+            >
+              <Field data-invalid={emailError ? true : undefined}>
+                <FieldLabel htmlFor="invite-email">{t(`${K}.inviteLabel`)}</FieldLabel>
+                <div className="flex flex-wrap gap-2">
+                  <Input
+                    id="invite-email"
+                    type="email"
+                    autoComplete="off"
+                    placeholder={placeholder}
+                    className="min-w-56 flex-1"
+                    aria-invalid={emailError ? true : undefined}
+                    {...registerClearing(form, 'email')}
+                  />
+                  <Controller
+                    control={form.control}
+                    name="role"
+                    render={({ field }) => (
+                      <Select name={field.name} value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger ref={field.ref} aria-label={t(`${K}.role`)} className="w-36">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>{roleOptions()}</SelectContent>
+                      </Select>
+                    )}
+                  />
+                  <Button type="submit" disabled={busy}>
+                    {t(`${K}.invite`)}
+                  </Button>
+                </div>
+                {emailError ? <FieldError>{emailError}</FieldError> : null}
+                <FieldDescription>{t(`${K}.rolesHint`)}</FieldDescription>
+              </Field>
+            </form>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="py-2">
         <CardContent>
           <ul aria-label={t(`${K}.title`)}>
             {memberList.map((member, index) => {
               const name = displayName(member)
-              const mine = member.email === myEmail
+              const mine = member.user.email === myEmail
               return (
-                <li key={member.email} data-member={member.email}>
+                <li key={member.id} data-member={member.user.email}>
                   {index > 0 ? <Separator /> : null}
                   <div className="flex flex-wrap items-center gap-3 py-3">
                     <Avatar>
@@ -260,29 +337,24 @@ export function MembersSection() {
                     </Avatar>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{name}</p>
-                      <p className="text-muted-foreground truncate text-sm">{member.email}</p>
+                      <p className="text-muted-foreground truncate text-sm">{member.user.email}</p>
                     </div>
-                    {manages(member) && me.isOwner ? (
+                    {canChangeRoles && manages(member) ? (
                       <Select
                         value={member.role}
-                        onValueChange={(value) =>
-                          void changeRole.run({ member, role: value as AssignableRole })
-                        }
+                        onValueChange={(role) => void changeRole.run({ member, role })}
                       >
-                        <SelectTrigger aria-label={t(`${K}.roleOf`, { name })} className="w-32">
+                        <SelectTrigger aria-label={t(`${K}.roleOf`, { name })} className="w-36">
                           <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="member">{t(`${K}.roleMember`)}</SelectItem>
-                          <SelectItem value="admin">{t(`${K}.roleAdmin`)}</SelectItem>
-                        </SelectContent>
+                        <SelectContent>{roleOptions(member.role)}</SelectContent>
                       </Select>
                     ) : (
                       <span className="text-muted-foreground text-sm">
-                        {t(`${K}.${ROLE_LABEL[member.role]}`)}
+                        {roleLabel(t, member.role)}
                       </span>
                     )}
-                    {manages(member) ? (
+                    {canRemove && manages(member) ? (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -314,24 +386,28 @@ export function MembersSection() {
                     )}
                   </div>
                   <span className="text-muted-foreground text-sm">
-                    {t(`${K}.${ROLE_LABEL[invitation.role]}`)}
+                    {roleLabel(t, invitation.role)}
                   </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => void resend.run({ id: invitation.id })}
-                  >
-                    {t(`${K}.resend`)}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => void cancel.run(invitation)}
-                  >
-                    {t(`${K}.cancel`)}
-                  </Button>
+                  {canInvite ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void resend.run(invitation)}
+                    >
+                      {t(`${K}.resend`)}
+                    </Button>
+                  ) : null}
+                  {canCancel ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void cancel.run(invitation)}
+                    >
+                      {t(`${K}.cancel`)}
+                    </Button>
+                  ) : null}
                 </div>
               </li>
             ))}

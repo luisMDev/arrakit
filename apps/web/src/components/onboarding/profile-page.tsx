@@ -1,5 +1,6 @@
 import { createOrganizationSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import { Controller, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
@@ -10,10 +11,10 @@ import { Field, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { PRIVACY_URL, TERMS_URL } from '#/config'
 import { type ChoiceSearch, appLanding, checkoutChoice } from '#/lib/checkout-choice'
-import { useCurrentUser } from '#/lib/current-user'
 import { useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import { client } from '#/lib/orpc'
+import { switchOrganization } from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
 const profileForm = z.object({
@@ -26,18 +27,26 @@ type ProfileTarget = ReturnType<typeof appLanding>
 
 type ProfileStep = { name: string; personName: string } | 'skip'
 
-/** A step whose answer was lost still counts once the person has an organization. */
-async function save(step: ProfileStep): Promise<void> {
+/** The organization made; a step whose answer was lost still counts once the person has one. */
+async function created(step: ProfileStep): Promise<string> {
   try {
-    if (step === 'skip') await client.organizations.skip()
-    else await client.organizations.create({ ...step, termsAccepted: true })
+    const organization =
+      step === 'skip'
+        ? await client.onboarding.skip()
+        : await client.onboarding.create({ ...step, termsAccepted: true })
+    return organization.id
   } catch (err) {
     const saved = await client.me.get().then(
-      (me) => me.organization !== null,
-      () => false,
+      (me) => me.organization?.id,
+      () => undefined,
     )
     if (!saved) throw err
+    return saved
   }
+}
+
+async function save(queryClient: QueryClient, step: ProfileStep): Promise<void> {
+  await switchOrganization(queryClient, await created(step))
 }
 
 export function ProfilePage({
@@ -48,7 +57,7 @@ export function ProfilePage({
   onDone: (target: ProfileTarget) => void
 }) {
   const { t } = useTranslation()
-  const me = useCurrentUser()
+  const queryClient = useQueryClient()
   const form = useClearingForm({
     resolver: zodResolver(profileForm),
     defaultValues: { personName: '', organization: '', termsAccepted: false },
@@ -56,11 +65,8 @@ export function ProfilePage({
   const termsAccepted = useWatch({ control: form.control, name: 'termsAccepted' })
   const step = useApiMutation({
     mutationKey: ['profile'],
-    mutationFn: save,
-    onSuccess: async () => {
-      await me.refresh()
-      onDone(appLanding(checkoutChoice(search)))
-    },
+    mutationFn: (variables: ProfileStep) => save(queryClient, variables),
+    onSuccess: () => onDone(appLanding(checkoutChoice(search))),
     meta: {
       failure: (variables: ProfileStep) =>
         t(variables === 'skip' ? 'profile.notSkipped' : 'profile.organizationNotSaved'),

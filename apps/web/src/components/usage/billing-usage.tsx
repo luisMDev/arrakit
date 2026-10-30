@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { EmptyState } from '#/components/shell/empty-state'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent } from '#/components/ui/card'
+import { useCurrentUser } from '#/lib/current-user'
 import { fullDay } from '#/lib/format'
 
 import { AddCreditsDialog } from './add-credits-dialog'
@@ -18,6 +19,7 @@ const KEY = 'settings.billingSettings.usage'
 /** Settings > Billing "Usage": what is left, and Add credits; `?top_up=paid` is Checkout back paid. */
 export function BillingUsage({ usage }: { usage: UsageView | undefined }) {
   const { t } = useTranslation()
+  const { managesBilling } = useCurrentUser()
   const [adding, setAdding] = useState(false)
   const paid = useSearch({ strict: false }).top_up === 'paid'
 
@@ -25,9 +27,11 @@ export function BillingUsage({ usage }: { usage: UsageView | undefined }) {
     <section aria-label={t(`${KEY}.title`)} className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <h3 className="text-muted-foreground text-base font-medium">{t(`${KEY}.title`)}</h3>
-        <Button type="button" size="sm" onClick={() => setAdding(true)}>
-          {t(`${KEY}.addCredits`)}
-        </Button>
+        {managesBilling && (
+          <Button type="button" size="sm" onClick={() => setAdding(true)}>
+            {t(`${KEY}.addCredits`)}
+          </Button>
+        )}
       </div>
       {paid && (
         <p role="status" className="text-sm text-green-600 dark:text-green-400">

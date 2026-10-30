@@ -8,6 +8,8 @@
     "general": "General",
     "usage": "Usage",
     "members": "Members",
+    "teams": "Teams",
+    "roles": "Roles",
     "billing": "Billing",
     "security": "Security and data",
     "accountSettings": {

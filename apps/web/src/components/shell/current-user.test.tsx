@@ -1,20 +1,33 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { initialOf, roleFlags, useCurrentUser } from '#/lib/current-user'
+import { accessOf, initialOf, useCurrentUser } from '#/lib/current-user'
 import { orpc } from '#/lib/orpc'
 import { testQueryClient, withQueries } from '#/test/rpc'
 
 import { meAs } from './testing'
 
-describe('roleFlags', () => {
+describe('accessOf', () => {
   it.each([
-    ['owner', true, true],
-    ['admin', true, false],
-    ['member', false, false],
-    [null, false, false],
-  ] as const)('%s: isAdmin %s, isOwner %s', (role, isAdmin, isOwner) => {
-    expect(roleFlags(role)).toEqual({ isAdmin, isOwner })
+    ['owner', true, true, true],
+    ['admin', false, true, true],
+    ['member', false, false, false],
+  ] as const)(
+    '%s: owner %s, manages members %s, manages billing %s',
+    (role, isOwner, managesMembers, managesBilling) => {
+      expect(accessOf(meAs({ role }))).toMatchObject({ isOwner, managesMembers, managesBilling })
+    },
+  )
+
+  it('reads a custom role from its permissions', () => {
+    const access = accessOf(meAs({ role: 'finance', permissions: { billing: ['read'] } }))
+    expect(access.can({ billing: ['read'] })).toBe(true)
+    expect(access.can({ billing: ['read', 'manage'] })).toBe(false)
+    expect(access).toMatchObject({ isOwner: false, managesMembers: false, managesBilling: false })
+  })
+
+  it('grants nothing to no one', () => {
+    expect(accessOf(null).can({})).toBe(false)
   })
 })
 
@@ -38,7 +51,7 @@ describe('useCurrentUser', () => {
   it('is no one, and neither admin nor owner, before anyone signs in', () => {
     const { result } = setUp()
     expect(result.current.user).toBeNull()
-    expect(result.current.isAdmin).toBe(false)
+    expect(result.current.can({ usage: ['read'] })).toBe(false)
     expect(result.current.isOwner).toBe(false)
     expect(result.current.planLabel).toBe('')
   })

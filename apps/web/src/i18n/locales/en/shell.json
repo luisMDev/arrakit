@@ -43,5 +43,22 @@
     "title": "This page does not exist.",
     "body": "Check the address, or head back to Arrakit.",
     "home": "Back home"
+  },
+  "orgSwitcher": {
+    "label": "Organization: {{organization}}",
+    "organizations": "Your organizations",
+    "create": "Create organization",
+    "notSwitched": "Couldn't switch organizations. Try again.",
+    "notLoaded": "Couldn't load your organizations."
+  },
+  "createOrganization": {
+    "title": "Create an organization",
+    "description": "You'll be its owner, on the Free plan. Switch organizations from the header.",
+    "name": "Organization name",
+    "enterName": "Enter the organization's name.",
+    "create": "Create",
+    "cancel": "Cancel",
+    "created": "{{organization}} is ready.",
+    "notCreated": "Couldn't create the organization. Try again."
   }
 }

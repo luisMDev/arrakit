@@ -1,8 +1,8 @@
 import { isWorkEmail } from '@arrakit/address'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, Navigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -13,19 +13,28 @@ import { Field, FieldError, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { Spinner } from '#/components/ui/spinner'
 import { apiMessage, reportError, statusOf } from '#/lib/api-errors'
+import { authCall, codeOf } from '#/lib/auth-call'
+import { authClient } from '#/lib/auth-client'
 import { registerClearing, useClearingForm } from '#/lib/form'
-import { client, orpc } from '#/lib/orpc'
+import { switchOrganization } from '#/lib/organization-queries'
+import { useApiMutation } from '#/lib/use-api-mutation'
 
 const joinForm = (workEmailError: string) =>
   z.object({ email: z.string().trim().refine(isWorkEmail, workEmailError) })
 
-type Refusal = 'signed-out' | 'taken' | 'closed' | 'failed'
+type Refusal = 'signed-out' | 'already' | 'closed' | 'failed'
+
+const CLOSED_CODES = new Set([
+  'INVITATION_NOT_FOUND',
+  'YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION',
+  'EMAIL_VERIFICATION_REQUIRED_BEFORE_ACCEPTING_OR_REJECTING_INVITATION',
+])
 
 function refusalOf(err: unknown): Refusal {
   const status = statusOf(err)
   if (status === 401) return 'signed-out'
-  if (status === 409) return 'taken'
-  if (status === 404) return 'closed'
+  if (status === 409) return 'already'
+  if (status === 404 || CLOSED_CODES.has(codeOf(err) ?? '')) return 'closed'
   return 'failed'
 }
 
@@ -40,22 +49,25 @@ function Heading({ start, end }: { start: string; end: string }) {
 export function JoinPage({ invitationId }: { invitationId: string }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [sent, setSent] = useState(false)
   const form = useClearingForm({
     resolver: zodResolver(joinForm(t('join.workEmail'))),
     defaultValues: { email: '' },
   })
   const emailError = form.formState.errors.email?.message
-  const joining = useQuery({
-    queryKey: ['invitations', 'accept', invitationId],
-    queryFn: async () => {
-      await client.invitations.accept({ id: invitationId })
-      await queryClient.invalidateQueries({ queryKey: orpc.me.get.queryOptions().queryKey })
-      return true
+  const joining = useApiMutation({
+    mutationKey: ['org', 'acceptInvitation'],
+    mutationFn: async () => {
+      const { member } = await authCall(authClient.organization.acceptInvitation({ invitationId }))
+      await switchOrganization(queryClient, member.organizationId)
     },
-    retry: false,
-    staleTime: Number.POSITIVE_INFINITY,
+    onSuccess: () => void navigate({ to: '/app', replace: true }),
   })
+  const { run: join } = joining
+  useEffect(() => {
+    void join()
+  }, [join])
   const state = sent ? 'sent' : joining.error ? refusalOf(joining.error) : 'joining'
 
   function sendFailure(err: unknown): string {
@@ -80,8 +92,6 @@ export function JoinPage({ invitationId }: { invitationId: string }) {
       <Link to="/signin">{t('join.signIn')}</Link>
     </Button>
   )
-
-  if (joining.isSuccess) return <Navigate to="/app" replace />
 
   return (
     <main className="flex grow items-center justify-center p-6">
@@ -132,11 +142,29 @@ export function JoinPage({ invitationId }: { invitationId: string }) {
           </CardHeader>
         ) : null}
 
-        {state === 'taken' || state === 'closed' || state === 'failed' ? (
+        {state === 'already' ? (
+          <>
+            <CardHeader>
+              <CardTitle className="text-xl">{t('join.alreadyTitle')}</CardTitle>
+              <CardDescription>
+                {apiMessage(joining.error) ?? t('join.alreadyBody')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild>
+                <Link to="/app">{t('join.openApp')}</Link>
+              </Button>
+            </CardContent>
+          </>
+        ) : null}
+
+        {state === 'closed' || state === 'failed' ? (
           <>
             <CardHeader>
               <CardTitle className="text-xl">{t(`join.${state}Title`)}</CardTitle>
-              <CardDescription>{t(`join.${state}Body`)}</CardDescription>
+              <CardDescription>
+                {(state === 'failed' && apiMessage(joining.error)) || t(`join.${state}Body`)}
+              </CardDescription>
             </CardHeader>
             <CardContent>{signInLink(state === 'failed' ? 'ghost' : 'default')}</CardContent>
           </>

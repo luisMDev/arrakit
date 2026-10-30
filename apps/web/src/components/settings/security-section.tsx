@@ -1,12 +1,15 @@
+import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/components/ui/card'
+import { authCall } from '#/lib/auth-call'
+import { authClient } from '#/lib/auth-client'
 import { useCurrentUser } from '#/lib/current-user'
 import { notify } from '#/lib/notify'
-import { orpc } from '#/lib/orpc'
+import { organizationQueries, switchOrganization } from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
 import { ConfirmDeleteDialog } from './confirm-delete-dialog'
@@ -14,20 +17,44 @@ import { SettingsSectionLayout } from './settings-ui'
 
 const K = 'settings.securitySettings'
 
+const org = authClient.organization
+
+/** Moves to another of the person's organizations; resolves `false` when none is left. */
+async function moveToNext(queryClient: QueryClient): Promise<boolean> {
+  const [next] = await queryClient.fetchQuery({ ...organizationQueries.list(), staleTime: 0 })
+  await switchOrganization(queryClient, next?.id ?? null)
+  return next !== undefined
+}
+
 export function SecuritySection() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const me = useCurrentUser()
   const [confirming, setConfirming] = useState(false)
+  const organization = me.user?.organization ?? null
+  const organizationId = organization?.id ?? ''
+
+  const done = async (message: string) => {
+    setConfirming(false)
+    const moved = await moveToNext(queryClient)
+    notify.success(message)
+    void navigate({ to: moved ? '/app' : '/profile' })
+  }
+
   const deleteOrganization = useApiMutation({
-    ...orpc.organizations.delete.mutationOptions(),
-    onSuccess: async () => {
-      setConfirming(false)
-      notify.success(t(`${K}.deleted`))
-      await me.refresh()
-      void navigate({ to: '/profile' })
-    },
+    mutationKey: ['org', 'delete'],
+    mutationFn: () => authCall(org.delete({ organizationId })),
+    onSuccess: () => done(t(`${K}.deleted`)),
+    onError: () => switchOrganization(queryClient, organizationId).catch(() => undefined),
     meta: { failure: t(`${K}.notDeleted`) },
+  })
+
+  const leave = useApiMutation({
+    mutationKey: ['org', 'leave'],
+    mutationFn: () => authCall(org.leave({ organizationId })),
+    onSuccess: () => done(t(`${K}.left`, { organization: organization?.name })),
+    meta: { failure: t(`${K}.notLeft`) },
   })
 
   return (
@@ -50,12 +77,35 @@ export function SecuritySection() {
             onOpenChange={setConfirming}
             title={t(`${K}.confirmTitle`)}
             confirmLabel={t(`${K}.deleteOrganization`)}
-            pending={deleteOrganization.isPending}
+            pending={deleteOrganization.busy}
             onConfirm={() => void deleteOrganization.run()}
           />
         </>
       ) : (
-        <p className="text-muted-foreground text-sm">{t(`${K}.ownerOnly`)}</p>
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t(`${K}.leaveOrganization`)}</CardTitle>
+              <CardDescription>
+                {t(`${K}.leaveHint`, { organization: organization?.name })}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button variant="outline" onClick={() => setConfirming(true)}>
+                {t(`${K}.leave`)}
+              </Button>
+            </CardContent>
+          </Card>
+          <p className="text-muted-foreground text-sm">{t(`${K}.ownerOnly`)}</p>
+          <ConfirmDeleteDialog
+            open={confirming}
+            onOpenChange={setConfirming}
+            title={t(`${K}.confirmLeaveTitle`, { organization: organization?.name })}
+            confirmLabel={t(`${K}.leaveOrganization`)}
+            pending={leave.busy}
+            onConfirm={() => void leave.run()}
+          />
+        </>
       )}
     </SettingsSectionLayout>
   )

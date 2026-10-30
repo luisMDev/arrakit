@@ -45,13 +45,13 @@ export function PlansPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { user, isAdmin, patch } = useCurrentUser()
+  const { user, managesBilling, patch } = useCurrentUser()
   const current: Plan | null = user?.plan ?? null
   const [chosenCycle, setCycle] = useState<BillingCycle | null>(null)
   const [annualOffer, setAnnualOffer] = useState<PaidOffer | null>(null)
   const [pending, setPending] = useState<PendingSwitch | null>(null)
 
-  const wantsBilling = isAdmin && isPaidPlan(current)
+  const wantsBilling = managesBilling && isPaidPlan(current)
   const billingQuery = orpc.billing.get.queryOptions({
     meta: { failure: t('plans.billingLoadFailed') },
   })
@@ -102,7 +102,7 @@ export function PlansPage() {
         </Button>
       )
     }
-    if (!isAdmin || !isPaidPlan(offer.plan)) return null
+    if (!managesBilling || !isPaidPlan(offer.plan)) return null
     const paid = offer as PaidOffer
     if (current === 'free') {
       return (
@@ -162,7 +162,9 @@ export function PlansPage() {
           )
         })}
       </div>
-      {user && !isAdmin && <p className="text-muted-foreground text-sm">{t('plans.onlyAdmin')}</p>}
+      {user && !managesBilling && (
+        <p className="text-muted-foreground text-sm">{t('plans.onlyAdmin')}</p>
+      )}
       <nav className="flex gap-4 text-sm">
         <Button asChild variant="link">
           <Link to="/app">{t('plans.notNow')}</Link>

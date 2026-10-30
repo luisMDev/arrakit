@@ -55,8 +55,13 @@ apps/
                                   billing, usage, shell, oauth (settings/ holds one file per section)
     src/lib/orpc.ts               typed oRPC client + TanStack Query utils (`orpc.x.y.queryOptions()`)
     src/lib/auth-client.ts        Better Auth React client (`@arrakit/auth/client`)
+    src/lib/auth-call.ts          authCall(): unwraps a Better Auth client answer, throws {status, code,
+                                  message} (our `orgErrors.<CODE>` copy for plugin codes) for the toasts
+    src/lib/organization-queries.ts organizationQueries (`['org', …]` list/members/invitations/roles/teams)
+                                  and switchOrganization() (setActive + reset queries)
     src/lib/guards/               route guards: require-user, require-account, skip-when-signed-in
-    src/lib/                      statusOf()/reportError()/apiMessage(), format, notify, useCurrentUser(), titled(), checkoutChoice(),
+    src/lib/                      statusOf()/reportError()/apiMessage(), format, notify, titled(), checkoutChoice(),
+                                  useCurrentUser() (`can(wanted)` from me.permissions, isOwner), grants(),
                                   useClearingForm()/registerClearing() (form errors hide while a field is edited)
     src/i18n/                     i18next setup, `tr()`, `loadLanguage()`;
                                   locales/{en,es}/<module>.json deep-merged into one namespace
@@ -202,7 +207,7 @@ Run from the repo root.
 - **i18n rule**: no hard-coded user-facing strings in the web app. Use `useTranslation()` /
   `t('ns.key')` in components and `tr()` outside React. Keys live in
   `apps/web/src/i18n/locales/{en,es}/<module>.json` (common, shell, auth, onboarding,
-  organizations, members, settings, billing, usage, oauth; imported from saas-base with "SaaS" →
+  organizations, members, teams, roles, settings, billing, usage, oauth; imported from saas-base with "SaaS" →
   "Arrakit"). The files are deep-merged into one namespace, so a key reads the same wherever it
   lives (`t('settings.membersSettings.title')` is in members.json). Each module edits only its
   own files; `en` and `es` must keep identical key sets and no key may be defined twice (tests).
@@ -271,6 +276,9 @@ Run from the repo root.
   Microsoft provider is configured, Better Auth's `validateUserInfo` makes `testUtils.saveUser()`
   require an endpoint context, so create such users through the API.
 - **Web components**: React Testing Library + user-event; mock the API with msw or by injecting a client.
+  `src/test/rpc.tsx`: `answer(path, ...replies)` for `/api/rpc/<path>`, `answerAuth('organization/<path>',
+...replies)` for Better Auth (`[status, message, code]` is a plugin refusal), `meAs()` (permissions follow the
+  role), `renderAt(ui, { me, url })`.
   `#/test/rpc` holds the shared kit: `api` (msw server), `answer(path, ...replies)`, `rpcError()`,
   `meAs()`, `renderAt(ui, { me, url })` (router + query client + toaster), `withQueries()`, `quiet()`.
 - **E2E**: Playwright in `apps/web/e2e`; `playwright.config.ts` boots the API on port 5100 with a

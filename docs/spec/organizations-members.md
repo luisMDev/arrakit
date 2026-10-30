@@ -528,10 +528,21 @@ Load `me.get` (TanStack Query, `orpc.me.get.queryOptions()`) in the `/app` route
 - `organization === null` -> redirect `/profile` (Profile is where an org is made).
 - any other failure -> `/unavailable?next=<url>`.
 - If `me.language` differs from the active i18n language, switch language before rendering.
-Derived: `role`, `isAdmin = role in (owner, admin)`, `isOwner = role === 'owner'`, `planLabel`.
+Derived: `role` (Better Auth's role string), `can(wanted)` = `allows(me.permissions, wanted)`,
+`isOwner = isOwnerRole(role)`, `managesMembers = can(member:update) || can(invitation:create)`,
+`managesBilling = can(billing:manage)`, `planLabel`. Every gated screen, link and button reads `can`.
 `displayName(name, email) = name.trim() || localPart(email)` used for me, account and members.
 Mutations that change name/org name update the `me.get` cache in place (`patch`) so the app menu reflects them.
-After org delete or account delete: clear the cache (`signedOut`).
+After account delete or sign out: clear every query (`signedOut`). After creating, joining, deleting or leaving an
+organization, or picking another: `switchOrganization(queryClient, id | null)` (`#/lib/organization-queries`) calls
+`organization.setActive` (Better Auth changes the active organization in the database without refreshing its cookie
+cache) and then `queryClient.resetQueries()`.
+
+The organization plugin's endpoints are called with the Better Auth client (`authClient.organization.*`) through
+`authCall()` (`#/lib/auth-call`): it unwraps `{ data, error }` and throws an error carrying `status`, `code` and a
+message — our copy `orgErrors.<CODE>` for the plugin's codes we translate, else the API's own message — so the query
+client's toasts work as for oRPC. Queries are keyed `['org', organizationId, 'members' | 'invitations' | 'roles' |
+'teams']` and `['org', 'list']` (`organizationQueries`); invitations are filtered to pending and unexpired.
 
 ### 10.2 Routes
 
@@ -541,7 +552,7 @@ After org delete or account delete: clear the cache (`signedOut`).
 | `/app/settings?section=<id>` | Settings on that section (default `account`) | signed in with org; a hidden section shows Account |
 | `/app/members` | redirect -> `/app/settings?section=members` | |
 | `/app/billing` | redirect -> `/app/settings?section=billing`, keeping `top_up` | |
-| `/profile` | Profile (onboarding spec) — calls `organizations.create` / `organizations.skip` | signed in without org |
+| `/profile` | Profile (onboarding spec) — calls `onboarding.create` / `onboarding.skip`, then `switchOrganization` | signed in without org |
 
 Page titles: `<APP_NAME> · <t('app.titles.settings')>`, join: `app.titles.joinYourOrganization`.
 
@@ -549,15 +560,16 @@ Page titles: `<APP_NAME> · <t('app.titles.settings')>`, join: `app.titles.joinY
 
 Layout: left nav (Back link to `/app` with arrow icon; visually hidden h1 `settings.title`; nav with `aria-label=settings.title`)
 and the selected section on the right. The section lives in the URL search (`?section=account|general|usage|members|
-billing|security`, validated by `settingsSearch`); nav items are links to `/app/settings?section=<id>`.
+teams|roles|billing|security`, validated by `settingsSearch`); nav items are links to `/app/settings?section=<id>`.
 
 Nav groups (`SETTINGS_NAV`):
 - `settings.mySettings`: `account` (`settings.account`)
-- `settings.organizationSettings`: `general` (`settings.general`), `usage` (`settings.usage`),
-  `members` (`settings.members`, **adminOnly**), `billing` (`settings.billing`, **adminOnly**),
-  `security` (`settings.security`).
+- `settings.organizationSettings`: `general`, `usage` (when `can(usage:read)`), `members` (when `managesMembers`),
+  `teams` (everyone; changes gated), `roles` (when `can(ac:create)`), `billing` (when `can(billing:read)`),
+  `security`.
 Each group is `role="group"` with `aria-label` = group label; the current item has `aria-current="page"`.
-Shown section = the URL's section if the person may see it, else `account` (a member never sees Members or Billing).
+Shown section = the URL's section if the person may see it, else `account` (a member never sees Members, Roles or
+Billing; a custom role with `billing:read` sees Billing).
 Cross-section links: Account's owner text opens `security`; Members' "more seats" link opens `billing`.
 
 Settings section component: title (h2) + optional aside on the same row + content. Setting row: muted label, value,
@@ -602,49 +614,56 @@ Behaviour:
 - Delete account: single-flight; call `me.delete`, then `authClient.signOut()` ignoring its failure; success: close dialog,
   toast `deleted`, clear me, navigate `/signin`. 409 -> toast the API message; other failure -> `notDeleted`; stays signed in.
 
-### 10.6 General section (`settings.generalSettings.*`) — everyone reads, admins edit
+### 10.6 General section (`settings.generalSettings.*`) — everyone reads, `organization:update` edits
 
 Data from `me.get` (`organization.name`, `organization.slug`). Card: square logo with initial of org name,
 Input `organizationName` (autocomplete organization), caption `slug` (`Slug: {{slug}}`).
-Member: input disabled. Admin: saves **on blur** via `organizations.update`; blank -> invalid, not sent. Success: update
-state and patch me.organization.name. Failure: toast `notSaved` (`meta.failure`) and show the saved name back.
+Without `organization:update`: input disabled. With it: saves **on blur** via
+`organization.update({ organizationId, data: { name } })`; blank -> invalid, not sent. Success: patch
+me.organization.name and reload the organizations list. Failure: toast the API's message or `notSaved` and show the
+saved name back.
 
-### 10.7 Members section (`settings.membersSettings.*`) — admins only
+### 10.7 Members section (`settings.membersSettings.*`) — when `managesMembers`
 
-Loads `members.list` and `invitations.list` in parallel; failure toast `notLoaded`.
+Loads `organization.listMembers`, `organization.listInvitations` (pending, unexpired) and, with `ac:read`,
+`organization.listRoles`, for the active organization; failure toast `notLoaded`.
 
 Header aside (`data-seats`): `memberCountOne`/`memberCountMany` with member count; when admin and plan has a bigger plan:
 ` · ` + link-button (`moreSeatsFree` "Pro has up to 3" on free, `moreSeatsPro` "Team has up to 10" on pro; none on
 team/internal) that opens the Billing section. Example: `3 members · Team has up to 10`.
 
-Invite card (admins): Input type email label `inviteLabel`, placeholder `name@<my email domain>`, autocomplete off;
-Select (aria-label `role`) options `roleMember` then `roleAdmin` (both for admins and owner — the API lets admins invite admins);
-Button `invite`; hint `rolesHint`.
+Invite card (`invitation:create`): Input type email label `inviteLabel`, placeholder `name@<my email domain>`,
+autocomplete off; Select (aria-label `role`) with the **assignable roles** (`assignableRoles(role, permissions,
+customRoles)`): `roleMember`, `roleAdmin` (owner only), then the custom roles by name — an admin only sees roles within
+their own permissions; Button `invite`; hint `rolesHint`.
 Client validation on submit (email trimmed): required + work email regex (same as API, refuses `lucia@cierzo`) ->
 error `enterWorkEmail` with `example` = placeholder; already a member (case-insensitive) -> `alreadyInOrganization`;
 already in pending invites -> `alreadyInvited`. Error clears when the email changes. Invalid -> no API call, no toast.
 
 List (one card, members then invites):
 - Member row: avatar initial (highlighted for me), name (`displayName`), email, role. Role cell: Select (aria-label
-  `roleOf` {name}) only when `manages(member) && isOwner`; else role label text (`roleOwner`/`roleAdmin`/`roleMember`).
-  `Remove` button when `manages(member)`.
-  `manages(m) = isAdmin && m.email !== me.email && m.role !== 'owner' && (m.role !== 'admin' || isOwner)`.
-  So: admin manages members only (remove; no role select); owner manages admins and members (select + remove);
-  nobody manages self or the owner.
+  `roleOf` {name}, assignable roles) when `can(member:update) && manages(member)`; else the role label (built-in roles
+  translated, custom roles by name, several joined with `, `). `Remove` button when `can(member:delete) && manages(member)`.
+  `manages(m)`: not me, not an owner, an admin only for the owner, and (unless I am the owner) `m`'s permissions
+  within mine. So: an admin changes and removes members; the owner also admins; nobody manages self or the owner.
 - Invite row: dashed avatar with initial of email, email; subline `invitedToday` / `invitedYesterday` /
-  `invitedDaysAgo` ({days}) computed from `invitedOn` vs today (calendar days), OR, when `emailSent === false`, red
-  `emailNotSent` instead. Buttons `resend` and `cancel` (admins).
+  `invitedDaysAgo` ({days}) from `createdAt` vs today (local calendar days), OR, when `emailSent === false`, red
+  `emailNotSent` instead; role label. Buttons `resend` (`invitation:create`) and `cancel` (`invitation:cancel`).
 
 Actions (all except role change are single-flight via a shared `busy` flag disabling buttons; double click sends once):
-- Invite: success -> upsert invite by id into list (no list refetch), reset form; if `emailSent` toast `inviteSent`
-  {email}; else warning toast titled `emailNotSent` with body `inviteSavedNotSent` {email}. Failure: 4xx with API message ->
-  toast that message (e.g. "ana.lopez@acme.com is already in the organization."); other (503, 500) -> toast `notInvited`
-  {email}; form keeps the typed email.
-- Role change (owner): success -> replace member, toast `nowAdmin`/`nowMember` {name}; failure -> toast `roleNotChanged`
-  {name} (or API 4xx message) and reset the select to the previous role.
-- Remove: success -> drop from list, toast `removed` {name, organization}; failure `notRemoved` {name}.
-- Resend: success -> replace invite (emailSent true clears the red mark), toast `inviteResent` {email}; failure `notResent`.
-- Cancel: success -> drop, toast `inviteCancelled` {email}; failure `notCancelled`.
+- Invite (`organization.inviteMember({ email, role, organizationId })`): success -> reset form, toast `inviteSent`
+  {email}. Failure: the API's message (work email, seats full, "can't give permissions you don't have", the 503 "saved,
+  but its email did not go out") or our `orgErrors.*` copy, else `notInvited` {email}; the form keeps the email. The
+  invitations list reloads either way (a 503 invite is saved with `emailSent` false and listed as `emailNotSent`).
+- Role change (`organization.updateMemberRole({ memberId, role, organizationId })`): success -> toast
+  `nowAdmin`/`nowMember`/`nowRole` {name, role}; failure -> the API's message or `roleNotChanged` {name}. The members
+  list reloads either way, so the select shows the saved role.
+- Remove (`organization.removeMember({ memberIdOrEmail: memberId, organizationId })`): success -> reload, toast
+  `removed` {name, organization}; failure `notRemoved` {name}.
+- Resend (`organization.inviteMember({ ..., resend: true })`): success -> toast `inviteResent` {email}, reload;
+  failure `notResent`.
+- Cancel (`organization.cancelInvitation({ invitationId })`): success -> reload, toast `inviteCancelled` {email};
+  failure `notCancelled`.
 General API-call rule: mutations run through `useApiMutation` (`run()` drops a second call while one is running;
 `busy`); a failure is handled once by the query client's MutationCache: it reports the error and toasts the API
 `message` when present, else the mutation's `meta.failure` copy (a 401 is never toasted). Queries do the same through
@@ -653,17 +672,46 @@ the QueryCache with `meta.failure`.
 A member opening `/app/members` (→ `/app/settings?section=members`): nav has no Members, section shows Account, no
 invite form rendered.
 
-### 10.8 Security and data section (`settings.securitySettings.*`) — everyone sees, owner acts
+### 10.8 Security and data section (`settings.securitySettings.*`) — everyone sees, owner deletes, others leave
 
 Owner: danger card `deleteOrganization` + hint `deleteOrganizationHint` + Delete button (`delete`) -> confirm dialog
-(`confirmTitle`, confirm label `deleteOrganization`). Confirm (single-flight): `organizations.delete`; success -> close,
-toast `deleted`, clear me cache, navigate `/profile`. Failure -> toast API message for 4xx/5xx with message (e.g. the
-Stripe 502 message) else `notDeleted`.
-Non-owner: paragraph `ownerOnly`, no delete control, no dialog.
+(`confirmTitle`, confirm label `deleteOrganization`). Confirm (single-flight): `organization.delete({ organizationId })`;
+success -> close, `switchOrganization` to the person's next organization (`organization.list`), toast `deleted`,
+navigate `/app`, or `/profile` when none is left. Failure -> toast the API's message (e.g. the Stripe 502 message) else
+`notDeleted`, and make the organization active again (the plugin cleared it before refusing).
+Non-owner: card `leaveOrganization` + `leaveHint` {organization} + button `leave` -> confirm dialog
+(`confirmLeaveTitle`, confirm label `leaveOrganization`) -> `organization.leave({ organizationId })`; success as for a
+delete with toast `left` {organization}; failure -> our `orgErrors.*` copy or `notLeft`. Then paragraph `ownerOnly`.
+
+### 10.8b Teams section (`settings.teamsSettings.*`) — everyone reads
+
+Hint `hint`. With `team:create`: form `teamName` + `create` (`organization.createTeam({ name, organizationId })`;
+blank -> `enterName`). `empty` when there are none. One card per team (`organization.listTeams`):
+- name: with `team:update` an Input (aria-label `nameOf` {team}) + `save` (`organization.updateTeam`); else the title.
+- `deleteTeam` {team} (with `team:delete`) -> confirm dialog `confirmDeleteTitle` -> `organization.removeTeam`.
+- the team's people from `teams.members({ teamId })` (oRPC: Better Auth lists them only to the team's own members),
+  list `membersOf` {team}, `noMembers` when empty; `remove` per person (aria-label `removeFrom` {name, team}, with
+  `member:delete`) -> `organization.removeTeamMember`.
+- with `member:update`: Select `addTo` {team} of the organization's members not in the team + `add` ->
+  `organization.addTeamMember`.
+Toasts: `created`, `renamed`, `deleted`, `added`, `removed`; failures the API's words, `orgErrors.*` or `not*`.
+
+### 10.8c Roles section (`settings.rolesSettings.*`) — with `ac:create`
+
+Hint `hint`; card `builtIn` (Owner, Admin, Member; `builtInHint`, read-only). List `custom` of
+`organization.listRoles` rows: name, `permissionCountOne|Many`, `edit` (aria `editOf`, with `ac:update`), `delete`
+(aria `deleteOf`, with `ac:delete`) -> confirm `confirmDeleteTitle` -> `organization.deleteRole({ roleId })`. Aside
+`newRole` (with `ac:create`).
+Role dialog: name (create only; required, no comma — Better Auth stores several roles as `a,b`; it lowercases names)
+and a checkbox grid built from `statements`: one row per resource (`resources.<resource>`), one checkbox per action
+(`actions.<action>`, aria-label `permission` {resource, action}); **only actions the person holds are enabled**. At
+least one permission (`pickPermission`). Create -> `organization.createRole({ role, permission, organizationId })`;
+edit -> `organization.updateRole({ roleId, data: { permission }, organizationId })`. Refusals come back in our words
+(`orgErrors.YOU_ARE_NOT_ALLOWED_TO_CREATE_A_ROLE`, `ROLE_IS_ASSIGNED_TO_MEMBERS`, ...).
 
 ### 10.9 Join page `/join/$invitationId`
 
-On mount: `invitations.accept(id)`.
+On mount (once): `organization.acceptInvitation({ invitationId })`, then `switchOrganization(member.organizationId)`.
 States:
 - `joining` (initial): `join.joining` with `role="status"`.
 - success -> navigate `/app` (replace).
@@ -674,20 +722,23 @@ States:
   Success -> state `sent`. Failure: Better Auth refused the address -> `join.workEmail`; 429 -> `join.tooManyLinks`;
   other 4xx with message -> that message; else report + `join.linkNotSent`.
 - `sent`: heading `checkStart` + `checkEnd`, body `sentBody`.
-- 409 -> `taken`: `takenTitle`, `takenBody`, button link `signIn` -> `/signin`.
-- 404 -> `closed`: `closedTitle`, `closedBody`, button link `signIn`.
-- other -> `failed` (report error): `failedTitle`, `failedBody`, ghost link `signIn`.
-Note: in saas-base 403 (seat limit) falls into `failed`. Keep that, or (improvement, optional) show the API message.
+- 409 (already a member of that organization) -> `already`: `alreadyTitle`, the API message ("You're already in
+  Birch.") or `alreadyBody`, button link `openApp` -> `/app`.
+- `INVITATION_NOT_FOUND`, `YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION`, an unverified email, or 404 -> `closed`:
+  `closedTitle`, `closedBody`, button link `signIn`.
+- other -> `failed` (report error): `failedTitle`, the API message when there is one (a full organization:
+  `orgErrors.ORGANIZATION_MEMBERSHIP_LIMIT_REACHED`) else `failedBody`, ghost link `signIn`.
 
 ### 10.10 i18n keys (copy verbatim from saas-base `apps/web/public/i18n/{en,es}.json`)
 
-Namespaces: `join.*`, `confirmDelete.*`, `settings.{back,title,mySettings,account,organizationSettings,general,usage,members,billing,security}`,
+Namespaces: `join.*`, `confirmDelete.*`, `settings.{back,title,mySettings,account,organizationSettings,general,usage,members,teams,roles,billing,security}`,
 `settings.accountSettings.*`, `settings.generalSettings.*`, `settings.membersSettings.*`, `settings.securitySettings.*`,
-`app.titles.settings`, `app.titles.joinYourOrganization`. Interpolation `{{x}}` is i18next-compatible as is.
+`settings.teamsSettings.*` (teams.json), `settings.rolesSettings.*` (roles.json), `orgErrors.*` (organizations.json),
+`orgSwitcher.*` and `createOrganization.*` (shell.json), `app.titles.settings`, `app.titles.joinYourOrganization`. Interpolation `{{x}}` is i18next-compatible as is.
 Full en list (es exists for every key):
 
 - join: joining, expiredStart, expiredEnd, expiredBody, yourWorkEmail, sendNewLink, checkStart, checkEnd, sentBody,
-  takenTitle, takenBody, signIn, closedTitle, closedBody, failedTitle, failedBody, workEmail, tooManyLinks, linkNotSent.
+  alreadyTitle, alreadyBody, openApp, signIn, closedTitle, closedBody, failedTitle, failedBody, workEmail, tooManyLinks, linkNotSent.
 - confirmDelete: cannotBeUndone ("This can't be undone."), keepIt ("Keep it").
 - settings.accountSettings: title, yourName, signIn, email, signInWith, signInGoogle, signInMicrosoft, signInEmail
   ("A link by email"), devices, noDevice, thisDevice, anDevice, aDevice, signOutEverywhere, preferences, language,
@@ -697,11 +748,11 @@ Full en list (es exists for every key):
 - settings.generalSettings: title, organizationName, notSaved, notLoaded, slug.
 - settings.membersSettings: title, memberCountOne, memberCountMany, moreSeatsFree, moreSeatsPro, inviteLabel, role,
   roleOf, roleOwner, roleAdmin, roleMember, invite, rolesHint, remove, invitedToday, invitedYesterday, invitedDaysAgo,
-  emailNotSent, resend, cancel, notLoaded, notInvited, inviteSent, inviteSavedNotSent, roleNotChanged, nowAdmin,
-  nowMember, notRemoved, removed, notResent, inviteResent, notCancelled, inviteCancelled, enterWorkEmail,
+  emailNotSent, resend, cancel, notLoaded, notInvited, inviteSent, roleNotChanged, nowAdmin,
+  nowMember, nowRole, notRemoved, removed, notResent, inviteResent, notCancelled, inviteCancelled, enterWorkEmail,
   alreadyInOrganization, alreadyInvited.
 - settings.securitySettings: title, deleteOrganization, deleteOrganizationHint, delete, confirmTitle, notDeleted,
-  deleted, ownerOnly.
+  deleted, ownerOnly, leaveOrganization, leaveHint, leave, confirmLeaveTitle, left, notLeft.
 
 Known es typo to fix while porting: `ownerDeleteFirst` es "Eres el propietario de **este** organización" -> "esta".
 

@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { answer, meAs, renderAt, setupTestApi } from '#/test/rpc'
+import { answer, answerAuth, meAs, renderAt, setupTestApi } from '#/test/rpc'
 
 import type { SettingsSection } from './settings-page'
 import { RoutedSettings } from './testing'
@@ -19,12 +19,26 @@ beforeEach(() => {
     timeZone: 'Europe/Madrid',
     emails: { productNews: false },
   })
-  answer('members/list', [])
-  answer('invitations/list', [])
+  answerAuth('organization/list-members', { members: [], total: 0 })
+  answerAuth('organization/list-invitations', [])
+  answerAuth('organization/list-roles', [])
+  answerAuth('organization/list-teams', [])
 })
 
-const renderAs = (role: Me['role'], section: SettingsSection = 'account') =>
-  renderAt(<RoutedSettings />, { me: meAs({ role }), url: `/app/settings?section=${section}` })
+const renderAs = (
+  role: Me['role'],
+  section: SettingsSection = 'account',
+  permissions?: Me['permissions'],
+) =>
+  renderAt(<RoutedSettings />, {
+    me: meAs({ role, ...(permissions ? { permissions } : {}) }),
+    url: `/app/settings?section=${section}`,
+  })
+
+const organizationLinks = () =>
+  within(within(nav()).getByRole('group', { name: 'Organization settings' }))
+    .getAllByRole('link')
+    .map((b) => b.textContent)
 
 const nav = () => screen.getByRole('navigation', { name: 'Settings' })
 
@@ -38,12 +52,15 @@ describe('SettingsPage', () => {
         .getAllByRole('link')
         .map((b) => b.textContent),
     ).toEqual(['Account'])
-    const organization = within(nav()).getByRole('group', { name: 'Organization settings' })
-    expect(
-      within(organization)
-        .getAllByRole('link')
-        .map((b) => b.textContent),
-    ).toEqual(['General', 'Usage', 'Members', 'Billing', 'Security and data'])
+    expect(organizationLinks()).toEqual([
+      'General',
+      'Usage',
+      'Members',
+      'Teams',
+      'Roles',
+      'Billing',
+      'Security and data',
+    ])
     expect(within(nav()).getByRole('link', { name: 'Account' })).toHaveAttribute(
       'aria-current',
       'page',
@@ -71,6 +88,25 @@ describe('SettingsPage', () => {
       expect(within(nav()).queryByRole('link', { name: 'Billing' })).toBeNull()
     },
   )
+
+  it('shows a member what their role reads: no Members, Roles or Billing', async () => {
+    renderAs('member')
+    await screen.findByRole('heading', { level: 2, name: 'Account' })
+    expect(organizationLinks()).toEqual(['General', 'Usage', 'Teams', 'Security and data'])
+  })
+
+  it('shows a custom role the sections its permissions open', async () => {
+    renderAs('finance', 'account', { billing: ['read'] })
+    await screen.findByRole('heading', { level: 2, name: 'Account' })
+    expect(organizationLinks()).toEqual(['General', 'Teams', 'Billing', 'Security and data'])
+  })
+
+  it('opens Teams and Roles', async () => {
+    renderAs('owner', 'teams')
+    expect(await screen.findByRole('heading', { level: 2, name: 'Teams' })).toBeInTheDocument()
+    await userEvent.click(within(nav()).getByRole('link', { name: 'Roles' }))
+    expect(await screen.findByRole('heading', { level: 2, name: 'Roles' })).toBeInTheDocument()
+  })
 
   it('goes back to the app', async () => {
     const { location } = renderAs('owner')

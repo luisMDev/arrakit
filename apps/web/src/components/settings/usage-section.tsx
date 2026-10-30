@@ -9,7 +9,7 @@ import { SettingsSectionLayout } from './settings-ui'
 
 export function UsageSection() {
   const { t } = useTranslation()
-  const { isAdmin } = useCurrentUser()
+  const { managesBilling } = useCurrentUser()
   const { data, isPending } = useUsage()
 
   return (
@@ -18,7 +18,11 @@ export function UsageSection() {
         <>
           <UsageCards metrics={data.metrics} />
           <p data-hint className="text-muted-foreground text-sm">
-            {t(isAdmin ? 'settings.usageSettings.adminHint' : 'settings.usageSettings.memberHint')}
+            {t(
+              managesBilling
+                ? 'settings.usageSettings.adminHint'
+                : 'settings.usageSettings.memberHint',
+            )}
           </p>
         </>
       )}

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { magicLinkFor } from './mailpit'
-import { payFor, rpc, signedInOwner, stripeWebhook, uniqueEmail } from './session'
+import { inviteMember, payFor, rpc, signedInOwner, stripeWebhook, uniqueEmail } from './session'
 
 test('an admin adds credits from Billing: preview, Checkout, then the webhook credits the top-up', async ({
   page,
@@ -59,7 +59,7 @@ test('a member sees the usage cards in Settings > Usage, with no Add credits', a
   await payFor(page, organizationId, 'team_monthly')
 
   const memberEmail = uniqueEmail('member')
-  await rpc(page, 'invitations/invite', { email: memberEmail, role: 'member' })
+  await inviteMember(page, organizationId, memberEmail)
   const memberContext = await browser.newContext({ baseURL })
   const memberPage = await memberContext.newPage()
   await memberPage.goto(await magicLinkFor(page.request, memberEmail))
