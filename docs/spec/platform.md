@@ -481,16 +481,34 @@ Rules from tests:
 
 ### 4.1 Boot (`main.ts`)
 
+0. Build the Pino logger from `LOG_LEVEL` / `LOG_FORMAT` only, so a bad env is
+   still logged.
 1. Load env; build the auth config eagerly (`loadAuthConfig`) so a missing
-   variable fails the boot, not the first sign-in.
+   variable fails the boot, not the first sign-in. Init Sentry when `SENTRY_DSN`
+   is set.
 2. Build mailer (`createMailer(process.env)`; throws in production without
    `RESEND_API_KEY`).
 3. `openData(loadDataConfig(env))` (migrations applied).
 4. Register workers: `StoragePurgeWorker` (section 8) and other areas' workers.
 5. Serve with `@hono/node-server`.
 6. On `SIGTERM`/`SIGINT`: stop accepting, close MCP handler, `data.close()`
-   (lets running jobs finish), exit. Fatal boot errors: log `[api] failed to
-   start` and `process.exit(1)`.
+   (lets running jobs finish), flush Sentry, exit. Fatal boot errors: log
+   `failed to start` at `fatal` and `process.exit(1)`.
+
+### 4.2 Logs and errors
+
+- Every request but `GET /health` (mounted first, polled by the host) gets an id
+  (`X-Request-Id`, kept when sent, echoed back) and one access line `request`
+  with `method`, `path`, `status`, `ms` (`warn` for a 5xx).
+- `app.onError`: an `HTTPException` answers its own response; anything else is
+  logged (`unexpected error`, with `requestId`, `method`, `path`), sent to
+  Sentry and answered `500 {"message":"Internal Server Error"}`.
+- oRPC answers procedure errors itself, so every procedure runs under a
+  `reportErrors` middleware doing the same for errors that are not an
+  `ORPCError`, or are its 500 (tags `procedure`, `requestId`), whatever the
+  transport. 4xx, 502 and 503 refusals are logged where they are thrown and
+  never reported.
+- Log messages are constant; ids and amounts go in fields.
 
 ---
 
@@ -746,12 +764,12 @@ org. `keys` = specific files.
 
 - `handle(job)`: `forOrganization(job.organizationId).files.removePrefix(folder)`
   or `.remove(keys)` (never both). On failure log
-  `organization <id> <target>: purge failed; pg-boss retries it, then dead-letters it`
-  with stack, then rethrow (retried, dead-lettered after last attempt).
+  `storage purge failed; the queue retries it, then dead-letters it` with
+  `organizationId`, `target` and the error, then rethrow (retried, dead-lettered after last attempt).
   Target text: `files k1, k2` or `folder "<folder>"` / `folder "<all>"` for `''`.
-- `queueStoragePurge(jobs, job)`: sends the job; if send fails, log
-  `organization <id> <target>: deleted, but its storage purge was not queued; its files stay in the bucket`
-  and **do not throw** (the delete succeeded).
+- `queueStoragePurge(jobs, job, log)`: sends the job; if send fails, log
+  `storage purge not queued; its files stay in the bucket` with
+  `organizationId` and `target`, and **do not throw** (the delete succeeded).
 - Used by: organization delete (owner) → `{ organizationId, folder: '' }` after
   the rows are deleted. Future product features use folders/keys.
 
@@ -943,6 +961,10 @@ cron in UTC, `missed: 'once'`, rescheduling replaces). Usage grants are lazy
 | `RESEND_API_KEY` | prod | absent → Mailpit (`MAILPIT_URL`) or log |
 | `MAIL_FROM` | no | default `Arrakit <hello@example.com>` |
 | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` | no | billing; without all three Checkout answers 503 |
+| `LOG_LEVEL` | no | Pino level; default `silent` in tests, `info` otherwise |
+| `LOG_FORMAT` | no | `json` or `pretty`; default `pretty` in development, `json` otherwise |
+| `SENTRY_DSN` | no | report unexpected errors to Sentry; absent → only logged |
+| `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` | no | environment defaults to `NODE_ENV` |
 | `API_ORIGIN` | web/proxy only | where the web proxies `/api` (dev default `http://localhost:3001` or as AGENTS.md sets) |
 
 Provide `apps/api/.env.example` documenting all of these (port the saas-base
