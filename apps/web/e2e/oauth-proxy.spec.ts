@@ -2,12 +2,11 @@ import { expect, test } from '@playwright/test'
 
 import { magicLinkFor } from './mailpit'
 import { API_ORIGIN, WEB_ORIGIN } from './origins'
+import { uniqueEmail } from './session'
 
 // The web server (the Nitro handler in src/server/api-proxy-handler.ts) proxies /api/** and the OAuth metadata
 // under /.well-known/oauth-* to the API, so web and API are one site. Every request here goes to
 // the WEB origin.
-
-const uniqueEmail = () => `proxy-${Date.now()}-${Math.floor(Math.random() * 1e6)}@acme.test`
 
 test('serves the OAuth authorization server metadata through the web origin', async ({
   request,
@@ -36,7 +35,7 @@ test('serves /api/openapi.json through the web origin', async ({ request }) => {
 test('forwards POST bodies, leaves redirects to the browser and passes the client address', async ({
   request,
 }) => {
-  const email = uniqueEmail()
+  const email = uniqueEmail('proxy')
   const asked = await request.post(`${WEB_ORIGIN}/api/auth/sign-in/magic-link`, {
     headers: { origin: WEB_ORIGIN },
     data: { email, callbackURL: `${WEB_ORIGIN}/profile` },

@@ -4,24 +4,13 @@ import { type Page, expect, test } from '@playwright/test'
 
 import { clearMailFor, magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
+import { createOrganization, signIn, uniqueEmail } from './session'
 const MCP_URL = `${WEB_ORIGIN}/api/mcp`
 const CALLBACK = 'https://claude.ai/api/mcp/auth_callback'
 
-const uniqueEmail = (who: string) =>
-  `${who}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@acme.test`
-
 async function ownerWithOrganization(page: Page, email: string, organization: string) {
-  const asked = await page.request.post('/api/auth/sign-in/magic-link', {
-    headers: { origin: WEB_ORIGIN },
-    data: { email, callbackURL: `${WEB_ORIGIN}/profile` },
-  })
-  expect(asked.ok()).toBe(true)
-  await page.goto(await magicLinkFor(page.request, email))
-  const created = await page.request.post('/api/rpc/organizations/create', {
-    headers: { origin: WEB_ORIGIN },
-    data: { json: { name: organization, termsAccepted: true } },
-  })
-  expect(created.ok()).toBe(true)
+  await signIn(page, email, `${WEB_ORIGIN}/profile`)
+  await createOrganization(page, organization)
   await clearMailFor(page.request, email)
   await page.context().clearCookies()
 }

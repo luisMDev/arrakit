@@ -1,21 +1,10 @@
 import { type Page, expect, test } from '@playwright/test'
 
-import { magicLinkFor } from './mailpit'
-import { WEB_ORIGIN } from './origins'
+import { createOrganization, signIn, uniqueEmail } from './session'
 
 async function signInWithOrganization(page: Page) {
-  const email = `vt-${Date.now()}@acme.test`
-  const sent = await page.request.post('/api/auth/sign-in/magic-link', {
-    data: { email, callbackURL: '/app' },
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(sent.ok(), await sent.text()).toBe(true)
-  await page.goto(await magicLinkFor(page.request, email))
-  const created = await page.request.post('/api/rpc/organizations/create', {
-    data: { json: { name: 'Acme', personName: 'Ana Ruiz', termsAccepted: true } },
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(created.ok(), await created.text()).toBe(true)
+  await signIn(page, uniqueEmail('vt'))
+  await createOrganization(page, 'Acme', 'Ana Ruiz')
 }
 
 const viewTransitionName = (page: Page, selector: string) =>

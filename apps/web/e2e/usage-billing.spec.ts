@@ -1,42 +1,12 @@
 import { type Page, expect, test } from '@playwright/test'
 
 import { magicLinkFor } from './mailpit'
-import { WEB_ORIGIN } from './origins'
-
-const FAKE_STRIPE_SIGNATURE = 't=1,v1=fake-stripe-signature'
-
-const uniqueEmail = (who: string) =>
-  `${who}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@usage.test`
-
-async function rpc<T>(page: Page, path: string, input: unknown = null): Promise<T> {
-  const res = await page.request.post(`/api/rpc/${path}`, {
-    data: { json: input },
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(res.ok(), await res.text()).toBe(true)
-  return ((await res.json()) as { json: T }).json
-}
-
-async function webhook(page: Page, body: unknown) {
-  const res = await page.request.post('/api/webhooks/stripe', {
-    headers: { 'stripe-signature': FAKE_STRIPE_SIGNATURE, 'content-type': 'application/json' },
-    data: JSON.stringify(body),
-  })
-  expect(res.status(), await res.text()).toBe(204)
-}
+import { createOrganization, rpc, signIn, stripeWebhook, uniqueEmail } from './session'
 
 async function ownerWithOrganization(page: Page) {
   const email = uniqueEmail('owner')
-  const sent = await page.request.post('/api/auth/sign-in/magic-link', {
-    data: { email, callbackURL: '/app' },
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(sent.ok(), await sent.text()).toBe(true)
-  await page.goto(await magicLinkFor(page.request, email))
-  const organization = await rpc<{ id: string }>(page, 'organizations/create', {
-    name: 'Usage Co',
-    termsAccepted: true,
-  })
+  await signIn(page, email)
+  const organization = await createOrganization(page, 'Usage Co')
   return { email, organizationId: organization.id }
 }
 
@@ -45,7 +15,7 @@ async function payForTeam(page: Page, organizationId: string, email: string) {
   const slug = organizationId.slice(0, 8)
   const customerId = `cus_${slug}`
   const subscriptionId = `sub_${slug}`
-  await webhook(page, {
+  await stripeWebhook(page, {
     subscriptionId,
     organizationId,
     subscribe: {
@@ -108,7 +78,7 @@ test('an admin adds credits from Billing: preview, Checkout, then the webhook cr
   await dialog.getByRole('button', { name: 'Continue to payment' }).click()
   await expect(page).toHaveURL(/^https:\/\/checkout\.stripe\.test\/c\/pay\/cs_test_top_up_\d+$/)
 
-  await webhook(page, {
+  await stripeWebhook(page, {
     kind: 'top-up',
     sessionId: `cs_test_top_up_${organizationId.slice(0, 8)}`,
     organizationId,

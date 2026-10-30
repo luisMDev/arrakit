@@ -1,27 +1,9 @@
-import { type Page, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
-import { magicLinkFor } from './mailpit'
-import { WEB_ORIGIN } from './origins'
-
-async function signIn(page: Page, email: string) {
-  const sent = await page.request.post('/api/auth/sign-in/magic-link', {
-    data: { email, callbackURL: '/app' },
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(sent.ok(), await sent.text()).toBe(true)
-  await page.goto(await magicLinkFor(page.request, email))
-}
-
-async function createOrganization(page: Page, name: string, personName: string) {
-  const created = await page.request.post('/api/rpc/organizations/create', {
-    data: { json: { name, personName, termsAccepted: true } },
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(created.ok(), await created.text()).toBe(true)
-}
+import { createOrganization, signIn, uniqueEmail } from './session'
 
 test('a signed-in owner moves around the app from the account menu', async ({ page }) => {
-  await signIn(page, `ana-${Date.now()}@acme.test`)
+  await signIn(page, uniqueEmail('ana'))
   await createOrganization(page, 'Acme', 'Ana Ruiz')
 
   await page.goto('/app')
@@ -62,14 +44,14 @@ test('a signed-in owner moves around the app from the account menu', async ({ pa
 })
 
 test('a free organization opening Welcome without a checkout goes to Plans', async ({ page }) => {
-  await signIn(page, `free-${Date.now()}@acme.test`)
+  await signIn(page, uniqueEmail('free'))
   await createOrganization(page, 'Free Co', 'Fran')
   await page.goto('/app/welcome')
   await expect(page).toHaveURL(/\/app\/plans$/)
 })
 
 test('a person with no organization is sent to create one', async ({ page }) => {
-  await signIn(page, `new-${Date.now()}@acme.test`)
+  await signIn(page, uniqueEmail('new'))
   await page.goto('/app')
   await expect(page).toHaveURL(/\/profile/)
 })

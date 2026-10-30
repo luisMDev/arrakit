@@ -2,9 +2,7 @@ import { type Page, expect, test } from '@playwright/test'
 
 import { magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
-
-const uniqueEmail = (who: string) =>
-  `${who}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@acme.test`
+import { uniqueEmail } from './session'
 
 async function askForLink(page: Page, email: string) {
   await page.getByRole('textbox', { name: 'Work email' }).fill(email)

@@ -1,27 +1,7 @@
-import { type Page, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
-import { magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
-
-const uniqueEmail = (who: string) =>
-  `${who}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@acme.test`
-
-async function signIn(page: Page, email: string) {
-  const sent = await page.request.post('/api/auth/sign-in/magic-link', {
-    data: { email, callbackURL: '/app' },
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(sent.ok(), await sent.text()).toBe(true)
-  await page.goto(await magicLinkFor(page.request, email))
-}
-
-async function createOrganization(page: Page, name: string, personName: string) {
-  const created = await page.request.post('/api/rpc/organizations/create', {
-    data: { json: { name, personName, termsAccepted: true } },
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(created.ok(), await created.text()).toBe(true)
-}
+import { createOrganization, signIn, uniqueEmail } from './session'
 
 test('an owner manages the organization from Settings and deletes it', async ({ page }) => {
   const email = uniqueEmail('owner')

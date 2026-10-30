@@ -1,83 +1,57 @@
 import { type Page, expect, test } from '@playwright/test'
 
 import { magicLinkFor } from './mailpit'
-import { WEB_ORIGIN } from './origins'
-const FAKE_STRIPE_SIGNATURE = 't=1,v1=fake-stripe-signature'
-
-const uniqueEmail = (who: string) =>
-  `${who}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@invite.test`
+import { createOrganization, rpc, signIn, stripeWebhook, uniqueEmail } from './session'
 
 const localPart = (email: string) => email.split('@')[0]!
-
-async function rpc<T>(page: Page, path: string, input: unknown = null): Promise<T> {
-  const res = await page.request.post(`/api/rpc/${path}`, {
-    data: { json: input },
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(res.ok(), await res.text()).toBe(true)
-  return ((await res.json()) as { json: T }).json
-}
 
 /** An owner signed in on `page`, whose organization is on Team (through the fake Stripe webhook). */
 async function ownerOnTeam(page: Page) {
   const email = uniqueEmail('owner')
-  const sent = await page.request.post('/api/auth/sign-in/magic-link', {
-    data: { email, callbackURL: '/app' },
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(sent.ok(), await sent.text()).toBe(true)
-  await page.goto(await magicLinkFor(page.request, email))
-  const organization = await rpc<{ id: string }>(page, 'organizations/create', {
-    name: 'Halden Capital',
-    personName: 'Lucía Gómez',
-    termsAccepted: true,
-  })
+  await signIn(page, email)
+  const organization = await createOrganization(page, 'Halden Capital', 'Lucía Gómez')
   const slug = organization.id.slice(0, 8)
   const customerId = `cus_${slug}`
   const subscriptionId = `sub_${slug}`
-  const paid = await page.request.post('/api/webhooks/stripe', {
-    headers: { 'stripe-signature': FAKE_STRIPE_SIGNATURE, 'content-type': 'application/json' },
-    data: JSON.stringify({
-      subscriptionId,
+  await stripeWebhook(page, {
+    subscriptionId,
+    organizationId: organization.id,
+    subscribe: {
+      id: subscriptionId,
+      customerId,
       organizationId: organization.id,
-      subscribe: {
-        id: subscriptionId,
-        customerId,
-        organizationId: organization.id,
-        status: 'active',
-        lookupKey: 'team_monthly',
-      },
-      bill: {
-        customerId,
-        snapshot: {
-          subscription: {
-            status: 'active',
-            lookupKey: 'team_monthly',
-            periodEnd: Date.UTC(2027, 9, 4) / 1000,
-            cancelAtPeriodEnd: false,
-            amount: { amount: 5_000, currency: 'usd' },
-            scheduled: null,
-          },
-          customer: {
-            email: email,
-            name: 'Halden Capital SL',
-            taxId: null,
-            card: { brand: 'visa', last4: '4242' },
-          },
-          invoices: [
-            {
-              id: `in_${slug}`,
-              created: Date.UTC(2026, 9, 4) / 1000,
-              total: { amount: 5_000, currency: 'usd' },
-              status: 'paid',
-              pdfUrl: 'https://pay.stripe.test/in_1.pdf',
-            },
-          ],
+      status: 'active',
+      lookupKey: 'team_monthly',
+    },
+    bill: {
+      customerId,
+      snapshot: {
+        subscription: {
+          status: 'active',
+          lookupKey: 'team_monthly',
+          periodEnd: Date.UTC(2027, 9, 4) / 1000,
+          cancelAtPeriodEnd: false,
+          amount: { amount: 5_000, currency: 'usd' },
+          scheduled: null,
         },
+        customer: {
+          email: email,
+          name: 'Halden Capital SL',
+          taxId: null,
+          card: { brand: 'visa', last4: '4242' },
+        },
+        invoices: [
+          {
+            id: `in_${slug}`,
+            created: Date.UTC(2026, 9, 4) / 1000,
+            total: { amount: 5_000, currency: 'usd' },
+            status: 'paid',
+            pdfUrl: 'https://pay.stripe.test/in_1.pdf',
+          },
+        ],
       },
-    }),
+    },
   })
-  expect(paid.status()).toBe(204)
   await expect.poll(async () => (await rpc<{ plan: string }>(page, 'me/get')).plan).toBe('team')
   return email
 }

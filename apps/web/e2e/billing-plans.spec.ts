@@ -2,33 +2,14 @@ import { type Page, expect, test } from '@playwright/test'
 
 import { magicLinkFor } from './mailpit'
 import { WEB_ORIGIN } from './origins'
-const FAKE_STRIPE_SIGNATURE = 't=1,v1=fake-stripe-signature'
+import { createOrganization, rpc, signIn, stripeWebhook, uniqueEmail } from './session'
+
 const RENEWAL = Date.UTC(2027, 9, 4) / 1000
-
-const uniqueEmail = (who: string) =>
-  `${who}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@billing.test`
-
-async function rpc<T>(page: Page, path: string, input: unknown = null): Promise<T> {
-  const res = await page.request.post(`/api/rpc/${path}`, {
-    data: { json: input },
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(res.ok(), await res.text()).toBe(true)
-  return ((await res.json()) as { json: T }).json
-}
 
 async function ownerOnFree(page: Page, who: string) {
   const email = uniqueEmail(who)
-  const sent = await page.request.post('/api/auth/sign-in/magic-link', {
-    data: { email, callbackURL: '/app' },
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(sent.ok(), await sent.text()).toBe(true)
-  await page.goto(await magicLinkFor(page.request, email))
-  const organization = await rpc<{ id: string }>(page, 'organizations/create', {
-    name: 'Billing Co',
-    termsAccepted: true,
-  })
+  await signIn(page, email)
+  const organization = await createOrganization(page, 'Billing Co')
   return { email, organizationId: organization.id }
 }
 
@@ -42,43 +23,39 @@ async function payFor(
   const subscriptionId = `sub_${slug}`
   const yearly = lookupKey.endsWith('yearly')
   const amount = { pro_yearly: 19_200, team_yearly: 48_000, team_monthly: 5_000 }[lookupKey]
-  const res = await page.request.post('/api/webhooks/stripe', {
-    headers: { 'stripe-signature': FAKE_STRIPE_SIGNATURE, 'content-type': 'application/json' },
-    data: JSON.stringify({
-      subscriptionId,
-      organizationId,
-      subscribe: { id: subscriptionId, customerId, organizationId, status: 'active', lookupKey },
-      bill: {
-        customerId,
-        snapshot: {
-          subscription: {
-            status: 'active',
-            lookupKey,
-            periodEnd: RENEWAL,
-            cancelAtPeriodEnd: false,
-            amount: { amount, currency: 'usd' },
-            scheduled: null,
-          },
-          customer: {
-            email: 'finance@billing.test',
-            name: 'Billing Co SL',
-            taxId: null,
-            card: { brand: 'visa', last4: '4242' },
-          },
-          invoices: [
-            {
-              id: `in_${slug}`,
-              created: Date.UTC(2026, 9, 4) / 1000,
-              total: { amount, currency: 'usd' },
-              status: 'paid',
-              pdfUrl: 'https://pay.stripe.test/in_1.pdf',
-            },
-          ],
+  await stripeWebhook(page, {
+    subscriptionId,
+    organizationId,
+    subscribe: { id: subscriptionId, customerId, organizationId, status: 'active', lookupKey },
+    bill: {
+      customerId,
+      snapshot: {
+        subscription: {
+          status: 'active',
+          lookupKey,
+          periodEnd: RENEWAL,
+          cancelAtPeriodEnd: false,
+          amount: { amount, currency: 'usd' },
+          scheduled: null,
         },
+        customer: {
+          email: 'finance@billing.test',
+          name: 'Billing Co SL',
+          taxId: null,
+          card: { brand: 'visa', last4: '4242' },
+        },
+        invoices: [
+          {
+            id: `in_${slug}`,
+            created: Date.UTC(2026, 9, 4) / 1000,
+            total: { amount, currency: 'usd' },
+            status: 'paid',
+            pdfUrl: 'https://pay.stripe.test/in_1.pdf',
+          },
+        ],
       },
-    }),
+    },
   })
-  expect(res.status()).toBe(204)
   return { yearly }
 }
 

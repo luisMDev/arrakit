@@ -1,25 +1,10 @@
-import { type Page, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
-import { magicLinkFor } from './mailpit'
-import { WEB_ORIGIN } from './origins'
-
-async function signInWithOrganization(page: Page, email: string) {
-  const sent = await page.request.post('/api/auth/sign-in/magic-link', {
-    data: { email, callbackURL: '/app' },
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(sent.ok(), await sent.text()).toBe(true)
-  await page.goto(await magicLinkFor(page.request, email))
-
-  const created = await page.request.post('/api/rpc/organizations/create', {
-    data: { json: { name: 'Usage Co', termsAccepted: true } },
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(created.ok(), await created.text()).toBe(true)
-}
+import { createOrganization, signIn, uniqueEmail } from './session'
 
 test('an owner sees what is left this month in Settings > Usage', async ({ page }) => {
-  await signInWithOrganization(page, `owner-${Date.now()}@usage.test`)
+  await signIn(page, uniqueEmail('owner'))
+  await createOrganization(page, 'Usage Co')
   await page.goto('/app/settings')
   await page.getByRole('button', { name: 'Usage' }).click()
 
