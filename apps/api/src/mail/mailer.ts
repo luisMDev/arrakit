@@ -1,4 +1,4 @@
-import type { Mail, Mailer } from '@arrakit/emails'
+import { APP_NAME, type Mail, type Mailer } from '@arrakit/emails'
 
 interface MailerEnv {
   NODE_ENV?: string
@@ -12,14 +12,13 @@ export interface MailerDeps {
   log?: (line: string) => void
 }
 
-const DEFAULT_FROM = 'Arrakit <hello@example.com>'
+const DEFAULT_FROM = `${APP_NAME} <hello@example.com>`
 
 interface MailpitAddress {
   Email: string
   Name?: string
 }
 
-/** `Name <email>` or a bare `email`, as Mailpit's send API wants it. */
 export function mailpitAddress(address: string): MailpitAddress {
   const named = address.match(/^\s*(.*?)\s*<([^>]+)>\s*$/)
   if (!named) return { Email: address.trim() }
@@ -99,7 +98,6 @@ export function createMailer(env: MailerEnv, deps: MailerDeps = {}): Mailer {
   }
 }
 
-/** Test mailer: records every mail in `sent`. */
 export function recordingMailer(): { mailer: Mailer; sent: Mail[] } {
   const sent: Mail[] = []
   return { sent, mailer: { send: async (mail) => void sent.push(mail) } }

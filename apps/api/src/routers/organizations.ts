@@ -1,7 +1,8 @@
 import { ORPCError } from '@orpc/server'
 
 import { member } from '../orpc/base'
-import { mapMemberErrors } from '../organizations/member-errors'
+import { notInOrganization } from '../orpc/context'
+import { organizationSummary } from '../organizations/organization-summary'
 import { queueStoragePurge } from '../workers/storage-purge'
 
 const STRIPE_FAILED =
@@ -9,34 +10,25 @@ const STRIPE_FAILED =
 
 export const organizationsRouter = {
   update: member('admin').organizations.update.handler(async ({ context, input }) => {
-    const renamed = await mapMemberErrors(() => context.scope.rename(input.name ?? ''))
-    if (!renamed) throw new ORPCError('NOT_FOUND', { message: 'Not found in your organization.' })
-    return { id: renamed.id, name: renamed.name, slug: renamed.slug, plan: renamed.plan }
+    const renamed = await context.scope.rename(input.name ?? '')
+    if (!renamed) throw notInOrganization()
+    return organizationSummary(renamed)
   }),
 
   delete: member('owner').organizations.delete.handler(async ({ context }) => {
-    const organization = context.activeOrganization
-    const subscriptionId = organization.stripeSubscriptionId
+    const organizationId = context.activeOrganization.id
+    const subscriptionId = context.activeOrganization.stripeSubscriptionId
     if (subscriptionId) {
       const stripe = context.deps.stripe
       if (!stripe) throw new ORPCError('SERVICE_UNAVAILABLE', { message: STRIPE_FAILED })
       try {
         await stripe.endNow(subscriptionId)
       } catch (err) {
-        context.log.error(
-          { err, organizationId: organization.id, subscriptionId },
-          'ending the subscription failed',
-        )
+        context.log.error({ err, organizationId, subscriptionId }, 'ending the subscription failed')
         throw new ORPCError('BAD_GATEWAY', { message: STRIPE_FAILED })
       }
     }
-    if (!(await context.data.deleteOrganization(organization.id))) {
-      throw new ORPCError('NOT_FOUND', { message: 'Not found in your organization.' })
-    }
-    await queueStoragePurge(
-      context.data.jobs,
-      { organizationId: organization.id, folder: '' },
-      context.log,
-    )
+    if (!(await context.data.deleteOrganization(organizationId))) throw notInOrganization()
+    await queueStoragePurge(context.data.jobs, { organizationId, folder: '' }, context.log)
   }),
 }

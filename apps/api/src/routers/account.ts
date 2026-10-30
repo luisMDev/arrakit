@@ -5,7 +5,7 @@ import { PLAN_OFFERS } from '@arrakit/plans'
 import { ORPCError } from '@orpc/server'
 
 import { authed } from '../orpc/base'
-import { mapMemberErrors } from '../organizations/member-errors'
+import { organizationSummary } from '../organizations/organization-summary'
 
 function accountView(account: Account | null): AccountView {
   if (!account) throw new ORPCError('UNAUTHORIZED')
@@ -28,19 +28,14 @@ export const meRouter = {
       email: context.user.email,
       name: context.user.name.trim(),
       language: context.user.language === 'es' ? 'es' : 'en',
-      organization: organization && {
-        id: organization.id,
-        name: organization.name,
-        slug: organization.slug,
-        plan: organization.plan,
-      },
+      organization: organization && organizationSummary(organization),
       role: membership?.role ?? null,
       plan: organization?.plan ?? null,
       seats: organization ? PLAN_OFFERS[organization.plan].seats : null,
     }
   }),
   delete: authed.me.delete.handler(async ({ context }) => {
-    await mapMemberErrors(() => context.data.deleteAccount(context.user.id))
+    await context.data.deleteAccount(context.user.id)
   }),
   account: {
     get: authed.me.account.get.handler(async ({ context }) =>

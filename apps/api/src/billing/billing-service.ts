@@ -1,12 +1,13 @@
 import type { BillingView } from '@arrakit/contract'
-import type { ScopedData, OrganizationRow } from '@arrakit/db'
+import type { OrganizationRow, OrganizationScope } from '@arrakit/db'
 import type { Mailer } from '@arrakit/emails'
 import { PLAN_LABELS } from '@arrakit/plans'
 import { ORPCError } from '@orpc/server'
 
 import type { Logger } from '../observability/logger'
 import { adminsOf, canceledMails, recipients } from './billing-mail'
-import { billingView, dayOf } from './billing-view'
+import { dayOf } from '../day'
+import { billingView } from './billing-view'
 import type { BillingSnapshot, StripeGateway } from './stripe-gateway'
 import {
   type PaidSubscription,
@@ -14,16 +15,10 @@ import {
   whenChangeApplies,
 } from './subscription-plan'
 
-export const LOAD_REFUSAL = "Couldn't load billing from Stripe. Try again in a minute."
+const LOAD_REFUSAL = "Couldn't load billing from Stripe. Try again in a minute."
 export const CHANGE_REFUSAL = "Couldn't reach Stripe, so nothing changed. Try again in a minute."
 export const CHECKOUT_REFUSAL = "Couldn't open the payment form. Try again in a minute."
-export const CARD_DECLINED = 'Your card was declined. Update it under Payment, then try again.'
-export const NOT_SET_UP = 'Payments are not set up yet.'
-
-export function requireGateway(stripe: StripeGateway | null): StripeGateway {
-  if (!stripe) throw new ORPCError('SERVICE_UNAVAILABLE', { message: NOT_SET_UP })
-  return stripe
-}
+const CARD_DECLINED = 'Your card was declined. Update it under Payment, then try again.'
 
 export function refuseInternal(organization: OrganizationRow): void {
   if (organization.plan === 'internal') {
@@ -33,15 +28,15 @@ export function refuseInternal(organization: OrganizationRow): void {
   }
 }
 
-export interface PaidOrganization {
+interface PaidOrganization {
   organization: OrganizationRow
   subscriptionId: string
   current: PaidSubscription
   periodEnd: number
 }
 
-export interface BillingDeps {
-  data: ScopedData
+interface BillingDeps {
+  scope: OrganizationScope
   stripe: StripeGateway | null
   mailer: Mailer
   webUrl: string
@@ -72,8 +67,8 @@ export function billingService(deps: BillingDeps) {
 
   async function snapshot(organization: OrganizationRow): Promise<BillingSnapshot | null> {
     const customerId = organization.stripeCustomerId
-    if (!customerId) return null
-    const stripe = requireGateway(deps.stripe)
+    const stripe = deps.stripe
+    if (!customerId || !stripe) return null
     return callStripe(organization, 'load billing', () =>
       stripe.billing(customerId, organization.stripeSubscriptionId),
     )
@@ -91,12 +86,9 @@ export function billingService(deps: BillingDeps) {
         message: 'Your organization is on Free. Pick a plan to pay for it.',
       })
     }
-    const stripe = requireGateway(deps.stripe)
-    const loaded = await callStripe(organization, 'load billing', () =>
-      stripe.billing(customerId, subscriptionId),
-    )
-    const current = subscriptionOfLookupKey(loaded.subscription?.lookupKey ?? null)
-    if (!loaded.subscription || !current) {
+    const loaded = await snapshot(organization)
+    const current = subscriptionOfLookupKey(loaded?.subscription?.lookupKey ?? null)
+    if (!loaded?.subscription || !current) {
       deps.log.error(
         { organizationId: organization.id, subscriptionId },
         'subscription bills no known price',
@@ -121,6 +113,8 @@ export function billingService(deps: BillingDeps) {
     cancelledBy: string,
     loaded: BillingSnapshot | null,
   ): Promise<void> {
+    const notSent = (err: unknown) =>
+      deps.log.error({ err, organizationId: organization.id }, 'cancellation email not sent')
     if (!loaded?.subscription) {
       deps.log.error(
         { organizationId: organization.id, reason: 'Stripe shows no subscription' },
@@ -129,17 +123,19 @@ export function billingService(deps: BillingDeps) {
       return
     }
     try {
-      const members = await deps.data.forOrganization(organization.id).members.list()
+      const members = await deps.scope.members.list()
       const mails = canceledMails({
-        organization,
         plan: PLAN_LABELS[organization.plan],
         endsOn: dayOf(loaded.subscription.periodEnd),
         to: recipients(cancelledBy, ...adminsOf(members)),
         webOrigin: deps.webUrl,
       })
-      for (const mail of mails) await deps.mailer.send(mail)
+      const sent = await Promise.allSettled(mails.map((mail) => deps.mailer.send(mail)))
+      for (const result of sent) {
+        if (result.status === 'rejected') notSent(result.reason)
+      }
     } catch (err) {
-      deps.log.error({ err, organizationId: organization.id }, 'cancellation email not sent')
+      notSent(err)
     }
   }
 

@@ -1,3 +1,4 @@
+import { type OrganizationRole, isAdminRole } from '@arrakit/address'
 import type { Auth } from '@arrakit/auth'
 import { isTrustedOrigin } from '@arrakit/auth'
 import type { OrganizationRow, OrganizationScope, ScopedData } from '@arrakit/db'
@@ -6,8 +7,8 @@ import { ORPCError, os } from '@orpc/server'
 import type { AppDeps } from '../deps'
 import type { Logger } from '../observability/logger'
 import { isUnexpected, reportUnexpected } from '../observability/unexpected-error'
+import { toMemberError } from '../organizations/member-errors'
 
-/** What every procedure receives (built per request in app.ts). */
 export interface BaseContext {
   deps: AppDeps
   data: ScopedData
@@ -16,21 +17,22 @@ export interface BaseContext {
   log: Logger
 }
 
-/** The context every procedure starts from. */
 export function procedureContext(deps: AppDeps, headers: Headers, log: Logger): BaseContext {
   return { deps, data: deps.data, headers, log }
 }
 
 /**
- * oRPC answers a thrown error itself, before Hono's onError, so unexpected ones are logged and
- * reported here (for every transport), then rethrown for oRPC to answer 500.
+ * Maps the data layer's domain errors to oRPC errors. oRPC answers a thrown error itself, before
+ * Hono's onError, so unexpected ones are logged and reported here (for every transport), then
+ * rethrown for oRPC to answer 500.
  */
 export const reportErrors = os
   .$context<BaseContext>()
   .middleware(async ({ context, path, next }) => {
     try {
       return await next()
-    } catch (error) {
+    } catch (thrown) {
+      const error = toMemberError(thrown)
       if (isUnexpected(error)) {
         reportUnexpected(context.log, context.deps.errors, error, { procedure: path.join('.') })
       }
@@ -38,17 +40,20 @@ export const reportErrors = os
     }
   })
 
+export const notInOrganization = () =>
+  new ORPCError('NOT_FOUND', { message: 'Not found in your organization.' })
+
 type SessionResult = NonNullable<Awaited<ReturnType<Auth['api']['getSession']>>>
-export type SessionUser = SessionResult['user']
+type SessionUser = SessionResult['user']
 export type Session = SessionResult['session']
 
-export interface SessionContext extends BaseContext {
+interface SessionContext extends BaseContext {
   user: SessionUser
   session: Session
 }
 
 export type MemberLevel = 'member' | 'admin' | 'owner'
-export type OrganizationRole = 'owner' | 'admin' | 'member'
+export type { OrganizationRole }
 
 export interface MemberContext extends SessionContext {
   activeOrganization: OrganizationRow
@@ -57,17 +62,15 @@ export interface MemberContext extends SessionContext {
   scope: OrganizationScope
 }
 
-/** 401 without a live Better Auth session; puts `{ user, session }` in the context. */
 export const requireSession = os.$context<BaseContext>().middleware(async ({ context, next }) => {
   const result = await context.deps.auth.api.getSession({ headers: context.headers })
   if (!result) throw new ORPCError('UNAUTHORIZED')
   return next({ context: { user: result.user, session: result.session } })
 })
 
-/** Does `role` reach `level`? */
-export function roleAllows(role: OrganizationRole, level: MemberLevel): boolean {
+function roleAllows(role: OrganizationRole, level: MemberLevel): boolean {
   if (level === 'owner') return role === 'owner'
-  if (level === 'admin') return role === 'owner' || role === 'admin'
+  if (level === 'admin') return isAdminRole(role)
   return true
 }
 
@@ -78,8 +81,7 @@ export function roleAllows(role: OrganizationRole, level: MemberLevel): boolean 
 export function requireMember(level: MemberLevel) {
   return os.$context<SessionContext>().middleware(async ({ context, next }) => {
     const membership = await context.data.memberOf(context.user.id)
-    if (!membership)
-      throw new ORPCError('NOT_FOUND', { message: 'Not found in your organization.' })
+    if (!membership) throw notInOrganization()
     if (!roleAllows(membership.role, level)) {
       throw new ORPCError('FORBIDDEN', {
         message:
@@ -108,7 +110,6 @@ export function requireTrustedOrigin(message: string) {
   })
 }
 
-/** 503 when Stripe is not configured; puts the gateway in the context. */
 export const requireStripe = os.$context<BaseContext>().middleware(async ({ context, next }) => {
   const stripe = context.deps.stripe
   if (!stripe)

@@ -10,7 +10,7 @@
 const METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace']
 
 /** An OpenAPI document's `paths`: each path's item, keyed by method among other fields. */
-export type OpenApiPaths = Record<string, object | undefined>
+type OpenApiPaths = Record<string, object | undefined>
 
 /** Every operation in `paths`, as `METHOD /path`. A path item's other fields are not operations. */
 export const operationsOf = (paths: OpenApiPaths): string[] =>
@@ -20,7 +20,7 @@ export const operationsOf = (paths: OpenApiPaths): string[] =>
       .map((method) => `${method.toUpperCase()} ${path}`),
   )
 
-export interface CoverageGaps {
+interface CoverageGaps {
   /** Operations with neither a case nor an exemption. */
   uncovered: string[]
   /** Cases and exemptions naming an operation that does not exist. */

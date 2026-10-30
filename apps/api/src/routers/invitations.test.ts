@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { linkFor, ownerOf } from '../organizations/testing'
+import { ownerOf } from '../testing/people'
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp } from '../testing/app'
 
 describe('invite flow', () => {
@@ -26,7 +26,7 @@ describe('invite flow', () => {
     const invite = await t
       .client(owner.headers)
       .invitations.invite({ email: 'jon@halden.vc', role: 'member' })
-    const { res, headers } = await open(linkFor(t, 'jon@halden.vc'))
+    const { res, headers } = await open(t.linkFor('jon@halden.vc'))
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toBe(`${TEST_WEB_ORIGIN}/join/${invite.id}`)
 

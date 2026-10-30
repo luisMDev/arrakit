@@ -7,7 +7,7 @@ import { authed, member } from '../orpc/base'
 import { requireTrustedOrigin } from '../orpc/context'
 import { sendInviteMail } from '../organizations/invite-mail'
 import { invitationView } from '../organizations/invitation-view'
-import { mapMemberErrors } from '../organizations/member-errors'
+import { organizationSummary } from '../organizations/organization-summary'
 
 const admin = member('admin')
 const fromApp = admin.use(requireTrustedOrigin('Invite from the app.'))
@@ -55,13 +55,11 @@ export const invitationsRouter = {
 
   invite: fromApp.invitations.invite.handler(async ({ context, input }) => {
     const organizationId = context.activeOrganization.id
-    const invitation = await mapMemberErrors(() =>
-      context.scope.members.invite({
-        email: input.email,
-        role: input.role,
-        inviterId: context.user.id,
-      }),
-    )
+    const invitation = await context.scope.members.invite({
+      email: input.email,
+      role: input.role,
+      inviterId: context.user.id,
+    })
     try {
       await sendInviteMail(context.deps, context.headers, invitation)
     } catch (err) {
@@ -76,7 +74,7 @@ export const invitationsRouter = {
   }),
 
   resend: fromApp.invitations.resend.handler(async ({ context, input }) => {
-    const invitation = await mapMemberErrors(() => context.scope.members.resend(input.id))
+    const invitation = await context.scope.members.resend(input.id)
     if (!invitation) throw new ORPCError('NOT_FOUND', { message: NO_SUCH_INVITATION })
     try {
       await sendInviteMail(context.deps, context.headers, invitation)
@@ -100,21 +98,11 @@ export const invitationsRouter = {
   }),
 
   accept: authed.invitations.accept.handler(async ({ context, input }) => {
-    const { organization, role } = await mapMemberErrors(() =>
-      context.data.acceptInvitation({
-        invitationId: input.id,
-        userId: context.user.id,
-        email: context.user.email,
-      }),
-    )
-    return {
-      organization: {
-        id: organization.id,
-        name: organization.name,
-        slug: organization.slug,
-        plan: organization.plan,
-      },
-      role,
-    }
+    const { organization, role } = await context.data.acceptInvitation({
+      invitationId: input.id,
+      userId: context.user.id,
+      email: context.user.email,
+    })
+    return { organization: organizationSummary(organization), role }
   }),
 }

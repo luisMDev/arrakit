@@ -45,7 +45,6 @@ describe('chargeOf', () => {
 
 describe('receiptMails', () => {
   const input = {
-    organization: { name: 'Cierzo Ventures', slug: 'cierzo' },
     plan: 'Pro',
     cycle: 'yearly' as const,
     charge: { amount: '$1,430', card: 'Visa ending 4242' },
@@ -57,7 +56,6 @@ describe('receiptMails', () => {
   it('sends the receipt to each recipient, with the plan link', () => {
     const mails = receiptMails({ ...input, to: ['ana@cierzo.vc', 'bill@cierzo.vc'] })
     const email = receiptEmail({
-      organization: { name: 'Cierzo Ventures' },
       plan: 'Pro',
       billing: 'yearly',
       charge: input.charge,
@@ -168,14 +166,12 @@ describe('adminsOf', () => {
 describe('failedMails', () => {
   it('sends the failed payment to each recipient, with the amount, the card, the days and the billing link', () => {
     const mails = failedMails({
-      organization: { name: 'Cierzo Ventures', slug: 'cierzo' },
       charge: { amount: '$1,430', card: 'Visa ending 4242' },
       retryInDays: 3,
       to: ['bill@cierzo.vc', 'ana@cierzo.vc'],
       webOrigin: 'https://app.example.com',
     })
     const email = failedEmail({
-      organization: { name: 'Cierzo Ventures' },
       charge: { amount: '$1,430', card: 'Visa ending 4242' },
       retryInDays: 3,
       links: { billing: 'https://app.example.com/app/billing' },
@@ -195,7 +191,6 @@ describe('failedMails', () => {
 describe('renewMails', () => {
   it('sends the renewal notice with the renewal day, the amount and the plan link', () => {
     const mails = renewMails({
-      organization: { name: 'Cierzo Ventures', slug: 'cierzo' },
       plan: 'Pro',
       charge: { amount: '$1,430', card: 'Visa ending 4242' },
       renewsOn: '2027-10-04',
@@ -232,7 +227,7 @@ describe('downgradeDue', () => {
 describe('downgradedMails', () => {
   it('tells each recipient the organization is back on Free, with the plan that ended and the billing link', () => {
     const mails = downgradedMails({
-      organization: { name: 'Cierzo Ventures', slug: 'cierzo' },
+      organization: { name: 'Cierzo Ventures' },
       plan: 'Pro',
       to: ['bill@cierzo.vc', 'ana@cierzo.vc'],
       webOrigin: 'https://app.example.com',

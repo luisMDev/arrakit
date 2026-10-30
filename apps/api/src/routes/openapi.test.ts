@@ -3,7 +3,7 @@ import { isContractProcedure } from '@orpc/contract'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { type TestApp, createTestApp } from '../testing/app'
-import { OPERATION_STATUSES, generateOpenApiDocument } from './openapi'
+import { OPERATION_STATUSES, openApiDocument } from './openapi'
 
 interface Operation {
   tags?: string[]
@@ -16,7 +16,7 @@ type Doc = { paths: Record<string, Record<string, Operation>> }
 
 const METHODS = ['get', 'put', 'post', 'delete', 'patch'] as const
 
-const doc = async () => (await generateOpenApiDocument()) as unknown as Doc
+const doc = async () => (await openApiDocument()) as unknown as Doc
 const statuses = (operation: Operation) => Object.keys(operation.responses).sort()
 
 function procedurePaths(node: unknown, path: string[] = []): string[] {

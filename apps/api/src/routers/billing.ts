@@ -1,39 +1,39 @@
-import type { OrganizationRow } from '@arrakit/db'
 import { PLAN_LABELS } from '@arrakit/plans'
 import { ORPCError } from '@orpc/server'
 
 import { applyBillingEvent } from '../billing/apply-billing-event'
-import { billingView, dayOf } from '../billing/billing-view'
+import { billingView } from '../billing/billing-view'
 import {
   CHANGE_REFUSAL,
   CHECKOUT_REFUSAL,
   billingService,
   refuseInternal,
-  requireGateway,
 } from '../billing/billing-service'
+import type { StripeGateway } from '../billing/stripe-gateway'
+import { dayOf } from '../day'
 import { member } from '../orpc/base'
-import { type MemberContext, requireTrustedOrigin } from '../orpc/context'
+import { type MemberContext, requireStripe, requireTrustedOrigin } from '../orpc/context'
 
 const admin = member('admin')
-const pay = admin.use(requireTrustedOrigin('Pay from the app.'))
-const changePlans = admin.use(requireTrustedOrigin('Change plans from the app.'))
-const changeBilling = admin.use(requireTrustedOrigin('Change billing from the app.'))
+const fromApp = (message: string) => admin.use(requireTrustedOrigin(message)).use(requireStripe)
+const pay = fromApp('Pay from the app.')
+const changePlans = fromApp('Change plans from the app.')
+const changeBilling = fromApp('Change billing from the app.')
+const addCredits = fromApp('Add credits from the app.')
+
+type StripeContext = MemberContext & { stripe: StripeGateway }
 
 const serviceOf = (context: MemberContext) =>
   billingService({
-    data: context.data,
+    scope: context.scope,
     stripe: context.deps.stripe,
     mailer: context.deps.mailer,
     webUrl: context.deps.env.webUrl,
     log: context.log,
   })
 
-async function organizationOf(context: MemberContext): Promise<OrganizationRow> {
-  return (await context.scope.organization()) ?? context.activeOrganization
-}
-
-async function setCancelled(context: MemberContext, cancelledBy: string | null) {
-  const organization = await organizationOf(context)
+async function setCancelled(context: StripeContext, cancelledBy: string | null) {
+  const { activeOrganization: organization, stripe } = context
   refuseInternal(organization)
   const subscriptionId = organization.stripeSubscriptionId
   if (organization.plan === 'free' || !subscriptionId) {
@@ -41,7 +41,6 @@ async function setCancelled(context: MemberContext, cancelledBy: string | null) 
       message: 'Your organization is on Free: there is nothing to cancel.',
     })
   }
-  const stripe = requireGateway(context.deps.stripe)
   const cancel = cancelledBy !== null
   const service = serviceOf(context)
   await service.callStripe(
@@ -57,8 +56,7 @@ async function setCancelled(context: MemberContext, cancelledBy: string | null) 
 
 export const billingRouter = {
   checkout: pay.billing.checkout.handler(async ({ context, input }) => {
-    const stripe = requireGateway(context.deps.stripe)
-    const organization = await organizationOf(context)
+    const { activeOrganization: organization, stripe } = context
     if (organization.plan !== 'free') {
       throw new ORPCError('CONFLICT', {
         message: `Your organization is on ${PLAN_LABELS[organization.plan]}. Switch plans in Settings → Billing.`,
@@ -82,14 +80,14 @@ export const billingRouter = {
   }),
 
   get: admin.billing.get.handler(async ({ context }) =>
-    serviceOf(context).view(await organizationOf(context)),
+    serviceOf(context).view(context.activeOrganization),
   ),
 
   previewChange: changePlans.billing.previewChange.handler(async ({ context, input }) => {
     const service = serviceOf(context)
-    const paid = await service.paidOrganization(await organizationOf(context))
+    const paid = await service.paidOrganization(context.activeOrganization)
     const applies = service.applies(paid, input)
-    const stripe = requireGateway(context.deps.stripe)
+    const { stripe } = context
     const [dueToday, nextInvoice] = await service.callStripe(
       paid.organization,
       'preview a change',
@@ -101,7 +99,7 @@ export const billingRouter = {
     )
     return {
       applies,
-      on: applies === 'now' ? dayOf(Date.now() / 1000) : dayOf(paid.periodEnd),
+      on: applies === 'now' ? dayOf(new Date()) : dayOf(paid.periodEnd),
       dueToday: dueToday ?? { amount: 0, currency: nextInvoice.currency },
       nextInvoice,
     }
@@ -109,9 +107,9 @@ export const billingRouter = {
 
   change: changePlans.billing.change.handler(async ({ context, input }) => {
     const service = serviceOf(context)
-    const paid = await service.paidOrganization(await organizationOf(context))
+    const paid = await service.paidOrganization(context.activeOrganization)
     const applies = service.applies(paid, input)
-    const stripe = requireGateway(context.deps.stripe)
+    const { stripe } = context
     const requestedBy = context.user.email
     await service.callStripe(
       paid.organization,
@@ -122,14 +120,18 @@ export const billingRouter = {
           : stripe.changeAtRenewal(paid.subscriptionId, input, requestedBy),
       CHANGE_REFUSAL,
     )
-    await service.callStripe(paid.organization, 'read the changed subscription', () =>
-      applyBillingEvent(context.data, stripe, {
-        kind: 'subscription',
-        subscriptionId: paid.subscriptionId,
-        organizationId: paid.organization.id,
-      }),
+    const outcome = await service.callStripe(
+      paid.organization,
+      'read the changed subscription',
+      () =>
+        applyBillingEvent(context.data, stripe, {
+          kind: 'subscription',
+          subscriptionId: paid.subscriptionId,
+          organizationId: paid.organization.id,
+        }),
     )
-    return service.view(await organizationOf(context))
+    const plan = outcome.kind === 'applied' ? outcome.plan : paid.organization.plan
+    return service.view({ ...paid.organization, plan })
   }),
 
   cancel: changePlans.billing.cancel.handler(({ context }) =>
@@ -139,7 +141,7 @@ export const billingRouter = {
   resume: changePlans.billing.resume.handler(({ context }) => setCancelled(context, null)),
 
   portal: changeBilling.billing.portal.handler(async ({ context, input }) => {
-    const organization = await organizationOf(context)
+    const { activeOrganization: organization, stripe } = context
     refuseInternal(organization)
     const customerId = organization.stripeCustomerId
     if (!customerId) {
@@ -147,10 +149,24 @@ export const billingRouter = {
         message: 'Your organization has no billing details yet. Pick a plan first.',
       })
     }
-    const stripe = requireGateway(context.deps.stripe)
     const url = await serviceOf(context).callStripe(organization, 'open the portal', () =>
       stripe.portal(customerId, `${context.deps.env.webUrl}/app/billing`, input.to),
     )
     return { url }
+  }),
+
+  topUp: addCredits.billing.topUp.handler(async ({ context, input }) => {
+    const { activeOrganization: organization, stripe } = context
+    const web = context.deps.env.webUrl
+    return serviceOf(context).callStripe(organization, 'top-up checkout', () =>
+      stripe.topUpCheckout({
+        organizationId: organization.id,
+        cents: input.cents,
+        customerId: organization.stripeCustomerId,
+        email: context.user.email,
+        successUrl: `${web}/app/billing?top_up=paid`,
+        cancelUrl: `${web}/app/billing`,
+      }),
+    )
   }),
 }

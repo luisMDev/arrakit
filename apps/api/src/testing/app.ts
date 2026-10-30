@@ -18,6 +18,7 @@ import { type CapturedError, recordingErrorReporter } from '../observability/err
 import { type LogEntry, recordingLogger } from '../observability/logger'
 import { type BaseContext, procedureContext } from '../orpc/context'
 import { buildDeps } from '../services'
+import { FAKE_STRIPE_SIGNATURE } from './fake-stripe'
 
 type HeadersLike = ConstructorParameters<typeof Headers>[0]
 
@@ -26,7 +27,7 @@ export const TEST_MCP_URL = mcpResourceURL(TEST_WEB_ORIGIN)
 /** Where claude.ai takes the authorization code back. */
 export const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback'
 
-export interface ConnectorTokens {
+interface ConnectorTokens {
   access_token: string
   refresh_token: string
   token_type: string
@@ -73,10 +74,12 @@ export interface TestApp {
   client(headers?: HeadersLike): ContractRouterClient<Contract>
   /** Signs in the user with `email`, creating it verified on first use; returns session headers (cookie + trusted Origin). */
   signIn(user: { email: string; name?: string }): Promise<{ headers: Headers; userId: string }>
-  /** Signs `email` in through a real magic link (read from `sent`); returns the session cookie. */
-  magicLinkSignIn(email: string): Promise<string>
+  /** Signs `email` in through a real magic link (read from `sent`), opened with `userAgent`; returns the session cookie. */
+  magicLinkSignIn(email: string, userAgent?: string): Promise<string>
   /** The link in the last email sent to `email`. */
   linkFor(email: string): string
+  /** Delivers a Stripe webhook body, signed for the fake gateway unless `signature` says otherwise. */
+  webhook(body: object, signature?: string | null): Promise<Response>
   /** Claude's side of the MCP connector, one call per step. */
   connector: {
     register(): Promise<string>
@@ -244,6 +247,16 @@ export async function createTestApp(
     request,
     client,
     linkFor,
+    webhook(body, signature = FAKE_STRIPE_SIGNATURE) {
+      return request('/api/webhooks/stripe', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(signature === null ? {} : { 'stripe-signature': signature }),
+        },
+        body: JSON.stringify(body),
+      })
+    },
     connector,
     async signIn({ email, name = '' }) {
       const context = await deps.auth.$context
@@ -256,7 +269,7 @@ export async function createTestApp(
       headers.set('origin', TEST_WEB_ORIGIN)
       return { headers, userId: user.id }
     },
-    async magicLinkSignIn(email) {
+    async magicLinkSignIn(email, userAgent) {
       const asked = await request('/api/auth/sign-in/magic-link', {
         method: 'POST',
         headers: { 'content-type': 'application/json', origin: TEST_WEB_ORIGIN },
@@ -264,7 +277,10 @@ export async function createTestApp(
       })
       if (asked.status !== 200) throw new Error(`magic link refused: ${asked.status}`)
       const link = new URL(linkFor(email))
-      const opened = await request(link.pathname + link.search, { redirect: 'manual' })
+      const opened = await request(link.pathname + link.search, {
+        headers: userAgent ? { 'user-agent': userAgent } : {},
+        redirect: 'manual',
+      })
       const cookie = sessionCookieOf(opened)
       if (!cookie) throw new Error(`the link sent to ${email} did not sign in`)
       return cookie

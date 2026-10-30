@@ -2,7 +2,7 @@ import type { Data } from '@arrakit/db'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { StripeGateway } from '../billing/stripe-gateway'
-import { joined, ownerOf, sqlOf } from '../organizations/testing'
+import { joined, ownerOf, sqlOf } from '../testing/people'
 import { type TestApp, createTestApp } from '../testing/app'
 
 function endingStripe() {

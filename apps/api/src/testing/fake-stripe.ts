@@ -15,26 +15,26 @@ import type { PaidSubscription } from '../billing/subscription-plan'
 export const FAKE_STRIPE_SIGNATURE = 't=1,v1=fake-stripe-signature'
 export const FAKE_PRORATION = { amount: 120_000, currency: 'usd' } as const
 
-export interface FakeChange {
+interface FakeChange {
   subscriptionId: string
   choice: PaidSubscription
   when: 'now' | 'renewal'
 }
 
 type OptionalState = 'requestedBy' | 'receiptFor' | 'cancellationReason' | 'anchor'
-export type FakeSubscription = Omit<SubscriptionState, OptionalState | 'anchor'> &
+type FakeSubscription = Omit<SubscriptionState, OptionalState | 'anchor'> &
   Partial<Pick<SubscriptionState, OptionalState>> & { anchor?: Date | string }
 
 /**
  * A webhook body for the fake: a BillingEvent as JSON (kind `subscription` when left out).
  * `subscribe` and `bill` let a dev or e2e run put state into the fake with the same delivery.
  */
-export type FakeWebhookBody = Partial<BillingEvent> & {
+type FakeWebhookBody = Partial<BillingEvent> & {
   subscribe?: FakeSubscription
   bill?: { customerId: string; snapshot: BillingSnapshot }
 }
 
-export interface FakeStripeRecords {
+interface FakeStripeRecords {
   checkouts: CheckoutRequest[]
   topUps: TopUpRequest[]
   topUpPayments: Map<string, { organizationId: string; cents: number; total: number }>

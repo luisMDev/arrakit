@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
-import { generateOpenApiDocument } from '../src/routes/openapi'
+import { openApiDocument } from '../src/routes/openapi'
 
 /** `pnpm --filter @arrakit/api openapi:export <file>`: writes the OpenAPI document, no DB needed. */
 async function main() {
@@ -9,7 +9,7 @@ async function main() {
   if (!target) throw new Error('usage: openapi:export <output.json>')
   const file = resolve(target)
   mkdirSync(dirname(file), { recursive: true })
-  writeFileSync(file, `${JSON.stringify(await generateOpenApiDocument(), null, 2)}\n`)
+  writeFileSync(file, `${JSON.stringify(await openApiDocument(), null, 2)}\n`)
   console.info(`[api] OpenAPI document written to ${file}`)
 }
 

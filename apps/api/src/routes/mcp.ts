@@ -8,11 +8,10 @@ import { bearerToken } from '../mcp/bearer-token'
 import { mcpHandler } from '../mcp/handler'
 import { verifyAccessToken } from '../mcp/verify-access-token'
 
-export const PROTECTED_RESOURCE_PATH = '/.well-known/oauth-protected-resource/api/mcp'
+const PROTECTED_RESOURCE_PATH = '/.well-known/oauth-protected-resource/api/mcp'
 
 const openHandlers = new Set<McpHttpHandler>()
 
-/** Tears down every MCP handler (graceful shutdown). */
 export async function closeMcpHandlers(): Promise<void> {
   const handlers = [...openHandlers]
   openHandlers.clear()

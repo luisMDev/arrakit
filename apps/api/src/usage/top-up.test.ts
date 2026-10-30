@@ -1,15 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { type TestApp, TEST_WEB_ORIGIN, createTestApp } from '../testing/app'
-import { FAKE_STRIPE_SIGNATURE, type FakeStripe, fakeStripe } from '../testing/fake-stripe'
-
-function deliver(t: TestApp, body: object) {
-  return t.app.request('/api/webhooks/stripe', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'stripe-signature': FAKE_STRIPE_SIGNATURE },
-    body: JSON.stringify(body),
-  })
-}
+import { type FakeStripe, fakeStripe } from '../testing/fake-stripe'
 
 describe('top-ups', () => {
   let t: TestApp
@@ -122,8 +114,8 @@ describe('top-ups', () => {
 
     it('credits a paid top-up once per Checkout session, completed or async', async () => {
       const before = await purchased()
-      expect((await deliver(t, paid('cs_once'))).status).toBe(204)
-      expect((await deliver(t, paid('cs_once'))).status).toBe(204)
+      expect((await t.webhook(paid('cs_once'))).status).toBe(204)
+      expect((await t.webhook(paid('cs_once'))).status).toBe(204)
       const after = await purchased()
       expect(after.credits! - before.credits!).toBe(2_000)
       expect(after.storage_gb! - before.storage_gb!).toBe(200)
@@ -132,7 +124,7 @@ describe('top-ups', () => {
     it('shows the credited top-up in usage.get', async () => {
       const { userId, headers } = await t.signIn({ email: 'una@usage.io' })
       const { id } = await t.data.createOrganization('Usage view', { userId, termsAccepted: true })
-      await deliver(t, paid('cs_view', { organizationId: id, cents: 2_550 }))
+      await t.webhook(paid('cs_view', { organizationId: id, cents: 2_550 }))
       const usage = await t.client(headers).usage.get()
       expect(usage.topUps).toEqual([
         {
@@ -153,8 +145,8 @@ describe('top-ups', () => {
 
     it('keeps the first Stripe customer without changing the plan', async () => {
       const id = await newOrganization('cy@customer.io', 'Customer')
-      await deliver(t, paid('cs_c1', { organizationId: id, customerId: 'cus_first' }))
-      await deliver(t, paid('cs_c2', { organizationId: id, customerId: 'cus_second' }))
+      await t.webhook(paid('cs_c1', { organizationId: id, customerId: 'cus_first' }))
+      await t.webhook(paid('cs_c2', { organizationId: id, customerId: 'cus_second' }))
       const organization = await t.data.forOrganization(id).organization()
       expect(organization).toMatchObject({ stripeCustomerId: 'cus_first', plan: 'free' })
       expect((await purchased(id)).credits).toBe(4_000)
@@ -163,29 +155,27 @@ describe('top-ups', () => {
     it('credits nothing while the payment is pending, then credits when it succeeds', async () => {
       const id = await newOrganization('pat@pending.io', 'Pending')
       expect(
-        (await deliver(t, paid('cs_pending', { organizationId: id, paid: false }))).status,
+        (await t.webhook(paid('cs_pending', { organizationId: id, paid: false }))).status,
       ).toBe(204)
       expect(await purchased(id)).toEqual({ credits: 0, storage_gb: 0 })
-      await deliver(t, paid('cs_pending', { organizationId: id }))
+      await t.webhook(paid('cs_pending', { organizationId: id }))
       expect(await purchased(id)).toEqual({ credits: 2_000, storage_gb: 200 })
     })
 
     it('answers 204 to a top-up naming no, a malformed or a deleted organization', async () => {
       const before = await purchased()
       for (const organizationId of [null, 'nope', '0f8fad5b-d9cb-469f-a165-70867728950e']) {
-        expect((await deliver(t, paid(`cs_${organizationId}`, { organizationId }))).status).toBe(
-          204,
-        )
+        expect((await t.webhook(paid(`cs_${organizationId}`, { organizationId }))).status).toBe(204)
       }
       expect(await purchased()).toEqual(before)
     })
 
     it('reverses a refund proportionally, tax apart, once', async () => {
       const id = await newOrganization('rae@refund.io', 'Refunds')
-      await deliver(t, paid('cs_refund', { organizationId: id }))
+      await t.webhook(paid('cs_refund', { organizationId: id }))
       stripe.topUpPayments.set('pi_1', { organizationId: id, cents: 2_000, total: 2_420 })
-      expect((await deliver(t, reversal('re_1', 'pi_1', 1_210))).status).toBe(204)
-      expect((await deliver(t, reversal('re_1', 'pi_1', 1_210))).status).toBe(204)
+      expect((await t.webhook(reversal('re_1', 'pi_1', 1_210))).status).toBe(204)
+      expect((await t.webhook(reversal('re_1', 'pi_1', 1_210))).status).toBe(204)
       expect(await purchased(id)).toEqual({ credits: 1_000, storage_gb: 100 })
       const [topUp] = await t.data.forOrganization(id).usage.topUps()
       expect(topUp).toMatchObject({ cents: 2_000, amounts: { credits: 2_000, storage_gb: 200 } })
@@ -193,13 +183,13 @@ describe('top-ups', () => {
 
     it('never takes back more than the top-up, even for a dispute of the whole charge', async () => {
       const id = await newOrganization('dee@dispute.io', 'Disputes')
-      await deliver(t, paid('cs_dispute', { organizationId: id }))
+      await t.webhook(paid('cs_dispute', { organizationId: id }))
       await t.data.forOrganization(id).usage.consume('credits', 1_500, { idempotencyKey: 'job-1' })
       stripe.topUpPayments.set('pi_2', { organizationId: id, cents: 2_000, total: 2_420 })
-      await deliver(t, reversal('du_1', 'pi_2', 5_000))
+      await t.webhook(reversal('du_1', 'pi_2', 5_000))
       const credits = (await t.data.forOrganization(id).usage.summary())[0]!
       expect(credits).toMatchObject({ plan: 0, purchased: 0, available: 0 })
-      await deliver(t, paid('cs_after', { organizationId: id, cents: 1_000 }))
+      await t.webhook(paid('cs_after', { organizationId: id, cents: 1_000 }))
       expect((await t.data.forOrganization(id).usage.summary())[0]).toMatchObject({
         purchased: 0,
         available: 0,
@@ -208,24 +198,24 @@ describe('top-ups', () => {
 
     it('caps a refund followed by a dispute of the same payment at the top-up', async () => {
       const id = await newOrganization('ria@refund-dispute.io', 'Refund then dispute')
-      await deliver(t, paid('cs_split', { organizationId: id }))
-      await deliver(t, paid('cs_other', { organizationId: id }))
+      await t.webhook(paid('cs_split', { organizationId: id }))
+      await t.webhook(paid('cs_other', { organizationId: id }))
       stripe.topUpPayments.set('pi_split', { organizationId: id, cents: 2_000, total: 2_420 })
-      await deliver(t, reversal('re_split', 'pi_split', 1_210))
+      await t.webhook(reversal('re_split', 'pi_split', 1_210))
       expect(await purchased(id)).toEqual({ credits: 3_000, storage_gb: 300 })
-      await deliver(t, reversal('du_split', 'pi_split', 2_420))
+      await t.webhook(reversal('du_split', 'pi_split', 2_420))
       expect(await purchased(id)).toEqual({ credits: 2_000, storage_gb: 200 })
     })
 
     it('ignores the reversal of a payment that is not a top-up', async () => {
       const before = await purchased()
-      expect((await deliver(t, reversal('re_2', 'pi_plan', 2_000))).status).toBe(204)
+      expect((await t.webhook(reversal('re_2', 'pi_plan', 2_000))).status).toBe(204)
       expect(await purchased()).toEqual(before)
     })
 
     it('answers 500 when the payment cannot be read, so Stripe delivers again', async () => {
       stripe.failNext('topUpPayment', new Error('stripe is down'))
-      expect((await deliver(t, reversal('re_3', 'pi_1', 100))).status).toBe(500)
+      expect((await t.webhook(reversal('re_3', 'pi_1', 100))).status).toBe(500)
     })
   })
 })

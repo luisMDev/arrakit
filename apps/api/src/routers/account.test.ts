@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { joined, ownerOf, signInFrom } from '../organizations/testing'
+import { joined, ownerOf } from '../testing/people'
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp } from '../testing/app'
 
 const MAC =
@@ -15,6 +15,13 @@ describe('me and account', () => {
     t = await createTestApp()
   })
   afterAll(() => t.close())
+
+  const signInFrom = async (email: string, userAgent: string) =>
+    new Headers({
+      cookie: await t.magicLinkSignIn(email, userAgent),
+      origin: TEST_WEB_ORIGIN,
+      'user-agent': userAgent,
+    })
 
   it('reads me before and after an organization exists', async () => {
     const { headers } = await t.signIn({ email: 'dana@elm.vc' })
@@ -56,16 +63,16 @@ describe('me and account', () => {
   })
 
   it('lists devices with the current one first', async () => {
-    const laptop = await signInFrom(t, 'two@devices.vc', MAC)
-    const phone = await signInFrom(t, 'two@devices.vc', IPHONE)
+    const laptop = await signInFrom('two@devices.vc', MAC)
+    const phone = await signInFrom('two@devices.vc', IPHONE)
     expect((await t.client(laptop).me.account.get()).devices).toEqual(['Mac', 'iPhone'])
     expect((await t.client(phone).me.account.get()).devices).toEqual(['iPhone', 'Mac'])
   })
 
   it('signs out every other device, keeping this one', async () => {
-    const laptop = await signInFrom(t, 'out@devices.vc', MAC)
-    const phone = await signInFrom(t, 'out@devices.vc', IPHONE)
-    const other = await signInFrom(t, 'someone@devices.vc', IPHONE)
+    const laptop = await signInFrom('out@devices.vc', MAC)
+    const phone = await signInFrom('out@devices.vc', IPHONE)
+    const other = await signInFrom('someone@devices.vc', IPHONE)
     const res = await t.app.request('/api/auth/revoke-other-sessions', {
       method: 'POST',
       headers: { ...Object.fromEntries(laptop), 'content-type': 'application/json' },
@@ -154,7 +161,7 @@ describe('me and account', () => {
     it('deletes an invited admin: every session ends and the organization keeps its owner', async () => {
       const owner = await ownerOf(t, 'owner@pine.vc')
       const admin = await joined(t, owner, 'ana@pine.vc', 'admin')
-      const phone = await signInFrom(t, 'ana@pine.vc', IPHONE)
+      const phone = await signInFrom('ana@pine.vc', IPHONE)
       await t.client(admin.headers).me.delete()
       await expect(t.client(admin.headers).me.get()).rejects.toMatchObject({ status: 401 })
       await expect(t.client(phone).me.get()).rejects.toMatchObject({ status: 401 })

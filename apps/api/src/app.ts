@@ -11,26 +11,12 @@ import { authRoutes } from './routes/auth'
 import { healthRoutes } from './routes/health'
 import { localFilesRoutes } from './routes/local-files'
 import { mcpRoutes } from './routes/mcp'
-import { generateOpenApiDocument } from './routes/openapi'
+import { openApiDocument } from './routes/openapi'
 import { restRoutes } from './routes/rest'
 import { stripeWebhookRoutes } from './routes/stripe-webhook'
 
-/** The OpenAPI document generated from the contract alone (no DB, no env). */
-export { generateOpenApiDocument as openApiDocument } from './routes/openapi'
+export { openApiDocument } from './routes/openapi'
 
-/**
- * Builds the Hono app (docs/spec/platform.md section 4):
- * - GET /health
- * - GET /api/openapi.json
- * - /api/auth/*                     Better Auth (+ /.well-known/oauth-authorization-server/api/auth)
- * - /api/rpc/*                      oRPC (@arrakit/contract)
- * - POST /api/webhooks/stripe       Stripe webhook
- * - /api/mcp, /.well-known/oauth-protected-resource/api/mcp   MCP
- * - GET/PUT /api/files/local/*     local storage fallback only
- *
- * Every request but /health gets an id and an access log line; an unexpected error is logged, sent to the
- * error tracker and answered 500.
- */
 export function createApp(deps: AppDeps) {
   const app = new Hono()
   const rpc = new RPCHandler(router)
@@ -38,7 +24,7 @@ export function createApp(deps: AppDeps) {
   app.route('/', healthRoutes(deps))
   app.use(requestLog(deps.log))
   app.route('/', restRoutes(deps))
-  app.get('/api/openapi.json', async (c) => c.json(await generateOpenApiDocument()))
+  app.get('/api/openapi.json', async (c) => c.json(await openApiDocument()))
   app.route('/', authRoutes(deps))
   app.route('/', stripeWebhookRoutes(deps))
   app.route('/', mcpRoutes(deps))

@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { RENEWAL, joinAs, owner, paying, proYearly } from '../billing/testing'
+import { RENEWAL, paying, proYearly } from '../billing/testing'
+import { joinAs, ownerOf } from '../testing/people'
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp } from '../testing/app'
 import { FAKE_PRORATION, type FakeStripe, fakeStripe } from '../testing/fake-stripe'
 
@@ -51,7 +52,7 @@ describe('billing procedures', () => {
 
   describe('checkout', () => {
     it('opens Embedded Checkout for the owner, returning to Welcome', async () => {
-      const ana = await owner(t, 'ana@acacia.vc')
+      const ana = await ownerOf(t, 'ana@acacia.vc', 'free')
       const res = await t.client(ana.headers).billing.checkout({ plan: 'pro', cycle: 'yearly' })
       expect(res).toEqual({
         clientSecret: expect.stringMatching(/_secret$/),
@@ -69,14 +70,14 @@ describe('billing procedures', () => {
     })
 
     it('reuses the customer of an organization that paid before', async () => {
-      const ana = await owner(t, 'ana@banyan.vc')
+      const ana = await ownerOf(t, 'ana@banyan.vc', 'free')
       await t.data.forOrganization(ana.organizationId).setStripeCustomer('cus_banyan')
       await t.client(ana.headers).billing.checkout({ plan: 'team', cycle: 'monthly' })
       expect(stripe.checkouts.at(-1)?.customerId).toBe('cus_banyan')
     })
 
     it("answers 502 in its own words when Stripe fails, never Stripe's", async () => {
-      const ana = await owner(t, 'ana@cypress.vc')
+      const ana = await ownerOf(t, 'ana@cypress.vc', 'free')
       const logged = t.errorLog()
       stripe.failNext('checkout', new Error('No such price: arrakit_pro_yearly'))
       await expect(
@@ -94,7 +95,7 @@ describe('billing procedures', () => {
     })
 
     it('refuses a member with 403 and a visitor with 401', async () => {
-      const ana = await owner(t, 'ana@dogwood.vc')
+      const ana = await ownerOf(t, 'ana@dogwood.vc', 'free')
       const marta = await joinAs(t, ana.organizationId, 'marta@dogwood.vc', 'member')
       await expect(
         t.client(marta.headers).billing.checkout({ plan: 'pro', cycle: 'yearly' }),
@@ -120,7 +121,7 @@ describe('billing procedures', () => {
       { plan: 'pro', cycle: 'weekly' },
       { plan: 'pro' },
     ])('refuses %o with 400, opening nothing', async (body) => {
-      const ana = await owner(t, `ana@${String(body.plan)}-${String(body.cycle)}.vc`)
+      const ana = await ownerOf(t, `ana@${String(body.plan)}-${String(body.cycle)}.vc`, 'free')
       const before = stripe.checkouts.length
       await expect(t.client(ana.headers).billing.checkout(body as never)).rejects.toMatchObject({
         status: 400,
@@ -129,7 +130,7 @@ describe('billing procedures', () => {
     })
 
     it('refuses another site with 403', async () => {
-      const ana = await owner(t, 'ana@fig.vc')
+      const ana = await ownerOf(t, 'ana@fig.vc', 'free')
       await expect(
         t.client(foreign(ana.headers)).billing.checkout({ plan: 'pro', cycle: 'yearly' }),
       ).rejects.toMatchObject({ status: 403, message: 'Pay from the app.' })
@@ -138,7 +139,7 @@ describe('billing procedures', () => {
 
   describe('get', () => {
     it('shows an organization that never paid as Free, asking Stripe nothing', async () => {
-      const ana = await owner(t, 'lucia@alder.vc')
+      const ana = await ownerOf(t, 'lucia@alder.vc', 'free')
       const billing = vi.spyOn(stripe, 'billing')
       await expect(t.client(ana.headers).billing.get()).resolves.toEqual({
         plan: 'free',
@@ -226,7 +227,7 @@ describe('billing procedures', () => {
     })
 
     it('keeps the invoices and card of an organization back on Free after paying before', async () => {
-      const dana = await owner(t, 'dana@elm.vc')
+      const dana = await ownerOf(t, 'dana@elm.vc', 'free')
       await t.data
         .forOrganization(dana.organizationId)
         .setPlan('free', { customerId: 'cus_elm', subscriptionId: null })
@@ -294,7 +295,7 @@ describe('billing procedures', () => {
     })
 
     it('sends an organization on Free to Checkout with 409', async () => {
-      const ana = await owner(t, 'owner@pine.vc')
+      const ana = await ownerOf(t, 'owner@pine.vc', 'free')
       await expect(
         t.client(ana.headers).billing.previewChange({ plan: 'pro', cycle: 'yearly' }),
       ).rejects.toMatchObject({
@@ -400,7 +401,7 @@ describe('billing procedures', () => {
     )
 
     it('refuses an organization on Free with 409', async () => {
-      const ana = await owner(t, 'owner@yew.vc')
+      const ana = await ownerOf(t, 'owner@yew.vc', 'free')
       await expect(t.client(ana.headers).billing.cancel()).rejects.toMatchObject({
         status: 409,
         message: 'Your organization is on Free: there is nothing to cancel.',
@@ -429,7 +430,7 @@ describe('billing procedures', () => {
     })
 
     it('refuses an organization Stripe has never seen with 409', async () => {
-      const ana = await owner(t, 'owner@banyan2.vc')
+      const ana = await ownerOf(t, 'owner@banyan2.vc', 'free')
       await expect(t.client(ana.headers).billing.portal({ to: 'details' })).rejects.toMatchObject({
         status: 409,
         message: 'Your organization has no billing details yet. Pick a plan first.',
@@ -447,7 +448,7 @@ describe('billing without Stripe', () => {
   afterAll(() => t.close())
 
   it('answers 503 for checkout while the rest of the app works', async () => {
-    const ana = await owner(t, 'ana@nostripe.vc')
+    const ana = await ownerOf(t, 'ana@nostripe.vc', 'free')
     await expect(
       t.client(ana.headers).billing.checkout({ plan: 'pro', cycle: 'yearly' }),
     ).rejects.toMatchObject({ status: 503, message: 'Payments are not set up yet.' })

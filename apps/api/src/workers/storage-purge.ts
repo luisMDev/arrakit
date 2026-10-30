@@ -4,7 +4,7 @@ import type { Logger } from '../observability/logger'
 
 export const STORAGE_PURGE = 'storage-purge'
 
-export type StoragePurgeJob = { organizationId: string } & ({ folder: string } | { keys: string[] })
+type StoragePurgeJob = { organizationId: string } & ({ folder: string } | { keys: string[] })
 
 const target = (job: StoragePurgeJob) =>
   'keys' in job

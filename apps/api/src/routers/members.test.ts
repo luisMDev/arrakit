@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { joined, ownerOf, sqlOf } from '../organizations/testing'
+import { joined, ownerOf, sqlOf } from '../testing/people'
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp } from '../testing/app'
 
 describe('members and invitations', () => {

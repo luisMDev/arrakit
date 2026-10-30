@@ -2,14 +2,14 @@ import type { UsageView } from '@arrakit/contract'
 import type { MetricUsage, TopUp } from '@arrakit/db'
 import { CURRENCY, METRIC_KEYS } from '@arrakit/plans'
 
-const day = (at: Date) => at.toISOString().slice(0, 10)
+import { dayOf } from '../day'
 
 export function usageView(metrics: MetricUsage[], topUps: TopUp[]): UsageView {
   return {
     currency: CURRENCY,
-    metrics: metrics.map(({ resetsOn, ...balance }) => ({ ...balance, resetsOn: day(resetsOn) })),
+    metrics: metrics.map(({ resetsOn, ...balance }) => ({ ...balance, resetsOn: dayOf(resetsOn) })),
     topUps: topUps.map((topUp) => ({
-      paidOn: day(topUp.at),
+      paidOn: dayOf(topUp.at),
       cents: topUp.cents,
       amounts: METRIC_KEYS.flatMap((metric) => {
         const amount = topUp.amounts[metric]

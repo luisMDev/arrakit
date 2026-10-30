@@ -1,14 +1,13 @@
-import { pathToFileURL } from 'node:url'
-
 import { APP_NAME } from '@arrakit/emails'
 import { CURRENCY, TOP_UP } from '@arrakit/plans'
 import Stripe from 'stripe'
 
 import { TOP_UP_LOOKUP_KEY } from '../src/billing/real-stripe'
+import { runScript } from './run-script'
 
 type CreditsStripe = Pick<Stripe, 'products' | 'prices'>
 
-export interface CustomAmount {
+interface CustomAmount {
   minimum: number
   maximum: number
   preset: number
@@ -64,18 +63,11 @@ export async function ensureCreditsPrice(
   return { productId: product.id, priceId: price.id, created: true }
 }
 
-async function main() {
+runScript(import.meta.url, async () => {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) throw new Error('Set STRIPE_SECRET_KEY to create the Credits product.')
   const result = await ensureCreditsPrice(new Stripe(key))
   console.info(
     `${result.created ? 'created' : 'kept'} price ${result.priceId} (${TOP_UP_LOOKUP_KEY}) on product ${result.productId}`,
   )
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error: unknown) => {
-    console.error(error)
-    process.exit(1)
-  })
-}
+})

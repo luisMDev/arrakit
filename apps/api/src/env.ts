@@ -3,7 +3,7 @@ import { z } from 'zod'
 const empty = (value: unknown) => (value === '' ? undefined : value)
 const optional = z.preprocess(empty, z.string().optional())
 
-export const envSchema = z.object({
+const envSchema = z.object({
   NODE_ENV: z.preprocess(
     empty,
     z.enum(['development', 'test', 'production']).default('development'),

@@ -1,8 +1,7 @@
-import { pathToFileURL } from 'node:url'
-
 import { loadDataConfig, putBucketCors, r2CorsPolicy } from '@arrakit/db'
 
 import { loadApiEnv } from '../src/env'
+import { runScript } from './run-script'
 
 /**
  * `pnpm --filter @arrakit/api bucket:cors [--print]`: lets the web origin use presigned URLs
@@ -22,11 +21,6 @@ export async function bucketCors(
   return `bucket ${s3.bucket} now answers ${origins.join(', ')}\n`
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  bucketCors(process.env, process.argv.slice(2))
-    .then((output) => process.stdout.write(output))
-    .catch((error: unknown) => {
-      console.error(error)
-      process.exit(1)
-    })
-}
+runScript(import.meta.url, async () => {
+  process.stdout.write(await bucketCors(process.env, process.argv.slice(2)))
+})

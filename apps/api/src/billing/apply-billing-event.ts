@@ -6,7 +6,7 @@ import { planOfSubscription } from './subscription-plan'
 
 type Ignored = { kind: 'ignored'; reason: string }
 
-export type FoundOrganization =
+type FoundOrganization =
   | Ignored
   | {
       kind: 'found'
@@ -15,7 +15,7 @@ export type FoundOrganization =
       organization: OrganizationRow
     }
 
-export type SubscriptionOrganization =
+type SubscriptionOrganization =
   Ignored | (Extract<FoundOrganization, { kind: 'found' }> & { subscription: SubscriptionState })
 
 export type BillingOutcome =

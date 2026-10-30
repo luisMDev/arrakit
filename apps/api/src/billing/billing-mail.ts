@@ -1,20 +1,20 @@
-import { normalizeEmail } from '@arrakit/address'
+import { normalizeEmail, isAdminRole } from '@arrakit/address'
 import {
   type Charge,
   type Mail,
   type RenderedEmail,
   canceledEmail,
+  daysUntil as daysUntilDate,
   downgradedEmail,
   failedEmail,
   receiptEmail,
   renewEmail,
+  toMail,
 } from '@arrakit/emails'
 import { PLANS, type Plan } from '@arrakit/plans'
 
 import type { Money } from './stripe-gateway'
 import { subscriptionOfLookupKey } from './subscription-plan'
-
-type Organization = { name: string; slug: string }
 
 export function recipients(...emails: (string | null | undefined)[]): string[] {
   const seen = new Map<string, string>()
@@ -44,18 +44,11 @@ export function chargeOf(money: Money, card: { brand: string; last4: string } | 
 }
 
 const mailsOf = (email: RenderedEmail, to: string[]): Mail[] =>
-  to.map((address) => ({
-    to: address,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-    ...(email.replyTo ? { replyTo: email.replyTo } : {}),
-  }))
+  to.map((address) => toMail(email, address))
 
 const billingLink = (webOrigin: string) => `${webOrigin}/app/billing`
 
 export const receiptMails = (input: {
-  organization: Organization
   plan: string
   cycle: 'monthly' | 'yearly'
   charge: Charge
@@ -66,7 +59,6 @@ export const receiptMails = (input: {
 }): Mail[] =>
   mailsOf(
     receiptEmail({
-      organization: { name: input.organization.name },
       plan: input.plan,
       billing: input.cycle,
       charge: input.charge,
@@ -77,7 +69,6 @@ export const receiptMails = (input: {
   )
 
 export const canceledMails = (input: {
-  organization: Organization
   plan: string
   endsOn: string
   to: string[]
@@ -85,7 +76,6 @@ export const canceledMails = (input: {
 }): Mail[] =>
   mailsOf(
     canceledEmail({
-      organization: { name: input.organization.name },
       plan: input.plan,
       endsOn: input.endsOn,
       links: { billing: billingLink(input.webOrigin) },
@@ -94,7 +84,6 @@ export const canceledMails = (input: {
   )
 
 export const failedMails = (input: {
-  organization: Organization
   charge: Charge
   retryInDays: number
   to: string[]
@@ -102,7 +91,6 @@ export const failedMails = (input: {
 }): Mail[] =>
   mailsOf(
     failedEmail({
-      organization: { name: input.organization.name },
       charge: input.charge,
       retryInDays: input.retryInDays,
       links: { billing: billingLink(input.webOrigin) },
@@ -111,7 +99,7 @@ export const failedMails = (input: {
   )
 
 export const downgradedMails = (input: {
-  organization: Organization
+  organization: { name: string }
   plan: string
   to: string[]
   webOrigin: string
@@ -126,7 +114,6 @@ export const downgradedMails = (input: {
   )
 
 export const renewMails = (input: {
-  organization: Organization
   plan: string
   charge: Charge
   renewsOn: string
@@ -136,7 +123,6 @@ export const renewMails = (input: {
 }): Mail[] =>
   mailsOf(
     renewEmail({
-      organization: { name: input.organization.name },
       plan: input.plan,
       charge: input.charge,
       renewsOn: input.renewsOn,
@@ -147,10 +133,10 @@ export const renewMails = (input: {
   )
 
 export const daysUntil = (unixSeconds: number, nowMs: number): number =>
-  Math.max(1, Math.ceil((unixSeconds * 1000 - nowMs) / 86_400_000))
+  daysUntilDate(new Date(unixSeconds * 1000), new Date(nowMs))
 
 export const adminsOf = (members: readonly { email: string; role: string }[]): string[] =>
-  members.filter((m) => m.role === 'owner' || m.role === 'admin').map((m) => m.email)
+  members.filter((m) => isAdminRole(m.role)).map((m) => m.email)
 
 export function shouldSendReceipt(input: {
   previousLookupKey: string | null

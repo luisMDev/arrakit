@@ -10,14 +10,14 @@ import type {
 } from './stripe-gateway'
 import { PRICE_KEY_PREFIX, type PaidSubscription, priceLookupKey } from './subscription-plan'
 
-export interface StripeKeys {
+interface StripeKeys {
   secretKey: string
   publishableKey: string
   webhookSecret: string
 }
 
 export const TOP_UP_LOOKUP_KEY = `${PRICE_KEY_PREFIX}credits_top_up`
-export const PORTAL_METADATA_KEY = 'app'
+const PORTAL_METADATA_KEY = 'app'
 
 const INVOICE_STATUSES = ['paid', 'open', 'uncollectible'] as const
 const SUBSCRIPTION_EVENTS = new Set([

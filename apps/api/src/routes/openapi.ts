@@ -1,4 +1,5 @@
 import { contract } from '@arrakit/contract'
+import { APP_NAME } from '@arrakit/emails'
 import {
   type AnyContractRouter,
   ContractProcedure,
@@ -23,7 +24,7 @@ const ERRORS = {
 
 type ErrorStatus = keyof typeof ERRORS
 
-export interface OperationStatuses {
+interface OperationStatuses {
   /** The success status, when not the contract's own (void deletes answer 204, no body). */
   success?: 204
   errors: ErrorStatus[]
@@ -99,7 +100,7 @@ function errorMapOf(statuses: OperationStatuses): ErrorMap {
  * The contract as the OpenAPI document describes it: each procedure's error map is exactly the
  * statuses it answers, and void deletes answer 204.
  */
-export function documentedContract(router: AnyContractRouter = contract): AnyContractRouter {
+function documentedContract(router: AnyContractRouter = contract): AnyContractRouter {
   return mapLeaves(
     router,
     isContractProcedure,
@@ -131,12 +132,11 @@ export function restRouter<T extends AnyRouter>(router: T): T {
 
 type Document = Awaited<ReturnType<OpenAPIGenerator['generate']>>
 
-/** The OpenAPI document generated from the contract alone (no DB, no env). */
-export async function generateOpenApiDocument(): Promise<Document> {
+async function generateOpenApiDocument(): Promise<Document> {
   const document = await new OpenAPIGenerator({
     schemaConverters: [new ZodToJsonSchemaConverter()],
   }).generate(documentedContract(), {
-    info: { title: 'Arrakit API', version: '1.0.0' },
+    info: { title: `${APP_NAME} API`, version: '1.0.0' },
     servers: [{ url: '/api' }],
   })
   for (const item of Object.values(document.paths ?? {})) {
@@ -148,3 +148,8 @@ export async function generateOpenApiDocument(): Promise<Document> {
   }
   return document
 }
+
+let cached: Promise<Document> | undefined
+
+/** The OpenAPI document generated from the contract alone (no DB, no env), built once. */
+export const openApiDocument = (): Promise<Document> => (cached ??= generateOpenApiDocument())

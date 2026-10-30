@@ -1,11 +1,11 @@
-import { pathToFileURL } from 'node:url'
-
 import { APP_NAME } from '@arrakit/emails'
 import { CURRENCY, PAID_PLANS, PLAN_LABELS, PLAN_OFFERS, TOP_UP } from '@arrakit/plans'
 import Stripe from 'stripe'
 
 import { TOP_UP_LOOKUP_KEY } from '../src/billing/real-stripe'
 import { priceLookupKey } from '../src/billing/subscription-plan'
+import { runScript } from './run-script'
+import { ensureCreditsPrice } from './stripe-credits'
 
 const CYCLES = [
   { cycle: 'monthly', interval: 'month', cents: 'monthlyCents' },
@@ -53,40 +53,12 @@ export async function syncPrices(stripe: Stripe, log: (line: string) => void = c
   }
 
   const range = `${TOP_UP.minCents / 100} to ${TOP_UP.maxCents / 100} ${CURRENCY.toUpperCase()}`
-  const creditsFound = await stripe.products.search({ query: "metadata['kind']:'credits'" })
-  const credits =
-    creditsFound.data[0] ??
-    (await stripe.products.create({ name: `${APP_NAME} Credits`, metadata: { kind: 'credits' } }))
-  const [creditsPrice] = (await stripe.prices.list({ lookup_keys: [TOP_UP_LOOKUP_KEY], limit: 1 }))
-    .data
-  const custom = creditsPrice?.custom_unit_amount
-  if (
-    creditsPrice?.active &&
-    creditsPrice.currency === CURRENCY &&
-    custom?.minimum === TOP_UP.minCents &&
-    custom.maximum === TOP_UP.maxCents
-  ) {
-    log(`${mode} ${TOP_UP_LOOKUP_KEY}: ${range}, already there`)
-    return
-  }
-  await stripe.prices.create({
-    product: credits.id,
-    currency: CURRENCY,
-    custom_unit_amount: {
-      enabled: true,
-      minimum: TOP_UP.minCents,
-      maximum: TOP_UP.maxCents,
-      preset: Math.min(TOP_UP.minCents * 2, TOP_UP.maxCents),
-    },
-    lookup_key: TOP_UP_LOOKUP_KEY,
-    transfer_lookup_key: true,
-  })
-  if (creditsPrice) await stripe.prices.update(creditsPrice.id, { active: false })
-  log(`${mode} ${TOP_UP_LOOKUP_KEY}: ${range}, created`)
+  const { created } = await ensureCreditsPrice(stripe)
+  log(`${mode} ${TOP_UP_LOOKUP_KEY}: ${range}, ${created ? 'created' : 'already there'}`)
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+runScript(import.meta.url, async () => {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) throw new Error('STRIPE_SECRET_KEY is not set')
   await syncPrices(new Stripe(key))
-}
+})

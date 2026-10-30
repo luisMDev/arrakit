@@ -2,15 +2,13 @@ import type { BillingView } from '@arrakit/contract'
 import type { OrganizationRow } from '@arrakit/db'
 import { PLAN_OFFERS } from '@arrakit/plans'
 
+import { dayOf } from '../day'
 import type { BillingSnapshot } from './stripe-gateway'
 import { subscriptionOfLookupKey } from './subscription-plan'
 
-export const dayOf = (unixSeconds: number): string =>
-  new Date(unixSeconds * 1000).toISOString().slice(0, 10)
-
 const INVOICE_STATUS = { paid: 'paid', open: 'open', uncollectible: 'failed' } as const
 
-export type BillingOrganization = Pick<OrganizationRow, 'plan' | 'name'>
+type BillingOrganization = Pick<OrganizationRow, 'plan' | 'name'>
 
 export function billingView(
   organization: BillingOrganization,

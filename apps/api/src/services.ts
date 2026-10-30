@@ -9,7 +9,7 @@ import { createMailer } from './mail/mailer'
 import { type ErrorReporter, createErrorReporter } from './observability/error-reporter'
 import type { Logger } from './observability/logger'
 
-export interface DepsParts {
+interface DepsParts {
   env: ApiEnv
   rawEnv: Record<string, string | undefined>
   data: Data

@@ -8,7 +8,6 @@ import { membersRouter } from './routers/members'
 import { onboardingRouter } from './routers/onboarding'
 import { organizationsRouter } from './routers/organizations'
 import { plansRouter } from './routers/plans'
-import { topUpRouter } from './routers/top-up'
 import { usageRouter } from './routers/usage'
 
 export const router = pub.router({
@@ -19,7 +18,7 @@ export const router = pub.router({
   members: membersRouter,
   invitations: invitationsRouter,
   plans: plansRouter,
-  billing: { ...billingRouter, ...topUpRouter },
+  billing: billingRouter,
   usage: usageRouter,
 })
 
