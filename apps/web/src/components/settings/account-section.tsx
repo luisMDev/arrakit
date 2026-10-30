@@ -1,6 +1,6 @@
 import { type AccountView, accountUpdateSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { personName } from '@arrakit/address'
+import { type AccountLanguage, isAccountLanguage, personName } from '@arrakit/address'
 import {
   type UseMutationOptions,
   useMutation,
@@ -25,7 +25,8 @@ import {
   SelectValue,
 } from '#/components/ui/select'
 import { Switch } from '#/components/ui/switch'
-import { type Language, isLanguage, loadLanguage } from '#/i18n'
+import { loadLanguage } from '#/i18n'
+import { authCall } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
 import { listing } from '#/lib/format'
@@ -34,10 +35,10 @@ import { notify } from '#/lib/notify'
 import { client, orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
-import { ConfirmDeleteDialog } from './confirm-delete-dialog'
+import { ConfirmDialog } from './confirm-dialog'
 import { SettingRow, SettingsCard, SettingsHeading, SettingsSectionLayout } from './settings-ui'
 
-const LANGUAGE_NAMES: Record<Language, string> = { en: 'English', es: 'Español' }
+const LANGUAGE_NAMES: Record<AccountLanguage, string> = { en: 'English', es: 'Español' }
 
 const TIME_ZONES: { zone: string; key: string }[] = [
   { zone: 'Europe/Madrid', key: 'zoneMadrid' },
@@ -81,14 +82,6 @@ function withChanges(account: AccountView, changes: AccountUpdate): AccountView 
   }
 }
 
-function browserTimeZone(): string | null {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || null
-  } catch {
-    return null
-  }
-}
-
 export function AccountSection() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -120,23 +113,23 @@ export function AccountSection() {
         queryClient.setQueryData(queryKey, saved)
       }
       me.patch((current) => ({ ...current, name: saved.name, language: saved.language }))
-      if (isLanguage(saved.language)) await loadLanguage(saved.language)
+      if (isAccountLanguage(saved.language)) await loadLanguage(saved.language)
     },
     onError: () => queryClient.invalidateQueries({ queryKey }),
   }
   const saving = useApiMutation({ ...update, meta: { failure: t(`${K}.notSaved`) } })
   const save = (changes: AccountUpdate) => saving.mutate(changes)
-  const fillZone = useMutation(update)
+  const { mutate: fillZone } = useMutation(update)
 
+  // Strict Mode runs effects twice; the browser zone is sent once.
   const zoneFilled = useRef(false)
   const needsZone = account?.timeZone === null
-  const { mutate: saveZone } = fillZone
   useEffect(() => {
     if (!needsZone || zoneFilled.current) return
     zoneFilled.current = true
-    const zone = browserTimeZone()
-    if (zone) saveZone({ timeZone: zone })
-  }, [needsZone, saveZone])
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || null
+    if (zone) fillZone({ timeZone: zone })
+  }, [needsZone, fillZone])
 
   function saveName({ name: trimmed }: z.output<typeof nameSchema>) {
     if (!account) return
@@ -147,10 +140,7 @@ export function AccountSection() {
   const nameField = registerClearing(form, 'name')
 
   const signOutEverywhere = useApiMutation({
-    mutationFn: async () => {
-      const result = await authClient.revokeOtherSessions()
-      if (result?.error) throw result.error
-    },
+    mutationFn: () => authCall(authClient.revokeOtherSessions()),
     onSuccess: () => {
       notify.success(t(`${K}.signedOut`))
       void queryClient.invalidateQueries({ queryKey })
@@ -241,14 +231,14 @@ export function AccountSection() {
                 <Select
                   value={account.language}
                   onValueChange={(language) => {
-                    if (isLanguage(language)) save({ language })
+                    if (isAccountLanguage(language)) save({ language })
                   }}
                 >
                   <SelectTrigger aria-labelledby="account-language" className="w-56">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {(Object.keys(LANGUAGE_NAMES) as Language[]).map((language) => (
+                    {(Object.keys(LANGUAGE_NAMES) as AccountLanguage[]).map((language) => (
                       <SelectItem key={language} value={language}>
                         {LANGUAGE_NAMES[language]}
                       </SelectItem>
@@ -322,7 +312,7 @@ export function AccountSection() {
               </CardContent>
             )}
           </Card>
-          <ConfirmDeleteDialog
+          <ConfirmDialog
             open={confirming}
             onOpenChange={setConfirming}
             title={t(`${K}.confirmTitle`)}

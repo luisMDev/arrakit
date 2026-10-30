@@ -1,3 +1,4 @@
+import { type BillingCycle, PLAN_OFFERS, type PaidPlan } from '@arrakit/plans'
 import { type Page, expect } from '@playwright/test'
 
 import { magicLinkFor } from './mailpit'
@@ -77,15 +78,6 @@ export async function signedInOwner(
   return { email, organizationId: id }
 }
 
-type LookupKey = 'pro_monthly' | 'pro_yearly' | 'team_monthly' | 'team_yearly'
-
-const PRICE_CENTS: Record<LookupKey, number> = {
-  pro_monthly: 2_000,
-  pro_yearly: 19_200,
-  team_monthly: 5_000,
-  team_yearly: 48_000,
-}
-
 const RENEWAL = Date.UTC(2027, 9, 4) / 1000
 
 /**
@@ -95,13 +87,14 @@ const RENEWAL = Date.UTC(2027, 9, 4) / 1000
 export async function payFor(
   page: Page,
   organizationId: string,
-  lookupKey: LookupKey,
+  lookupKey: `${PaidPlan}_${BillingCycle}`,
   { billingEmail = 'finance@billing.test', invoiceTo = 'Billing Co SL' } = {},
 ) {
+  const [plan, cycle] = lookupKey.split('_') as [PaidPlan, BillingCycle]
   const slug = organizationId.slice(0, 8)
   const customerId = `cus_${slug}`
   const subscriptionId = `sub_${slug}`
-  const amount = { amount: PRICE_CENTS[lookupKey], currency: 'usd' }
+  const amount = { amount: PLAN_OFFERS[plan][`${cycle}Cents`], currency: 'usd' }
   await stripeWebhook(page, {
     subscriptionId,
     organizationId,
@@ -135,6 +128,5 @@ export async function payFor(
       },
     },
   })
-  const plan = lookupKey.split('_')[0]
   await expect.poll(async () => (await rpc<{ plan: string }>(page, 'me/get')).plan).toBe(plan)
 }

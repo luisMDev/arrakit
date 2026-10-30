@@ -8,7 +8,7 @@ import { answer } from '#/test/rpc'
 import { sendMagicLink, socialSignInUrl } from './auth-api'
 import { refusalSearch } from './sign-in-options'
 import { SignupPage, type SignupSearch } from './signup-page'
-import { renderWithQueries, setupAuthTestApi } from './testing'
+import { renderWithQueries, setupAuthTestApi } from '#/test/rpc'
 
 vi.mock('./auth-api', async (original) => ({
   ...(await original<typeof import('./auth-api')>()),

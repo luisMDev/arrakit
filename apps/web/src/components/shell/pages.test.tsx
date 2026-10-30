@@ -2,10 +2,10 @@ import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { answer, quiet, setupTestApi } from '#/test/rpc'
+import { answer, meAs, quiet, setupTestApi } from '#/test/rpc'
 
-import { PAID_WAIT_TRIES } from './on-paid-plan'
-import { meAs, renderApp } from './testing'
+import { PAID_WAIT_TRIES } from '#/lib/guards'
+import { renderApp } from './testing'
 import { safeNext } from './unavailable-page'
 
 setupTestApi({ onUnhandledFrame: 'error' })
@@ -18,9 +18,9 @@ describe('Home', () => {
     answer('me/get', meAs())
     renderApp('/app')
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Hi, Ana Ruiz.' }),
+      await screen.findByRole('heading', { level: 1, name: 'Hi, Lucía Gómez.' }),
     ).toBeInTheDocument()
-    expect(screen.getByText(/Acme is on Pro\./)).toBeInTheDocument()
+    expect(screen.getByText(/Acme is on Team\./)).toBeInTheDocument()
   })
 
   it('gives an admin Settings, Members and Plans', async () => {
@@ -136,6 +136,7 @@ describe('Unavailable', () => {
   })
 
   it('goes to /profile when that was the screen wanted', async () => {
+    answer('me/get', meAs({ organization: null }))
     const { location } = renderApp('/unavailable?next=%2Fprofile')
     await userEvent.click(await screen.findByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('heading', { name: 'Your organization' })).toBeInTheDocument()

@@ -22,14 +22,13 @@ import { Input } from '#/components/ui/input'
 import { Separator } from '#/components/ui/separator'
 import { authCall } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
-import { useCurrentUser } from '#/lib/current-user'
+import { roleLabel, useMember } from '#/lib/current-user'
 import { registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import { type CustomRole, organizationQueries } from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
-import { roleLabel } from './members-section'
-import { ConfirmDeleteDialog } from './confirm-delete-dialog'
+import { ConfirmDialog } from './confirm-dialog'
 import { SettingsSectionLayout } from './settings-ui'
 
 const K = 'settings.rolesSettings'
@@ -65,13 +64,13 @@ type RoleValues = z.output<ReturnType<typeof roleForm>>
 
 export function RolesSection() {
   const { t } = useTranslation()
-  const me = useCurrentUser()
+  const me = useMember()
   const queryClient = useQueryClient()
-  const organizationId = me.user?.organization?.id ?? ''
+  const organizationId = me.organization.id
   const rolesQuery = organizationQueries.roles(organizationId)
   const roles = useQuery({
     ...rolesQuery,
-    enabled: organizationId !== '' && me.can({ ac: ['read'] }),
+    enabled: me.can({ ac: ['read'] }),
     meta: { failure: t(`${K}.notLoaded`) },
   })
   const [editing, setEditing] = useState<CustomRole | 'new' | null>(null)
@@ -107,7 +106,7 @@ export function RolesSection() {
           <CardDescription>{t(`${K}.builtInHint`)}</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-sm">{roleLabel(t, 'owner,admin,member')}</p>
+          <p className="text-sm">{roleLabel('owner,admin,member')}</p>
         </CardContent>
       </Card>
       <Card className="py-2">
@@ -164,7 +163,7 @@ export function RolesSection() {
           onDone={() => setEditing(null)}
         />
       ) : null}
-      <ConfirmDeleteDialog
+      <ConfirmDialog
         open={deleting !== null}
         onOpenChange={(open) => !open && setDeleting(null)}
         title={t(`${K}.confirmDeleteTitle`, { role: deleting?.role ?? '' })}
@@ -186,9 +185,9 @@ function RoleDialog({
   onDone: () => void
 }) {
   const { t } = useTranslation()
-  const me = useCurrentUser()
+  const me = useMember()
   const queryClient = useQueryClient()
-  const held = (me.user?.permissions ?? {}) as Grid
+  const held = me.user.permissions as Grid
   const form = useClearingForm({
     resolver: zodResolver(roleForm(t)),
     defaultValues: {

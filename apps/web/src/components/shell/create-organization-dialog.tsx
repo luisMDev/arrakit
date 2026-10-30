@@ -3,7 +3,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { z } from 'zod'
 
 import { Button } from '#/components/ui/button'
 import {
@@ -19,14 +18,12 @@ import { Field, FieldError, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { authCall } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
-import { registerClearing, useClearingForm } from '#/lib/form'
+import { nameForm, registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import { switchOrganization } from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
 const K = 'createOrganization'
-
-const nameForm = (message: string) => z.object({ name: z.string().trim().min(1, message).max(200) })
 
 /** The API names the slug; the plugin only needs one to be sent. */
 const placeholderSlug = (name: string) => slugOf(name) || 'organization'

@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { canCheckout } from '#/components/billing/can-checkout'
+import { canCheckout } from '#/lib/guards'
 import { CheckoutPage } from '#/components/billing/checkout-page'
 import { choiceSearch } from '#/lib/checkout-choice'
 import { titled } from '#/lib/page-title'

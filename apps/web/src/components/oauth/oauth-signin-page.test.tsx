@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import '#/i18n'
 import { sendMagicLink, socialSignInUrl } from '#/components/auth/auth-api'
-import { renderWithQueries, setupAuthTestApi } from '#/components/auth/testing'
+import { renderWithQueries, setupAuthTestApi } from '#/test/rpc'
 import { answer } from '#/test/rpc'
 
 import { OAuthSignInPage } from './oauth-signin-page'

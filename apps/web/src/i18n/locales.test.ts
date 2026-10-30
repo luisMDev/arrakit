@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { en, loadEs } from './resources'
+import { en, loadEs } from './index'
 
 const enFiles = import.meta.glob('./locales/en/*.json', { eager: true, import: 'default' })
 const esFiles = import.meta.glob('./locales/es/*.json', { eager: true, import: 'default' })

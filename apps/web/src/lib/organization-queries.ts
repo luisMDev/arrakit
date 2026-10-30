@@ -34,8 +34,8 @@ export interface Team {
   name: string
 }
 
-const isPending = (invitation: { status: string; expiresAt: Date | string }, now = Date.now()) =>
-  invitation.status === 'pending' && new Date(invitation.expiresAt).getTime() > now
+const isPending = (invitation: { status: string; expiresAt: Date | string }) =>
+  invitation.status === 'pending' && new Date(invitation.expiresAt).getTime() > Date.now()
 
 export const organizationQueries = {
   list: () =>
@@ -54,7 +54,7 @@ export const organizationQueries = {
       queryKey: ['org', organizationId, 'invitations'],
       queryFn: async (): Promise<PendingInvitation[]> =>
         (await authCall(org.listInvitations({ query: { organizationId } })))
-          .filter((invitation) => isPending(invitation))
+          .filter(isPending)
           .map((invitation) => ({
             id: invitation.id,
             email: invitation.email,
@@ -67,21 +67,13 @@ export const organizationQueries = {
   roles: (organizationId: string) =>
     queryOptions({
       queryKey: ['org', organizationId, 'roles'],
-      queryFn: async (): Promise<CustomRole[]> =>
-        (await authCall(org.listRoles({ query: { organizationId } }))).map((role) => ({
-          id: role.id,
-          role: role.role,
-          permission: role.permission as Permissions,
-        })),
+      queryFn: async () =>
+        (await authCall(org.listRoles({ query: { organizationId } }))) as CustomRole[],
     }),
   teams: (organizationId: string) =>
     queryOptions({
       queryKey: ['org', organizationId, 'teams'],
-      queryFn: async (): Promise<Team[]> =>
-        (await authCall(org.listTeams({ query: { organizationId } }))).map((team) => ({
-          id: team.id,
-          name: team.name,
-        })),
+      queryFn: (): Promise<Team[]> => authCall(org.listTeams({ query: { organizationId } })),
     }),
   teamMembers: (teamId: string) => orpc.teams.members.queryOptions({ input: { teamId } }),
 }

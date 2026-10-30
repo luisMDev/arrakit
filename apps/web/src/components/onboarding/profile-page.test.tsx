@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import '#/i18n'
-import { renderWithQueries } from '#/components/auth/testing'
+import { renderWithQueries } from '#/test/rpc'
 import { answer, answerAuth, meAs, quiet, setupTestApi } from '#/test/rpc'
 import type { ChoiceSearch } from '#/lib/checkout-choice'
 

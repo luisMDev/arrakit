@@ -1,5 +1,4 @@
 import type { PaidChoice } from '@arrakit/contract'
-import { soldOffers } from '@arrakit/plans'
 import { type StripeEmbeddedCheckout, loadStripe } from '@stripe/stripe-js'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
@@ -17,9 +16,7 @@ import { apiMessage } from '#/lib/api-errors'
 import { money } from '#/lib/format'
 import { client } from '#/lib/orpc'
 
-import { planLabel } from './plan-copy'
-
-const OFFERS = soldOffers()
+import { OFFERS, planLabel } from './plan-copy'
 
 let opened: StripeEmbeddedCheckout | null = null
 
@@ -55,8 +52,8 @@ export function CheckoutPage({ choice }: { choice: PaidChoice }) {
   const { t } = useTranslation()
   const { mountRef, isPending, error } = useEmbeddedCheckout(choice)
   const failure = error ? (apiMessage(error) ?? t('checkout.openFailed')) : null
-  const offer = OFFERS.find((o) => o.plan === choice.plan)
-  const total = offer ? money(choice.cycle === 'yearly' ? offer.yearly : offer.monthly) : null
+  const offer = OFFERS.find((o) => o.plan === choice.plan)!
+  const total = money(choice.cycle === 'yearly' ? offer.yearly : offer.monthly)
   const product = `${APP_NAME} ${planLabel(choice.plan)}`
 
   return (

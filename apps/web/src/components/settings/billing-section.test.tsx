@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { billingOf, meOn } from '#/components/billing/testing'
+import { billingOf } from '#/test/rpc'
 import { usageFixture } from '#/components/usage/fixtures'
 import { answer, meAs, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
@@ -26,7 +26,7 @@ async function setup(billing: BillingView | number | [number, string]) {
   answer('billing/get', billing)
   answer('usage/get', usageFixture())
   const view = renderAt(<BillingSection />, {
-    me: meOn(loaded?.plan ?? 'pro'),
+    me: meAs({ plan: loaded?.plan ?? 'pro' }),
     url: '/app/billing',
   })
   if (loaded) await screen.findByText('Plan', { selector: '[data-label]' })

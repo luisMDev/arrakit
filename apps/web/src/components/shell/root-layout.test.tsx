@@ -1,11 +1,11 @@
 import { screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { answer, setupTestApi } from '#/test/rpc'
+import { answer, meAs, setupTestApi } from '#/test/rpc'
 
 import { isInApp } from './root-layout'
 import { RELOADED_AT_KEY } from './stale-chunk'
-import { meAs, renderApp } from './testing'
+import { renderApp } from './testing'
 
 setupTestApi({ onUnhandledFrame: 'error' })
 

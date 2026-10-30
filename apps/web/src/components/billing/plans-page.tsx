@@ -1,5 +1,5 @@
 import type { ChangePreview, PaidChoice, PlanOfferView } from '@arrakit/contract'
-import { type BillingCycle, type Plan, isPaidPlan, soldOffers } from '@arrakit/plans'
+import { type BillingCycle, isPaidPlan } from '@arrakit/plans'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '#/components/ui/dialog'
-import { useCurrentUser } from '#/lib/current-user'
+import { useMember } from '#/lib/current-user'
 import { money } from '#/lib/format'
 import { orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
@@ -23,7 +23,7 @@ import { useApiMutation } from '#/lib/use-api-mutation'
 import { BillingCycleSwitch } from './billing-cycle-switch'
 import { FeatureList, PlanCard } from './plan-card'
 import {
-  leastYearlySaving,
+  OFFERS,
   planFeatures,
   planLabel,
   seatsLine,
@@ -34,8 +34,6 @@ import {
 
 type PaidOffer = PlanOfferView & { plan: PaidChoice['plan'] }
 
-const OFFERS = soldOffers()
-
 interface PendingSwitch {
   choice: PaidChoice
   preview: ChangePreview
@@ -45,8 +43,7 @@ export function PlansPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { user, managesBilling, patch } = useCurrentUser()
-  const current: Plan | null = user?.plan ?? null
+  const { plan: current, managesBilling, patch } = useMember()
   const [chosenCycle, setCycle] = useState<BillingCycle | null>(null)
   const [annualOffer, setAnnualOffer] = useState<PaidOffer | null>(null)
   const [pending, setPending] = useState<PendingSwitch | null>(null)
@@ -138,7 +135,7 @@ export function PlansPage() {
         </h1>
         <p className="text-muted-foreground">{t('plans.subtitle')}</p>
       </div>
-      <BillingCycleSwitch cycle={cycle} saving={leastYearlySaving(OFFERS)} onChange={setCycle} />
+      <BillingCycleSwitch cycle={cycle} onChange={setCycle} />
       <div className="grid w-full gap-6 md:grid-cols-3">
         {OFFERS.map((offer) => {
           const paid = offer.monthly.amount > 0
@@ -162,9 +159,7 @@ export function PlansPage() {
           )
         })}
       </div>
-      {user && !managesBilling && (
-        <p className="text-muted-foreground text-sm">{t('plans.onlyAdmin')}</p>
-      )}
+      {!managesBilling && <p className="text-muted-foreground text-sm">{t('plans.onlyAdmin')}</p>}
       <nav className="flex gap-4 text-sm">
         <Button asChild variant="link">
           <Link to="/app">{t('plans.notNow')}</Link>
@@ -213,7 +208,7 @@ export function PlansPage() {
 
       <Dialog open={pending !== null} onOpenChange={(open) => !open && setPending(null)}>
         <DialogContent>
-          {pending && current && (
+          {pending && (
             <>
               <DialogHeader>
                 <DialogTitle>

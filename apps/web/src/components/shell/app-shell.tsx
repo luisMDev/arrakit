@@ -10,17 +10,17 @@ import { OrgSwitcher } from './org-switcher'
 export function AppShell() {
   const { t } = useTranslation()
   const { user } = useCurrentUser()
+  // Signing out or switching organizations drops the person for a moment: nothing renders then.
+  if (!user?.organization) return null
   return (
     <>
-      {user?.organization ? (
-        <nav
-          aria-label={t('shell.account')}
-          className="absolute top-0 right-4 z-20 flex h-14 items-center gap-4 [view-transition-name:app-bar] sm:right-6"
-        >
-          <OrgSwitcher />
-          <AppMenu />
-        </nav>
-      ) : null}
+      <nav
+        aria-label={t('shell.account')}
+        className="absolute top-0 right-4 z-20 flex h-14 items-center gap-4 [view-transition-name:app-bar] sm:right-6"
+      >
+        <OrgSwitcher />
+        <AppMenu />
+      </nav>
       <Outlet />
     </>
   )

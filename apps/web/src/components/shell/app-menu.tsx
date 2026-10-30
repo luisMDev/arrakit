@@ -1,60 +1,34 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { SettingsSearch } from '#/components/settings/settings-page'
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
 import { Button } from '#/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '#/components/ui/popover'
 import { Separator } from '#/components/ui/separator'
+import { authCall } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
 import { ThemeSwitcher } from './theme-switcher'
 
-async function signOutOrThrow(): Promise<void> {
-  const result = await authClient.signOut()
-  if (result.error) throw Object.assign(new Error('sign-out failed'), result.error)
-}
-
-/**
- * A disclosure (a button and the links it shows), not an ARIA menu. Escape, a click outside and
- * a click on a link close it. Members and Billing show to those their role lets in.
- */
+/** The account menu: a popover with the person, their destinations, the theme and sign out. */
 export function AppMenu() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { user, name, can, managesMembers, planLabel, signedOut } = useCurrentUser()
   const [open, setOpen] = useState(false)
-  const host = useRef<HTMLDivElement>(null)
-  const button = useRef<HTMLButtonElement>(null)
   const signOutMutation = useApiMutation({
     mutationKey: ['auth', 'signOut'],
-    mutationFn: signOutOrThrow,
+    mutationFn: () => authCall(authClient.signOut()),
     onSuccess: () => {
       signedOut()
       void navigate({ to: '/signin' })
     },
     meta: { failure: t('appMenu.notSignedOut') },
   })
-
-  useEffect(() => {
-    if (!open) return
-    const onClick = (event: MouseEvent) => {
-      if (!host.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      setOpen(false)
-      button.current?.focus()
-    }
-    document.addEventListener('click', onClick)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('click', onClick)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open])
 
   if (!user) return null
   const close = () => setOpen(false)
@@ -88,61 +62,55 @@ export function AppMenu() {
   ]
 
   return (
-    <div ref={host} className="relative">
-      <Button
-        ref={button}
-        variant="ghost"
-        size="icon"
-        className="rounded-full"
-        aria-label={t('appMenu.accountMenu')}
-        aria-controls="app-menu"
-        aria-expanded={open ? 'true' : 'false'}
-        onClick={() => setOpen((isOpen) => !isOpen)}
-      >
-        <Avatar>
-          <AvatarFallback>{initialOf(name)}</AvatarFallback>
-        </Avatar>
-      </Button>
-      {open ? (
-        <div
-          id="app-menu"
-          className="absolute right-0 z-50 mt-2 w-64 rounded-md border bg-popover p-2 text-popover-foreground shadow-md"
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="rounded-full"
+          aria-label={t('appMenu.accountMenu')}
+          aria-controls="app-menu"
         >
-          <div className="px-2 py-1.5">
-            <p className="text-sm font-medium">{name}</p>
-            <p className="text-xs text-muted-foreground">
-              {t('shell.usage', { organization: user.organization?.name, plan: planLabel })}
-            </p>
-          </div>
-          <Separator className="my-1" />
-          <ul aria-label={t('appMenu.yourOrganization')} className="flex flex-col">
-            {links.map((link) => (
-              <li key={link.label}>
-                <Button asChild variant="ghost" size="sm" className="w-full justify-start">
-                  <Link
-                    to={link.to}
-                    search={link.search}
-                    activeOptions={{ exact: true }}
-                    onClick={close}
-                  >
-                    {link.label}
-                  </Link>
-                </Button>
-              </li>
-            ))}
-          </ul>
-          <Separator className="my-1" />
-          <ThemeSwitcher />
-          <Separator className="my-1" />
-          <ul aria-label={t('appMenu.more')} className="flex flex-col">
-            <li>
-              <Button variant="ghost" size="sm" className="w-full justify-start" onClick={signOut}>
-                {t('appMenu.signOut')}
+          <Avatar>
+            <AvatarFallback>{initialOf(name)}</AvatarFallback>
+          </Avatar>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent id="app-menu" align="end" className="w-64 p-2">
+        <div className="px-2 py-1.5">
+          <p className="text-sm font-medium">{name}</p>
+          <p className="text-xs text-muted-foreground">
+            {t('shell.usage', { organization: user.organization?.name, plan: planLabel })}
+          </p>
+        </div>
+        <Separator className="my-1" />
+        <ul aria-label={t('appMenu.yourOrganization')} className="flex flex-col">
+          {links.map((link) => (
+            <li key={link.label}>
+              <Button asChild variant="ghost" size="sm" className="w-full justify-start">
+                <Link
+                  to={link.to}
+                  search={link.search}
+                  activeOptions={{ exact: true }}
+                  onClick={close}
+                >
+                  {link.label}
+                </Link>
               </Button>
             </li>
-          </ul>
-        </div>
-      ) : null}
-    </div>
+          ))}
+        </ul>
+        <Separator className="my-1" />
+        <ThemeSwitcher />
+        <Separator className="my-1" />
+        <ul aria-label={t('appMenu.more')} className="flex flex-col">
+          <li>
+            <Button variant="ghost" size="sm" className="w-full justify-start" onClick={signOut}>
+              {t('appMenu.signOut')}
+            </Button>
+          </li>
+        </ul>
+      </PopoverContent>
+    </Popover>
   )
 }

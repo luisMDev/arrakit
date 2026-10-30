@@ -4,6 +4,7 @@ import { ChevronsUpDown, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { planLabel } from '#/components/billing/plan-copy'
 import { Button } from '#/components/ui/button'
 import {
   DropdownMenu,
@@ -15,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '#/components/ui/dropdown-menu'
-import { useCurrentUser } from '#/lib/current-user'
+import { useMember } from '#/lib/current-user'
 import { organizationQueries, switchOrganization } from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
@@ -26,7 +27,7 @@ export function OrgSwitcher() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { user, planLabel } = useCurrentUser()
+  const { organization: current, plan } = useMember()
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const organizations = useQuery({
@@ -41,9 +42,6 @@ export function OrgSwitcher() {
     meta: { failure: t('orgSwitcher.notSwitched') },
   })
 
-  const current = user?.organization
-  if (!current) return null
-
   return (
     <>
       <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -54,7 +52,7 @@ export function OrgSwitcher() {
             aria-label={t('orgSwitcher.label', { organization: current.name })}
           >
             <span className="truncate">
-              {t('shell.usage', { organization: current.name, plan: planLabel })}
+              {t('shell.usage', { organization: current.name, plan: planLabel(plan) })}
             </span>
             <ChevronsUpDown aria-hidden="true" />
           </Button>

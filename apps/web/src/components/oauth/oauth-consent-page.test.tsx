@@ -3,17 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import '#/i18n'
-import { renderWithQueries, setupAuthTestApi } from '#/components/auth/testing'
+import { renderWithQueries, setupAuthTestApi } from '#/test/rpc'
 import { answer, answerAuth, meAs } from '#/test/rpc'
 
-import { consent, publicClientName } from './oauth-api'
 import { OAuthConsentPage } from './oauth-consent-page'
-
-vi.mock('./oauth-api', async (original) => ({
-  ...(await original<typeof import('./oauth-api')>()),
-  publicClientName: vi.fn(),
-  consent: vi.fn(),
-}))
 
 const QUERY = 'response_type=code&client_id=claude-id&state=s%2Fx&exp=1&sig=abc'
 
@@ -25,16 +18,18 @@ const BIRCH = {
   plan: 'free',
 }
 
-const clientName = vi.mocked(publicClientName)
-const answerConsent = vi.mocked(consent)
-
 setupAuthTestApi()
 
+const pending = () => new Promise(() => undefined)
+const asked = (accept: boolean) => ({ input: { accept, oauth_query: QUERY } })
+
 let meCalls: ReturnType<typeof answer>
+let clients: ReturnType<typeof answerAuth>
+let consents: ReturnType<typeof answerAuth>
 
 beforeEach(() => {
-  clientName.mockReset().mockResolvedValue('Claude')
-  answerConsent.mockReset().mockReturnValue(new Promise(() => undefined))
+  clients = answerAuth('oauth2/public-client', { client_id: 'claude-id', client_name: 'Claude' })
+  consents = answerAuth('oauth2/consent', pending)
   meCalls = answer(
     'me/get',
     meAs({ organization: { ...meAs().organization!, name: 'Ardent Ventures' } }),
@@ -80,21 +75,26 @@ describe('OAuthConsentPage', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Claude will act as you in Ardent Ventures.')).toBeInTheDocument()
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Allow', 'Deny'])
-    expect(clientName).toHaveBeenCalledWith('claude-id')
+    expect(clients).toEqual([{ input: { client_id: 'claude-id' } }])
+  })
+
+  it('names the client by its id when it gave no name', async () => {
+    answerAuth('oauth2/public-client', { client_id: 'claude-id' })
+    renderPage()
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Connect claude-id' }),
+    ).toBeInTheDocument()
   })
 
   it('sends the same query, exactly as received, for Allow and for Deny', async () => {
-    answerConsent.mockRejectedValueOnce(new Error('first fails'))
+    consents = answerAuth('oauth2/consent', 500, pending)
     renderPage()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Allow' }))
     expect(await screen.findByText(FAILED)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Deny' }))
 
-    expect(answerConsent.mock.calls).toEqual([
-      [true, QUERY],
-      [false, QUERY],
-    ])
+    await waitFor(() => expect(consents).toEqual([asked(true), asked(false)]))
   })
 
   it('disables both buttons while an answer is pending', async () => {
@@ -103,18 +103,25 @@ describe('OAuthConsentPage', () => {
     expect(screen.getByRole('button', { name: 'Allow' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Deny' })).toBeDisabled()
     await userEvent.click(screen.getByRole('button', { name: 'Allow' }))
-    expect(answerConsent).toHaveBeenCalledTimes(1)
+    expect(consents).toHaveLength(1)
+  })
+
+  it('treats a consent answer without a url as a failure', async () => {
+    answerAuth('oauth2/consent', { error: 'access_denied' })
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Allow' }))
+    expect(await screen.findByText(FAILED)).toBeInTheDocument()
   })
 
   it('retries after a failure: a second click records a second consent', async () => {
-    answerConsent.mockRejectedValueOnce(new Error('nope')).mockResolvedValueOnce('#connected')
+    consents = answerAuth('oauth2/consent', 500, { url: '#connected' })
     renderPage()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Allow' }))
     expect(await screen.findByText(FAILED)).toBeVisible()
     expect(console.error).toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: 'Allow' }))
-    expect(answerConsent).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(consents).toHaveLength(2))
     await vi.waitFor(() => expect(window.location.hash).toBe('#connected'))
   })
 
@@ -132,11 +139,11 @@ describe('OAuthConsentPage', () => {
     const buttons = screen.getAllByRole('button')
     expect(buttons.map((b) => b.textContent)).toEqual(['Back to Claude'])
     await userEvent.click(buttons[0]!)
-    expect(answerConsent).toHaveBeenCalledWith(false, QUERY)
+    await waitFor(() => expect(consents).toEqual([asked(false)]))
   })
 
   it('says the request is unavailable when loading fails, and reports it', async () => {
-    clientName.mockRejectedValueOnce(new Error('404'))
+    answerAuth('oauth2/public-client', 404)
     renderPage()
     expect(
       await screen.findByRole('heading', { level: 1, name: "Couldn't open this request." }),
@@ -156,7 +163,7 @@ describe('OAuthConsentPage', () => {
     expect(
       screen.getByText('Start again from the app you were connecting Arrakit to.'),
     ).toBeInTheDocument()
-    expect(clientName).not.toHaveBeenCalled()
+    expect(clients).toEqual([])
     expect(meCalls).toEqual([])
     expect(screen.queryAllByRole('button')).toEqual([])
   })

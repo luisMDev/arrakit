@@ -7,12 +7,12 @@ import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/components/ui/card'
 import { authCall } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
-import { useCurrentUser } from '#/lib/current-user'
+import { useMember } from '#/lib/current-user'
 import { notify } from '#/lib/notify'
 import { organizationQueries, switchOrganization } from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
-import { ConfirmDeleteDialog } from './confirm-delete-dialog'
+import { ConfirmDialog } from './confirm-dialog'
 import { SettingsSectionLayout } from './settings-ui'
 
 const K = 'settings.securitySettings'
@@ -30,10 +30,10 @@ export function SecuritySection() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const me = useCurrentUser()
+  const me = useMember()
   const [confirming, setConfirming] = useState(false)
-  const organization = me.user?.organization ?? null
-  const organizationId = organization?.id ?? ''
+  const { organization } = me
+  const organizationId = organization.id
 
   const done = async (message: string) => {
     setConfirming(false)
@@ -53,7 +53,7 @@ export function SecuritySection() {
   const leave = useApiMutation({
     mutationKey: ['org', 'leave'],
     mutationFn: () => authCall(org.leave({ organizationId })),
-    onSuccess: () => done(t(`${K}.left`, { organization: organization?.name })),
+    onSuccess: () => done(t(`${K}.left`, { organization: organization.name })),
     meta: { failure: t(`${K}.notLeft`) },
   })
 
@@ -72,7 +72,7 @@ export function SecuritySection() {
               </Button>
             </CardContent>
           </Card>
-          <ConfirmDeleteDialog
+          <ConfirmDialog
             open={confirming}
             onOpenChange={setConfirming}
             title={t(`${K}.confirmTitle`)}
@@ -87,7 +87,7 @@ export function SecuritySection() {
             <CardHeader>
               <CardTitle>{t(`${K}.leaveOrganization`)}</CardTitle>
               <CardDescription>
-                {t(`${K}.leaveHint`, { organization: organization?.name })}
+                {t(`${K}.leaveHint`, { organization: organization.name })}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -97,10 +97,10 @@ export function SecuritySection() {
             </CardContent>
           </Card>
           <p className="text-muted-foreground text-sm">{t(`${K}.ownerOnly`)}</p>
-          <ConfirmDeleteDialog
+          <ConfirmDialog
             open={confirming}
             onOpenChange={setConfirming}
-            title={t(`${K}.confirmLeaveTitle`, { organization: organization?.name })}
+            title={t(`${K}.confirmLeaveTitle`, { organization: organization.name })}
             confirmLabel={t(`${K}.leaveOrganization`)}
             pending={leave.busy}
             onConfirm={() => void leave.run()}

@@ -13,40 +13,7 @@ import { UsageSection } from '#/components/settings/usage-section'
 import { Button } from '#/components/ui/button'
 import { useCurrentUser } from '#/lib/current-user'
 
-const SETTINGS_SECTIONS = [
-  'account',
-  'general',
-  'usage',
-  'members',
-  'teams',
-  'roles',
-  'billing',
-  'security',
-] as const
-export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]
-
-export interface SettingsSearch {
-  section?: SettingsSection
-  top_up?: string
-}
-
-const isSection = (value: unknown): value is SettingsSection =>
-  (SETTINGS_SECTIONS as readonly unknown[]).includes(value)
-
-export const settingsSearch = (search: Record<string, unknown>): SettingsSearch => ({
-  ...(isSection(search.section) ? { section: search.section } : {}),
-  ...(typeof search.top_up === 'string' ? { top_up: search.top_up } : {}),
-})
-
-const SETTINGS_NAV: { group: string; items: SettingsSection[] }[] = [
-  { group: 'settings.mySettings', items: ['account'] },
-  {
-    group: 'settings.organizationSettings',
-    items: ['general', 'usage', 'members', 'teams', 'roles', 'billing', 'security'],
-  },
-]
-
-const SECTIONS: Record<SettingsSection, () => React.JSX.Element> = {
+const SECTIONS = {
   account: AccountSection,
   general: GeneralSection,
   usage: UsageSection,
@@ -56,6 +23,29 @@ const SECTIONS: Record<SettingsSection, () => React.JSX.Element> = {
   billing: BillingSection,
   security: SecuritySection,
 }
+export type SettingsSection = keyof typeof SECTIONS
+
+export interface SettingsSearch {
+  section?: SettingsSection
+  top_up?: string
+}
+
+const isSection = (value: unknown): value is SettingsSection =>
+  typeof value === 'string' && Object.hasOwn(SECTIONS, value)
+
+export const settingsSearch = (search: Record<string, unknown>): SettingsSearch => ({
+  ...(isSection(search.section) ? { section: search.section } : {}),
+  ...(typeof search.top_up === 'string' ? { top_up: search.top_up } : {}),
+})
+
+const ORGANIZATION_SECTIONS = (Object.keys(SECTIONS) as SettingsSection[]).filter(
+  (id) => id !== 'account',
+)
+
+const SETTINGS_NAV: { group: string; items: SettingsSection[] }[] = [
+  { group: 'settings.mySettings', items: ['account'] },
+  { group: 'settings.organizationSettings', items: ORGANIZATION_SECTIONS },
+]
 
 export function SettingsPage({ section = 'account' }: { section?: SettingsSection }) {
   const { t } = useTranslation()

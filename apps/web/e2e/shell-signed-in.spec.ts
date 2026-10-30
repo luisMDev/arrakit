@@ -17,6 +17,10 @@ test('a signed-in owner moves around the app from the account menu', async ({ pa
 
   const menuButton = page.getByRole('button', { name: 'Account menu' })
   await expect(menuButton).toHaveText('A')
+  const viewTransitionName = (selector: string) =>
+    page.locator(selector).evaluate((element) => getComputedStyle(element).viewTransitionName)
+  expect(await viewTransitionName('header')).toBe('site-header')
+  expect(await viewTransitionName('nav[aria-label="Account"]')).toBe('app-bar')
 
   for (const [item, path, section] of [
     ['Settings', '/app/settings', 'Account'],

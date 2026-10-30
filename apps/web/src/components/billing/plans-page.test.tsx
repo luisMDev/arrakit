@@ -4,10 +4,10 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import { orpc } from '#/lib/orpc'
-import { answer, quiet, renderAt, setupTestApi } from '#/test/rpc'
+import { answer, meAs, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
 import { PlansPage } from './plans-page'
-import { billingOf, meOn } from './testing'
+import { billingOf } from '#/test/rpc'
 
 setupTestApi()
 
@@ -28,7 +28,7 @@ const PREVIEW_NOW = {
 
 describe('PlansPage', () => {
   it('marks Team recommended and the organization’s own plan as current', async () => {
-    await setup(meOn('free'))
+    await setup(meAs({ plan: 'free' }))
     expect(within(card('Team')).getByText('Recommended')).toBeInTheDocument()
     expect(within(card('Free')).getByRole('button', { name: 'Your current plan' })).toBeDisabled()
     expect(within(card('Pro')).getByRole('button', { name: 'Select Pro' })).toBeEnabled()
@@ -37,7 +37,7 @@ describe('PlansPage', () => {
 
   it('offers a paying top plan the switch down, and marks its paying cycle', async () => {
     answer('billing/get', billingOf({ plan: 'team', cycle: 'monthly' }))
-    await setup(meOn('team'))
+    await setup(meAs({ plan: 'team' }))
     const cycle = screen.getByRole('group', { name: 'Billing' })
     await waitFor(() =>
       expect(within(cycle).getByRole('button', { name: 'Monthly' })).toHaveAttribute(
@@ -55,7 +55,7 @@ describe('PlansPage', () => {
     answer('billing/get', billingOf({ plan: 'pro', cycle: 'yearly' }))
     const previews = answer('billing/previewChange', PREVIEW_NOW)
     const changes = answer('billing/change', billingOf({ plan: 'team' }))
-    const view = await setup(meOn('pro'))
+    const view = await setup(meAs({ plan: 'pro' }))
     const switchTo = await within(card('Team')).findByRole('button', { name: 'Switch to Team' })
     await userEvent.click(switchTo)
     const dialog = await screen.findByRole('dialog', { name: 'Switch to Team, yearly' })
@@ -82,7 +82,7 @@ describe('PlansPage', () => {
       dueToday: { amount: 0, currency: 'usd' },
       nextInvoice: { amount: 19_200, currency: 'usd' },
     })
-    await setup(meOn('team'))
+    await setup(meAs({ plan: 'team' }))
     await userEvent.click(await within(card('Pro')).findByRole('button', { name: 'Switch to Pro' }))
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText('Nothing to pay today.')).toBeInTheDocument()
@@ -99,7 +99,7 @@ describe('PlansPage', () => {
     quiet()
     answer('billing/get', billingOf({ plan: 'pro', cycle: 'yearly' }))
     answer('billing/previewChange', 502)
-    await setup(meOn('pro'))
+    await setup(meAs({ plan: 'pro' }))
     await userEvent.click(
       await within(card('Team')).findByRole('button', { name: 'Switch to Team' }),
     )
@@ -112,7 +112,7 @@ describe('PlansPage', () => {
     quiet()
     answer('billing/get', billingOf({ plan: 'pro', cycle: 'yearly' }))
     answer('billing/previewChange', [400, 'Your organization is already on this plan.'])
-    await setup(meOn('pro'))
+    await setup(meAs({ plan: 'pro' }))
     await userEvent.click(
       await within(card('Team')).findByRole('button', { name: 'Switch to Team' }),
     )
@@ -132,7 +132,7 @@ describe('PlansPage', () => {
       402,
       'Your card was declined. Update it under Payment, then try again.',
     ])
-    await setup(meOn('pro'))
+    await setup(meAs({ plan: 'pro' }))
     await userEvent.click(
       await within(card('Team')).findByRole('button', { name: 'Switch to Team' }),
     )
@@ -151,7 +151,7 @@ describe('PlansPage', () => {
     answer('billing/get', billingOf({ plan: 'pro', cycle: 'yearly' }))
     answer('billing/previewChange', PREVIEW_NOW)
     answer('billing/change', [status, message])
-    await setup(meOn('pro'))
+    await setup(meAs({ plan: 'pro' }))
     await userEvent.click(
       await within(card('Team')).findByRole('button', { name: 'Switch to Team' }),
     )
@@ -165,7 +165,7 @@ describe('PlansPage', () => {
     answer('billing/get', billingOf({ plan: 'pro', cycle: 'yearly' }))
     answer('billing/previewChange', PREVIEW_NOW)
     answer('billing/change', 502)
-    await setup(meOn('pro'))
+    await setup(meAs({ plan: 'pro' }))
     await userEvent.click(
       await within(card('Team')).findByRole('button', { name: 'Switch to Team' }),
     )
@@ -176,7 +176,7 @@ describe('PlansPage', () => {
 
   it('offers no switch while the organization’s billing has no known cycle', async () => {
     answer('billing/get', billingOf({ plan: 'pro', cycle: null }))
-    const view = await setup(meOn('pro'))
+    const view = await setup(meAs({ plan: 'pro' }))
     await waitFor(() =>
       expect(view.queryClient.getQueryData(orpc.billing.get.queryOptions().queryKey)).toBeDefined(),
     )
@@ -191,7 +191,7 @@ describe('PlansPage', () => {
   it('never sends a paying organization to Checkout when its billing fails to load', async () => {
     quiet()
     answer('billing/get', 502)
-    await setup(meOn('pro'))
+    await setup(meAs({ plan: 'pro' }))
     expect(
       await screen.findByText("Couldn't load your billing. Reload the page."),
     ).toBeInTheDocument()
@@ -202,7 +202,7 @@ describe('PlansPage', () => {
   it('shows the API refusal when its billing cannot load', async () => {
     quiet()
     answer('billing/get', [403, 'Only admins can see billing.'])
-    await setup(meOn('pro'))
+    await setup(meAs({ plan: 'pro' }))
     expect(await screen.findByText('Only admins can see billing.')).toBeInTheDocument()
     expect(
       screen.queryByText("Couldn't load your billing. Reload the page."),
@@ -211,14 +211,14 @@ describe('PlansPage', () => {
   })
 
   it('sends a yearly Select straight to Checkout', async () => {
-    const view = await setup(meOn('free'))
+    const view = await setup(meAs({ plan: 'free' }))
     await userEvent.click(within(card('Team')).getByRole('button', { name: 'Select Team' }))
     await waitFor(() => expect(view.location()).toBe('/app/checkout'))
     expect(view.router.state.location.search).toEqual({ plan: 'team', cycle: 'yearly' })
   })
 
   it('offers yearly billing before a monthly Checkout, and closes back to Plans', async () => {
-    const view = await setup(meOn('free'))
+    const view = await setup(meAs({ plan: 'free' }))
     await userEvent.click(screen.getByRole('button', { name: 'Monthly' }))
     await userEvent.click(within(card('Team')).getByRole('button', { name: 'Select Team' }))
     const dialog = await screen.findByRole('dialog', { name: 'Pay less with yearly billing' })
@@ -234,7 +234,7 @@ describe('PlansPage', () => {
     ['Continue yearly', 'yearly'],
     ['Continue monthly', 'monthly'],
   ])('goes to Checkout from the yearly offer with %s', async (button, cycle) => {
-    const view = await setup(meOn('free'))
+    const view = await setup(meAs({ plan: 'free' }))
     await userEvent.click(screen.getByRole('button', { name: 'Monthly' }))
     await userEvent.click(within(card('Pro')).getByRole('button', { name: 'Select Pro' }))
     const dialog = await screen.findByRole('dialog')
@@ -244,7 +244,7 @@ describe('PlansPage', () => {
   })
 
   it('shows a member no buy buttons, only who can change the plan', async () => {
-    await setup(meOn('free', 'member'))
+    await setup(meAs({ plan: 'free', role: 'member' }))
     expect(within(card('Pro')).queryByRole('button')).not.toBeInTheDocument()
     expect(within(card('Team')).queryByRole('button')).not.toBeInTheDocument()
     expect(
@@ -253,7 +253,7 @@ describe('PlansPage', () => {
   })
 
   it('links to the app and to every plan', async () => {
-    await setup(meOn('free'))
+    await setup(meAs({ plan: 'free' }))
     expect(screen.getByRole('link', { name: 'Not now' })).toHaveAttribute('href', '/app')
     expect(screen.getByRole('link', { name: 'Compare all plans' })).toHaveAttribute(
       'href',

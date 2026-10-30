@@ -1,6 +1,6 @@
 import { permissionsOf } from '@arrakit/auth/permissions'
-import type { Me } from '@arrakit/contract'
-import { fallbackORPCErrorMessage } from '@orpc/client'
+import type { AuthProviders, BillingView, Me } from '@arrakit/contract'
+import { COMMON_ORPC_ERROR_DEFS, fallbackORPCErrorMessage } from '@orpc/client'
 import { QueryClientProvider } from '@tanstack/react-query'
 import {
   RouterProvider,
@@ -14,7 +14,7 @@ import { HttpResponse, http } from 'msw'
 import { setupServer } from 'msw/node'
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
-import { afterAll, afterEach, beforeAll, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest'
 
 import { Toaster } from '#/components/ui/sonner'
 import '#/i18n'
@@ -39,15 +39,10 @@ export function setupTestApi({
 export const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
 const CODES: Record<number, string> = {
-  400: 'BAD_REQUEST',
-  401: 'UNAUTHORIZED',
+  ...Object.fromEntries(
+    Object.entries(COMMON_ORPC_ERROR_DEFS).map(([code, { status }]) => [status, code]),
+  ),
   402: 'PAYMENT_REQUIRED',
-  403: 'FORBIDDEN',
-  404: 'NOT_FOUND',
-  409: 'CONFLICT',
-  429: 'TOO_MANY_REQUESTS',
-  502: 'BAD_GATEWAY',
-  503: 'SERVICE_UNAVAILABLE',
 }
 
 /** An oRPC error answer; without a message the API sends oRPC's fallback text for the code. */
@@ -57,6 +52,31 @@ function rpcError(status: number, message?: string) {
   return HttpResponse.json({ json: { defined: false, code, status, message: text } }, { status })
 }
 
+/** A Better Auth error answer: `{ code, message }` with the status. */
+function authError(status: number, message = '', code?: string) {
+  return HttpResponse.json({ message, ...(code ? { code } : {}) }, { status })
+}
+
+/** Answers `pattern` with each answer in turn (the last one from then on) and records the calls. */
+function replyWith<I>(
+  pattern: string,
+  answers: unknown[],
+  readInput: (request: Request) => Promise<I>,
+  respond: (value: unknown) => Response,
+) {
+  const calls: { input: I }[] = []
+  api.use(
+    http.all(pattern, async ({ request }) => {
+      const input = await readInput(request)
+      const reply = answers[Math.min(calls.length, answers.length - 1)]
+      calls.push({ input })
+      const value = typeof reply === 'function' ? await (reply as (i: I) => unknown)(input) : reply
+      return value instanceof Response ? value : respond(value)
+    }),
+  )
+  return calls
+}
+
 type Reply = unknown | number | [number, string] | ((input: unknown) => unknown)
 
 /**
@@ -64,23 +84,20 @@ type Reply = unknown | number | [number, string] | ((input: unknown) => unknown)
  * error status, `[status, message]`, a `Response`, or a function of the input. Returns the calls.
  */
 export function answer(path: string, ...answers: Reply[]) {
-  const calls: { input: unknown }[] = []
-  api.use(
-    http.all(`*/api/rpc/${path}`, async ({ request }) => {
+  return replyWith(
+    `*/api/rpc/${path}`,
+    answers,
+    async (request) => {
       const body = request.method === 'GET' ? null : await request.json().catch(() => null)
-      const input = (body as { json?: unknown } | null)?.json
-      const reply = answers[Math.min(calls.length, answers.length - 1)]
-      calls.push({ input })
-      const value =
-        typeof reply === 'function' ? await (reply as (i: unknown) => unknown)(input) : reply
-      if (value instanceof Response) return value
+      return (body as { json?: unknown } | null)?.json
+    },
+    (value) => {
       if (typeof value === 'number') return rpcError(value)
       if (Array.isArray(value) && value.length === 2 && typeof value[0] === 'number')
         return rpcError(value[0], value[1] as string)
       return HttpResponse.json({ json: value })
-    }),
+    },
   )
-  return calls
 }
 
 type AuthReply =
@@ -90,38 +107,26 @@ type AuthReply =
   | [number, string, string]
   | ((input: Record<string, unknown>) => unknown)
 
-/** A Better Auth error answer: `{ code, message }` with the status. */
-function authError(status: number, message = '', code?: string) {
-  return HttpResponse.json({ message, ...(code ? { code } : {}) }, { status })
-}
-
 /**
  * Answers Better Auth's `/api/auth/<path>` (e.g. `organization/list-members`) like `answer`
  * does; `[status, message, code]` is a refusal with the plugin's code. The input is the JSON
  * body, or the query for a GET.
  */
 export function answerAuth(path: string, ...answers: AuthReply[]) {
-  const calls: { input: Record<string, unknown> }[] = []
-  api.use(
-    http.all(`*/api/auth/${path}`, async ({ request }) => {
-      const input =
-        request.method === 'GET'
-          ? Object.fromEntries(new URL(request.url).searchParams)
-          : ((await request.json().catch(() => ({}))) as Record<string, unknown>)
-      const reply = answers[Math.min(calls.length, answers.length - 1)]
-      calls.push({ input })
-      const value =
-        typeof reply === 'function'
-          ? await (reply as (i: Record<string, unknown>) => unknown)(input)
-          : reply
-      if (value instanceof Response) return value
+  return replyWith(
+    `*/api/auth/${path}`,
+    answers,
+    async (request): Promise<Record<string, unknown>> =>
+      request.method === 'GET'
+        ? Object.fromEntries(new URL(request.url).searchParams)
+        : ((await request.json().catch(() => ({}))) as Record<string, unknown>),
+    (value) => {
       if (typeof value === 'number') return authError(value)
       if (Array.isArray(value) && typeof value[0] === 'number')
         return authError(value[0], value[1] as string, value[2] as string | undefined)
       return HttpResponse.json(value ?? null)
-    }),
+    },
   )
-  return calls
 }
 
 export function meAs(overrides: Partial<Me> = {}): Me {
@@ -194,4 +199,56 @@ export function renderAt(
     { wrapper: withQueries(queryClient) },
   )
   return { ...view, router, queryClient, location: () => router.state.location.pathname }
+}
+
+/** `setupTestApi()`; every test begins with `providers` and quiet error logs. */
+export function setupAuthTestApi(providers: AuthProviders = { google: true, microsoft: false }) {
+  setupTestApi()
+  beforeEach(() => {
+    quiet()
+    answer('authProviders/get', providers)
+  })
+}
+
+export function renderWithQueries(ui: ReactNode) {
+  return render(
+    <>
+      {ui}
+      <Toaster />
+    </>,
+    { wrapper: withQueries() },
+  )
+}
+
+export function billingOf(overrides: Partial<BillingView> = {}): BillingView {
+  return {
+    plan: 'pro',
+    cycle: 'yearly',
+    renewsOn: '2027-10-04',
+    endsOn: null,
+    nextInvoice: { amount: 19_200, currency: 'usd' },
+    scheduledChange: null,
+    seats: 3,
+    card: { brand: 'visa', last4: '4242' },
+    billingEmail: 'finance@acme.com',
+    invoiceTo: 'Acme SL',
+    taxId: 'ESB99286321',
+    invoices: [
+      {
+        id: 'in_2',
+        issuedOn: '2026-10-04',
+        total: { amount: 19_200, currency: 'usd' },
+        status: 'paid',
+        pdfUrl: 'https://pay.stripe.test/in_2.pdf',
+      },
+      {
+        id: 'in_1',
+        issuedOn: '2026-09-04',
+        total: { amount: 1_499, currency: 'usd' },
+        status: 'failed',
+        pdfUrl: null,
+      },
+    ],
+    ...overrides,
+  }
 }

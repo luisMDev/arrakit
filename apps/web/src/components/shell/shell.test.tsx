@@ -2,9 +2,9 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { answer, quiet, setupTestApi } from '#/test/rpc'
+import { answer, meAs, quiet, setupTestApi } from '#/test/rpc'
 
-import { meAs, renderApp } from './testing'
+import { renderApp } from './testing'
 
 const signOut = vi.hoisted(() => vi.fn())
 vi.mock('#/lib/auth-client', () => ({ authClient: { signOut } }))
@@ -27,8 +27,8 @@ async function open(url = '/app', me = meAs()) {
 describe('Signed-in shell', () => {
   it("shows the organization and its plan next to the person's initial", async () => {
     const { menuButton } = await open()
-    expect(screen.getByRole('navigation', { name: 'Account' })).toHaveTextContent('Acme · Pro')
-    expect(menuButton).toHaveTextContent('A')
+    expect(screen.getByRole('navigation', { name: 'Account' })).toHaveTextContent('Acme · Team')
+    expect(menuButton).toHaveTextContent('L')
     expect(menuButton).toHaveAttribute('aria-expanded', 'false')
     expect(menuButton).toHaveAttribute('aria-controls', 'app-menu')
   })
@@ -45,8 +45,8 @@ describe('Signed-in shell', () => {
     const { openMenu, menuButton } = await open()
     const menu = await openMenu()
     expect(menuButton).toHaveAttribute('aria-expanded', 'true')
-    expect(menu).toHaveTextContent('Ana Ruiz')
-    expect(menu).toHaveTextContent('Acme · Pro')
+    expect(menu).toHaveTextContent('Lucía Gómez')
+    expect(menu).toHaveTextContent('Acme · Team')
     for (const item of ['Home', 'Settings', 'Members', 'Billing'])
       expect(within(menu).getByRole('link', { name: item })).toBeInTheDocument()
     expect(within(menu).getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
@@ -93,7 +93,7 @@ describe('Signed-in shell', () => {
   it('opens Home from the menu', async () => {
     const { openMenu, location, user } = await open('/app/settings')
     await user.click(within(await openMenu()).getByRole('link', { name: 'Home' }))
-    expect(await screen.findByRole('heading', { name: 'Hi, Ana Ruiz.' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Hi, Lucía Gómez.' })).toBeInTheDocument()
     expect(location()).toBe('/app')
   })
 
@@ -126,16 +126,22 @@ describe('Signed-in shell', () => {
 
   it('shows a blank name as the email local part', async () => {
     const { openMenu } = await open('/app', meAs({ name: '  ' }))
-    expect(await openMenu()).toHaveTextContent('ana')
+    expect(await openMenu()).toHaveTextContent('lucia')
   })
 
   it('signs out to Sign in', async () => {
     signOut.mockResolvedValue({ data: { success: true }, error: null })
     const { openMenu, location, user, queryClient } = await open()
+    answer('me/get', 401)
     await user.click(within(await openMenu()).getByRole('button', { name: 'Sign out' }))
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
     expect(location()).toBe('/signin')
-    expect(queryClient.getQueryCache().getAll()).toHaveLength(0)
+    expect(
+      queryClient
+        .getQueryCache()
+        .getAll()
+        .map((query) => query.state.data ?? null),
+    ).toEqual([null])
   })
 
   it('stays and says so when signing out fails', async () => {
@@ -197,6 +203,13 @@ describe('requireUser', () => {
     },
   )
 
+  it('sends / to sign in', async () => {
+    answer('me/get', 401)
+    const { location } = renderApp('/')
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
+    expect(location()).toBe('/signin')
+  })
+
   it('shows a not-found page for an unknown path outside /app', async () => {
     const { location } = renderApp('/nope')
     expect(
@@ -206,19 +219,13 @@ describe('requireUser', () => {
     expect(location()).toBe('/nope')
   })
 
-  it('sends / to sign in', async () => {
-    const { location } = renderApp('/')
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
-    expect(location()).toBe('/signin')
-  })
-
   it('applies the account language before the first signed-in render', async () => {
     const { i18n, loadLanguage } = await import('#/i18n')
     answer('me/get', meAs({ language: 'es' }))
     renderApp('/app')
-    expect(await screen.findByRole('heading', { name: 'Hola, Ana Ruiz.' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Hola, Lucía Gómez.' })).toBeInTheDocument()
     expect(i18n.language).toBe('es')
-    expect(screen.queryByText('Hi, Ana Ruiz.')).toBeNull()
+    expect(screen.queryByText('Hi, Lucía Gómez.')).toBeNull()
     await loadLanguage('en')
     await waitFor(() => expect(document.documentElement.lang).toBe('en'))
   })
@@ -241,10 +248,10 @@ describe('requireUser', () => {
     answer('me/get', meAs({ language: 'en' }))
     renderApp('/app')
     setTimeout(release, 20)
-    expect(await screen.findByRole('heading', { name: 'Hi, Ana Ruiz.' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Hi, Lucía Gómez.' })).toBeInTheDocument()
     await initial
     await waitFor(() => expect(i18n.language).toBe('en'))
-    expect(screen.getByRole('heading', { name: 'Hi, Ana Ruiz.' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Hi, Lucía Gómez.' })).toBeInTheDocument()
     expect(document.documentElement.lang).toBe('en')
     expect(window.localStorage.getItem('arrakit.lang')).toBe('en')
     changeLanguage.mockRestore()
@@ -258,7 +265,7 @@ describe('requireUser', () => {
     const errors = quiet()
     answer('me/get', meAs({ language: 'es' }))
     const { location } = renderApp('/app')
-    expect(await screen.findByRole('heading', { name: 'Hi, Ana Ruiz.' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Hi, Lucía Gómez.' })).toBeInTheDocument()
     expect(location()).toBe('/app')
     expect(errors).toHaveBeenCalledWith(
       '[requireUser] loading the account language failed',

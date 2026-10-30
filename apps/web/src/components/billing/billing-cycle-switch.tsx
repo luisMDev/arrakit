@@ -4,13 +4,13 @@ import { useTranslation } from 'react-i18next'
 import { Badge } from '#/components/ui/badge'
 import { Toggle } from '#/components/ui/toggle'
 
+import { YEARLY_SAVING } from './plan-copy'
+
 export function BillingCycleSwitch({
   cycle,
-  saving,
   onChange,
 }: {
   cycle: BillingCycle
-  saving: number | null
   onChange: (cycle: BillingCycle) => void
 }) {
   const { t } = useTranslation()
@@ -29,8 +29,10 @@ export function BillingCycleSwitch({
           className="data-[state=on]:bg-background px-3"
         >
           {t(`pricing.billingCycleSwitch.${option}`)}
-          {option === 'yearly' && saving !== null && (
-            <Badge variant="secondary">{t('pricing.billingCycleSwitch.save', { saving })}</Badge>
+          {option === 'yearly' && (
+            <Badge variant="secondary">
+              {t('pricing.billingCycleSwitch.save', { saving: YEARLY_SAVING })}
+            </Badge>
           )}
         </Toggle>
       ))}

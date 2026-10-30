@@ -1,20 +1,20 @@
 import type { PlanOfferView } from '@arrakit/contract'
-import { soldOffers } from '@arrakit/plans'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { loadLanguage } from '#/i18n'
 
 import {
   cardLine,
-  leastYearlySaving,
   planLine,
   planPrice,
   seatsLine,
   switchLines,
   yearlySaving,
+  OFFERS,
+  YEARLY_SAVING,
 } from './plan-copy'
 
-const [free, pro, team] = soldOffers() as [PlanOfferView, PlanOfferView, PlanOfferView]
+const [free, pro, team] = OFFERS as [PlanOfferView, PlanOfferView, PlanOfferView]
 
 afterEach(() => loadLanguage('en'))
 
@@ -49,8 +49,7 @@ describe('planPrice', () => {
   it('saves 20% yearly on every paid plan', () => {
     expect(yearlySaving(pro)).toBe(20)
     expect(yearlySaving(team)).toBe(20)
-    expect(leastYearlySaving(soldOffers())).toBe(20)
-    expect(leastYearlySaving([free])).toBeNull()
+    expect(YEARLY_SAVING).toBe(20)
   })
 })
 

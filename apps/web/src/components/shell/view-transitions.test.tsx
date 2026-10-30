@@ -2,10 +2,9 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { answer, setupTestApi } from '#/test/rpc'
+import { answer, meAs, setupTestApi } from '#/test/rpc'
 
-import { meAs, renderApp } from './testing'
-import { viewTransitionRouterOptions } from './view-transitions'
+import { renderApp } from './testing'
 
 setupTestApi({ onUnhandledFrame: 'error' })
 afterEach(() => {
@@ -23,10 +22,6 @@ function stubStartViewTransition() {
 }
 
 describe('View transitions', () => {
-  it('turns them on for every navigation', () => {
-    expect(viewTransitionRouterOptions.defaultViewTransition).toBe(true)
-  })
-
   it('keeps the site header out of the page fade', async () => {
     renderApp('/unavailable')
     await screen.findByRole('link', { name: 'Home' })

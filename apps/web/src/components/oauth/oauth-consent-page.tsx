@@ -3,6 +3,7 @@ import { Loader2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { authFetch } from '#/components/auth/auth-api'
 import { Button } from '#/components/ui/button'
 import { Field, FieldLabel } from '#/components/ui/field'
 import {
@@ -17,7 +18,37 @@ import { leave } from '#/lib/leave'
 import { orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
-import { chooseOrganization, consent, listOrganizations, publicClientName } from './oauth-api'
+/** The connector's `client_name`, or its id when it gave none. */
+async function publicClientName(clientId: string): Promise<string> {
+  const body = await authFetch<{ client_id: string; client_name?: string }>(
+    `/oauth2/public-client?${new URLSearchParams({ client_id: clientId })}`,
+  )
+  return body.client_name || body.client_id
+}
+
+/** Allows or denies the request (`oauthQuery`, exactly as received); resolves to where to go next. */
+async function consent(accept: boolean, oauthQuery: string): Promise<string> {
+  const body = await authFetch<{ url?: string; redirect_uri?: string }>('/oauth2/consent', {
+    accept,
+    oauth_query: oauthQuery,
+  })
+  const url = body.url ?? body.redirect_uri
+  if (!url) throw new Error('[oauth] the consent answer named no redirect')
+  return url
+}
+
+interface ConsentOrganization {
+  id: string
+  name: string
+}
+
+/** The person's organizations, read without the page's signed OAuth query. */
+const listOrganizations = () => authFetch<ConsentOrganization[]>('/organization/list')
+
+/** Makes `organizationId` the one the connector is granted. */
+async function chooseOrganization(organizationId: string): Promise<void> {
+  await authFetch('/organization/set-active', { organizationId })
+}
 
 function Message({ title, body }: { title: string; body: string }) {
   return (

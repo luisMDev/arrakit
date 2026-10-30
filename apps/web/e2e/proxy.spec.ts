@@ -4,10 +4,6 @@ import { magicLinkFor } from './mailpit'
 import { API_ORIGIN, WEB_ORIGIN } from './origins'
 import { uniqueEmail } from './session'
 
-// The web server (the Nitro handler in src/server/api-proxy-handler.ts) proxies /api/** and the OAuth metadata
-// under /.well-known/oauth-* to the API, so web and API are one site. Every request here goes to
-// the WEB origin.
-
 test('serves the OAuth authorization server metadata through the web origin', async ({
   request,
 }) => {
@@ -26,7 +22,10 @@ test('serves the MCP protected resource metadata through the web origin', async 
   expect(((await res.json()) as { resource: string }).resource).toBe(`${WEB_ORIGIN}/api/mcp`)
 })
 
-test('forwards POST bodies, leaves redirects to the browser and passes the client address', async ({
+// With NODE_ENV=test Better Auth falls back to 127.0.0.1 when no forwarded IP reaches it, so
+// x-forwarded-for cannot be told apart from that fallback here; the edge's x-real-ip can. The
+// proxy's xfwd and single-IP x-forwarded-for are covered by src/server/api-proxy-handler.test.ts.
+test('forwards POST bodies, leaves redirects to the browser and records the client IP', async ({
   request,
 }) => {
   const email = uniqueEmail('proxy')
@@ -34,23 +33,20 @@ test('forwards POST bodies, leaves redirects to the browser and passes the clien
     headers: { origin: WEB_ORIGIN },
     data: { email, callbackURL: `${WEB_ORIGIN}/profile` },
   })
-  expect(asked.status()).toBe(200)
+  expect(asked.status(), await asked.text()).toBe(200)
 
   const link = await magicLinkFor(request, email)
   expect(link.startsWith(WEB_ORIGIN)).toBe(true)
 
-  // The API's redirect reaches the browser as a redirect (the proxy does not follow it).
-  const opened = await request.get(link, { maxRedirects: 0 })
-  expect(opened.status()).toBeGreaterThanOrEqual(300)
-  expect(opened.status()).toBeLessThan(400)
+  const opened = await request.get(link, {
+    maxRedirects: 0,
+    headers: { 'x-real-ip': '203.0.113.9', 'x-forwarded-for': '203.0.113.9, 198.51.100.1' },
+  })
+  expect(opened.status()).toBe(302)
   expect(opened.headers().location).toContain('/profile')
   expect(opened.headers()['set-cookie']).toMatch(/session_token=/)
 
-  // Better Auth records the client address from x-forwarded-for, which the proxy must send.
-  const sessions = await request.get(`${WEB_ORIGIN}/api/auth/list-sessions`, {
-    headers: { origin: WEB_ORIGIN },
-  })
-  expect(sessions.status()).toBe(200)
-  const [session] = (await sessions.json()) as { ipAddress?: string | null }[]
-  expect(session?.ipAddress).toBeTruthy()
+  const session = await request.get(`${WEB_ORIGIN}/api/auth/get-session`)
+  const body = (await session.json()) as { session: { ipAddress?: string | null } } | null
+  expect(body?.session.ipAddress).toBe('203.0.113.9')
 })

@@ -5,6 +5,7 @@ import {
   type UseFormReturn,
   useForm,
 } from 'react-hook-form'
+import { z } from 'zod'
 
 /** A form whose field errors appear on submit and stay hidden until the next submit once edited. */
 export function useClearingForm<TValues extends FieldValues, TContext = unknown, TOutput = TValues>(
@@ -24,3 +25,7 @@ export function registerClearing<TValues extends FieldValues, TContext, TOutput>
     },
   })
 }
+
+/** A form with one required `name` of up to 200 characters; `message` says it is missing. */
+export const nameForm = (message?: string) =>
+  z.object({ name: z.string().trim().min(1, message).max(200) })

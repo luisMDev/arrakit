@@ -1,8 +1,7 @@
 import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '#/components/ui/skeleton'
-import { UsageCards } from '#/components/usage/usage-cards'
-import { useUsage } from '#/components/usage/use-usage'
+import { UsageCards, useUsage } from '#/components/usage/usage-cards'
 import { useCurrentUser } from '#/lib/current-user'
 
 import { SettingsSectionLayout } from './settings-ui'

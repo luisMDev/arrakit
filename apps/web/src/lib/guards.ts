@@ -1,0 +1,108 @@
+import { isAccountLanguage } from '@arrakit/address'
+import type { Me, PaidChoice } from '@arrakit/contract'
+import { isPaidPlan } from '@arrakit/plans'
+import type { QueryClient } from '@tanstack/react-query'
+import { redirect } from '@tanstack/react-router'
+
+import { loadLanguage } from '#/i18n'
+import { reportError } from '#/lib/api-errors'
+import { type ChoiceSearch, appLanding, checkoutChoice } from '#/lib/checkout-choice'
+import { grants, loadMe } from '#/lib/current-user'
+import { orpc } from '#/lib/orpc'
+
+interface GuardArgs<TSearch = ChoiceSearch> {
+  context: { queryClient: QueryClient }
+  location: { href: string }
+  search: TSearch
+}
+
+/** The signed-in person or `null`; any failure but a 401 goes to Unavailable, then back to `next`. */
+async function guardedMe(queryClient: QueryClient, next: string): Promise<Me | null> {
+  try {
+    return await loadMe(queryClient)
+  } catch {
+    throw redirect({ to: '/unavailable', search: { next } })
+  }
+}
+
+const cachedMe = (queryClient: QueryClient) =>
+  queryClient.getQueryData<Me>(orpc.me.get.queryOptions().queryKey)
+
+/**
+ * Loads the signed-in person before any /app screen renders: no session goes to /signin, no
+ * organization to /profile. The account language is applied first.
+ */
+export async function requireUser({ context, location }: Omit<GuardArgs, 'search'>) {
+  const me = await guardedMe(context.queryClient, location.href)
+  if (!me) throw redirect({ to: '/signin' })
+  if (!me.organization || !me.role || !me.plan) throw redirect({ to: '/profile' })
+  if (isAccountLanguage(me.language)) {
+    // Always queued, even when the account language looks active: an earlier switch may still be
+    // loading and would win otherwise. A language file that will not load keeps the current one.
+    await loadLanguage(me.language).catch((err: unknown) =>
+      reportError('[requireUser] loading the account language failed', err),
+    )
+  }
+}
+
+/** Profile is for a signed-in person without an organization. */
+export async function requireAccount({ context, location, search }: GuardArgs) {
+  const me = await guardedMe(context.queryClient, location.href)
+  if (!me) throw redirect({ to: '/signup' })
+  if (me.organization) throw redirect(appLanding(checkoutChoice(search)))
+}
+
+/** Sign up and sign in are for visitors: a signed-in person goes on to Profile or the app. */
+export async function skipWhenSignedIn({ context, location, search }: GuardArgs) {
+  const me = await guardedMe(context.queryClient, location.href)
+  if (!me) return
+  const choice = checkoutChoice(search)
+  if (!me.organization) throw redirect({ to: '/profile', search: choice ?? {} })
+  throw redirect(appLanding(choice))
+}
+
+/** Checkout is for a paid plan and someone who manages billing; `requireUser` loaded the person. */
+export function canCheckout({ context, search }: Omit<GuardArgs, 'location'>): {
+  choice: PaidChoice
+} {
+  const choice = checkoutChoice(search)
+  const me = cachedMe(context.queryClient) ?? null
+  if (!choice || !grants(me, { billing: ['manage'] })) throw redirect({ to: '/app/plans' })
+  return { choice }
+}
+
+export const PAID_WAIT_TRIES = 15
+const PAID_WAIT_INTERVAL_MS = 1000
+
+export const welcomeSearch = (search: Record<string, unknown>): { session_id?: string } =>
+  typeof search.session_id === 'string' ? { session_id: search.session_id } : {}
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/** Re-reads the person until the organization's plan is paid; false after every try or a failure. */
+async function waitForPaidPlan(queryClient: QueryClient): Promise<boolean> {
+  const options = { ...orpc.me.get.queryOptions(), staleTime: 0 }
+  for (let attempt = 0; attempt < PAID_WAIT_TRIES; attempt++) {
+    if (attempt > 0) await wait(PAID_WAIT_INTERVAL_MS)
+    try {
+      if (isPaidPlan((await queryClient.fetchQuery(options)).plan)) return true
+    } catch (err) {
+      reportError('[onPaidPlan] reading the plan failed', err)
+      return false
+    }
+  }
+  return false
+}
+
+/**
+ * Welcome is for an organization on a paid plan. Back from Checkout (`session_id`), Stripe's
+ * webhook may land after the browser, so the plan is re-read once a second for 15 tries.
+ */
+export async function onPaidPlan({
+  context,
+  search,
+}: Omit<GuardArgs<{ session_id?: string }>, 'location'>) {
+  if (isPaidPlan(cachedMe(context.queryClient)?.plan)) return
+  if (search.session_id && (await waitForPaidPlan(context.queryClient))) return
+  throw redirect({ to: '/app/plans' })
+}

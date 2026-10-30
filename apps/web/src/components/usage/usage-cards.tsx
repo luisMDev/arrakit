@@ -1,5 +1,10 @@
+import { useQuery } from '@tanstack/react-query'
+
 import { Card, CardContent, CardHeader, CardTitle } from '#/components/ui/card'
 import { Progress } from '#/components/ui/progress'
+import { tr } from '#/i18n'
+import { useCurrentUser } from '#/lib/current-user'
+import { orpc } from '#/lib/orpc'
 
 import {
   type MetricUsage,
@@ -10,6 +15,15 @@ import {
   usedLine,
   usedPercent,
 } from './usage-copy'
+
+/** `usage.get` when the person's role reads usage, with the "couldn't load" toast when it fails. */
+export function useUsage() {
+  const { can } = useCurrentUser()
+  return useQuery({
+    ...orpc.usage.get.queryOptions({ meta: { failure: tr('settings.usageSettings.notLoaded') } }),
+    enabled: can({ usage: ['read'] }),
+  })
+}
 
 export function UsageCards({ metrics }: { metrics: MetricUsage[] }) {
   return (

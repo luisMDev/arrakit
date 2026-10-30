@@ -1,33 +1,47 @@
-import type { Me } from '@arrakit/contract'
-import { type QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import {
-  createMemoryHistory,
-  createRootRouteWithContext,
-  createRoute,
-  createRouter,
-  redirect,
-  RouterProvider,
-} from '@tanstack/react-router'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
 import { render } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { vi } from 'vitest'
 
 import { Toaster } from '#/components/ui/sonner'
-import '#/i18n'
-import { settingsSearch } from '#/components/settings/settings-page'
-import { requireUser } from '#/lib/guards/require-user'
-import { meAs as sharedMeAs, testQueryClient } from '#/test/rpc'
+import { TooltipProvider } from '#/components/ui/tooltip'
+import { routeTree } from '#/routeTree.gen'
+import { testQueryClient } from '#/test/rpc'
 
-import { AppShell } from './app-shell'
-import { HomePage } from './home-page'
-import { NotFoundPage } from './not-found-page'
-import { onPaidPlan, welcomeSearch } from './on-paid-plan'
-import { RootLayout } from './root-layout'
 import { ThemeProvider } from './theme-provider'
-import { UnavailablePage, unavailableSearch } from './unavailable-page'
-import { viewTransitionRouterOptions } from './view-transitions'
-import { WelcomePage } from './welcome-page'
 
-export const meAs = (overrides: Partial<Me> = {}): Me =>
-  sharedMeAs({ email: 'ana@acme.com', name: 'Ana Ruiz', plan: 'pro', seats: 3, ...overrides })
+vi.mock('#/components/auth/signup-page', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  SignupPage: ({ mode }: { mode: 'new' | 'returning' }) => (
+    <Heading title={mode === 'new' ? 'Sign up' : 'Sign in'} />
+  ),
+}))
+vi.mock('#/components/onboarding/profile-page', () => ({
+  ProfilePage: () => <Heading title="Your organization" />,
+}))
+vi.mock('#/components/billing/plans-page', () => ({ PlansPage: () => <Heading title="Plans" /> }))
+vi.mock('#/components/billing/pricing-page', () => ({
+  PricingPage: () => <Heading title="Pricing" />,
+}))
+vi.mock('#/components/billing/checkout-page', () => ({
+  CheckoutPage: () => <Heading title="Checkout" />,
+}))
+vi.mock('#/components/settings/settings-page', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  SettingsPage: ({ section = 'account' }: { section?: string }) => (
+    <Heading title="Settings" section={SECTION_TITLES[section] ?? section} />
+  ),
+}))
+vi.mock('#/components/organizations/join-page', () => ({
+  JoinPage: () => <Heading title="Join" />,
+}))
+vi.mock('#/components/oauth/oauth-consent-page', () => ({
+  OAuthConsentPage: () => <Heading title="Connect" />,
+}))
+vi.mock('#/components/oauth/oauth-signin-page', () => ({
+  OAuthSignInPage: () => <Heading title="Sign in to connect" />,
+}))
 
 const SECTION_TITLES: Record<string, string> = {
   account: 'Account',
@@ -44,95 +58,28 @@ function Heading({ title, section }: { title: string; section?: string }) {
   )
 }
 
-/** The shell's routes over memory history, with stand-ins for other modules' screens. */
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <ThemeProvider>
+      <TooltipProvider>{children}</TooltipProvider>
+      <Toaster />
+    </ThemeProvider>
+  )
+}
+
+/** The app's real route tree over memory history, with other modules' screens stubbed out. */
 export function renderApp(url: string, { queryClient = testQueryClient() } = {}) {
-  const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-    component: RootLayout,
-  })
-  const index = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/',
-    beforeLoad: () => {
-      throw redirect({ to: '/signin' })
-    },
-  })
-  const signin = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/signin',
-    component: () => <Heading title="Sign in" />,
-  })
-  const profile = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/profile',
-    component: () => <Heading title="Your organization" />,
-  })
-  const unavailable = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/unavailable',
-    validateSearch: unavailableSearch,
-    component: function Unavailable() {
-      return <UnavailablePage {...unavailable.useSearch()} />
-    },
-  })
-  const app = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/app',
-    beforeLoad: requireUser,
-    component: AppShell,
-  })
-  const home = createRoute({ getParentRoute: () => app, path: '/', component: HomePage })
-  const settings = createRoute({
-    getParentRoute: () => app,
-    path: '/settings',
-    validateSearch: settingsSearch,
-    component: function Settings() {
-      const { section = 'account' } = settings.useSearch()
-      return <Heading title="Settings" section={SECTION_TITLES[section] ?? section} />
-    },
-  })
-  const plans = createRoute({
-    getParentRoute: () => app,
-    path: '/plans',
-    component: () => <Heading title="Plans" />,
-  })
-  const welcome = createRoute({
-    getParentRoute: () => app,
-    path: '/welcome',
-    validateSearch: welcomeSearch,
-    beforeLoad: onPaidPlan,
-    component: WelcomePage,
-  })
-  const appCatchAll = createRoute({
-    getParentRoute: () => app,
-    path: '$',
-    component: NotFoundPage,
-  })
-  const catchAll = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '$',
-    component: NotFoundPage,
-  })
-  const routeTree = rootRoute.addChildren([
-    index,
-    signin,
-    profile,
-    unavailable,
-    app.addChildren([home, settings, plans, welcome, appCatchAll]),
-    catchAll,
-  ])
+  Object.assign(routeTree.options, { shellComponent: Shell })
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({ initialEntries: [url] }),
     context: { queryClient },
-    ...viewTransitionRouterOptions,
+    defaultViewTransition: true,
   })
   const view = render(
-    <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-        <Toaster />
-      </QueryClientProvider>
-    </ThemeProvider>,
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
   )
   const location = () => router.state.location.href
   return { ...view, router, queryClient, location }

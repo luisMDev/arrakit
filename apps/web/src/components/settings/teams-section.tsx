@@ -2,10 +2,11 @@ import { personName } from '@arrakit/address'
 import type { TeamMember } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Users } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { z } from 'zod'
 
+import { EmptyState } from '#/components/shell/empty-state'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '#/components/ui/card'
 import { Field, FieldError, FieldLabel } from '#/components/ui/field'
@@ -20,36 +21,30 @@ import {
 import { Separator } from '#/components/ui/separator'
 import { authCall } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
-import { useCurrentUser } from '#/lib/current-user'
-import { registerClearing, useClearingForm } from '#/lib/form'
+import { useMember } from '#/lib/current-user'
+import { nameForm, registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import { type Team, organizationQueries } from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
-import { ConfirmDeleteDialog } from './confirm-delete-dialog'
+import { ConfirmDialog } from './confirm-dialog'
 import { SettingsSectionLayout } from './settings-ui'
 
 const K = 'settings.teamsSettings'
 
 const org = authClient.organization
 
-const teamName = (message: string) => z.object({ name: z.string().trim().min(1, message).max(200) })
-
 const nameOf = (person: { name: string; email: string }) => personName(person.name, person.email)
 
 export function TeamsSection() {
   const { t } = useTranslation()
-  const me = useCurrentUser()
+  const me = useMember()
   const queryClient = useQueryClient()
-  const organizationId = me.user?.organization?.id ?? ''
+  const organizationId = me.organization.id
   const teamsQuery = organizationQueries.teams(organizationId)
-  const teams = useQuery({
-    ...teamsQuery,
-    enabled: organizationId !== '',
-    meta: { failure: t(`${K}.notLoaded`) },
-  })
+  const teams = useQuery({ ...teamsQuery, meta: { failure: t(`${K}.notLoaded`) } })
   const form = useClearingForm({
-    resolver: zodResolver(teamName(t(`${K}.enterName`))),
+    resolver: zodResolver(nameForm(t(`${K}.enterName`))),
     defaultValues: { name: '' },
   })
   const nameError = form.formState.errors.name?.message
@@ -95,9 +90,7 @@ export function TeamsSection() {
           </CardContent>
         </Card>
       ) : null}
-      {teams.data?.length === 0 ? (
-        <p className="text-muted-foreground text-sm">{t(`${K}.empty`)}</p>
-      ) : null}
+      {teams.data?.length === 0 ? <EmptyState icon={Users} title={t(`${K}.empty`)} /> : null}
       {teams.data?.map((team) => (
         <TeamCard key={team.id} team={team} organizationId={organizationId} />
       ))}
@@ -107,7 +100,7 @@ export function TeamsSection() {
 
 function TeamCard({ team, organizationId }: { team: Team; organizationId: string }) {
   const { t } = useTranslation()
-  const me = useCurrentUser()
+  const me = useMember()
   const queryClient = useQueryClient()
   const [confirming, setConfirming] = useState(false)
   const [newcomer, setNewcomer] = useState('')
@@ -123,7 +116,7 @@ function TeamCard({ team, organizationId }: { team: Team; organizationId: string
     meta: { failure: t(`${K}.notLoaded`) },
   })
   const form = useClearingForm({
-    resolver: zodResolver(teamName(t(`${K}.enterName`))),
+    resolver: zodResolver(nameForm(t(`${K}.enterName`))),
     values: { name: team.name },
   })
   const reloadMembers = () => queryClient.invalidateQueries({ queryKey: membersQuery.queryKey })
@@ -276,7 +269,7 @@ function TeamCard({ team, organizationId }: { team: Team; organizationId: string
           </div>
         ) : null}
       </CardContent>
-      <ConfirmDeleteDialog
+      <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
         title={t(`${K}.confirmDeleteTitle`, { team: team.name })}

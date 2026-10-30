@@ -15,26 +15,18 @@ import {
   seatsLine,
 } from '#/components/billing/plan-copy'
 import { EmptyState } from '#/components/shell/empty-state'
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '#/components/ui/alert-dialog'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent } from '#/components/ui/card'
 import { Skeleton } from '#/components/ui/skeleton'
 import { BillingUsage, TopUpsList } from '#/components/usage/billing-usage'
-import { useUsage } from '#/components/usage/use-usage'
+import { useUsage } from '#/components/usage/usage-cards'
 import { useCurrentUser } from '#/lib/current-user'
 import { fullDay, money } from '#/lib/format'
 import { leave } from '#/lib/leave'
 import { client, orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
+import { ConfirmDialog } from './confirm-dialog'
 import { SettingRow, SettingsCard, SettingsHeading, SettingsSectionLayout } from './settings-ui'
 
 const KEY = 'settings.billingSettings'
@@ -199,24 +191,16 @@ export function BillingSection() {
         </div>
       )}
 
-      <AlertDialog open={cancelling} onOpenChange={setCancelling}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t(`${KEY}.cancelTitle`)}</AlertDialogTitle>
-            <AlertDialogDescription>{billing && cancelLine(billing)}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t(`${KEY}.keepMyPlan`)}</AlertDialogCancel>
-            <Button
-              variant="destructive"
-              disabled={cancel.isPending}
-              onClick={() => void cancel.run({})}
-            >
-              {t(`${KEY}.cancelPlan`)}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={cancelling}
+        onOpenChange={setCancelling}
+        title={t(`${KEY}.cancelTitle`)}
+        description={billing ? cancelLine(billing) : ''}
+        cancelLabel={t(`${KEY}.keepMyPlan`)}
+        confirmLabel={t(`${KEY}.cancelPlan`)}
+        pending={cancel.isPending}
+        onConfirm={() => void cancel.run({})}
+      />
     </SettingsSectionLayout>
   )
 }

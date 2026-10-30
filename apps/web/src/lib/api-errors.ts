@@ -1,7 +1,5 @@
 import { fallbackORPCErrorMessage } from '@orpc/client'
 
-import { notify } from './notify'
-
 export function statusOf(err: unknown): number {
   if (err && typeof err === 'object' && 'status' in err && typeof err.status === 'number') {
     return err.status
@@ -27,10 +25,4 @@ export function apiMessage(err: unknown): string | null {
   const code = 'code' in err && typeof err.code === 'string' ? err.code : null
   if (code && message === fallbackORPCErrorMessage(code, undefined)) return null
   return message
-}
-
-/** Reports a failure and toasts the API's own message, or `failure` when it has none. */
-export function apiFailed(context: string, err: unknown, failure: string): void {
-  reportError(context, err)
-  notify.error(apiMessage(err) ?? failure)
 }

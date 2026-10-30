@@ -3,9 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { accessOf, initialOf, useCurrentUser } from '#/lib/current-user'
 import { orpc } from '#/lib/orpc'
-import { testQueryClient, withQueries } from '#/test/rpc'
-
-import { meAs } from './testing'
+import { meAs, testQueryClient, withQueries } from '#/test/rpc'
 
 describe('accessOf', () => {
   it.each([
@@ -58,7 +56,7 @@ describe('useCurrentUser', () => {
 
   it('names the plan and follows a patch with no refetch', async () => {
     const { result } = setUp(meAs())
-    expect(result.current.planLabel).toBe('Pro')
+    expect(result.current.planLabel).toBe('Team')
     act(() => result.current.patch((me) => ({ ...me, name: 'Ana María' })))
     await waitFor(() => expect(result.current.name).toBe('Ana María'))
   })

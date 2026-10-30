@@ -3,7 +3,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
 import { RootLayout } from '#/components/shell/root-layout'
-import { RouteError } from '#/components/shell/route-error'
+import { RouteError } from '#/components/shell/unavailable-page'
 import { ThemeProvider } from '#/components/shell/theme-provider'
 import { Toaster } from '#/components/ui/sonner'
 import { TooltipProvider } from '#/components/ui/tooltip'

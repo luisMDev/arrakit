@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { notify } from './notify'
 
 vi.mock('sonner', () => ({
-  toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn() },
 }))
 
 describe('notify', () => {
@@ -12,7 +12,6 @@ describe('notify', () => {
 
   it.each([
     ['success', 4000],
-    ['warning', 6000],
     ['error', 6000],
   ] as const)('shows a %s toast for %i ms', (level, duration) => {
     notify[level]('Saved')
@@ -28,22 +27,22 @@ describe('notify', () => {
 
   it('tells levels and descriptions apart in the id', () => {
     notify.success('Done')
-    notify.warning('Email not sent', { description: 'For ana@acme.com' })
-    notify.warning('Email not sent', { description: 'For kim@acme.com' })
+    notify.error('Email not sent', { description: 'For ana@acme.com' })
+    notify.error('Email not sent', { description: 'For kim@acme.com' })
     expect(vi.mocked(toast.success).mock.calls[0]?.[1]?.id).toBe('success:Done')
-    expect(vi.mocked(toast.warning).mock.calls.map(([, options]) => options?.id)).toEqual([
-      'warning:Email not sent:For ana@acme.com',
-      'warning:Email not sent:For kim@acme.com',
+    expect(vi.mocked(toast.error).mock.calls.map(([, options]) => options?.id)).toEqual([
+      'error:Email not sent:For ana@acme.com',
+      'error:Email not sent:For kim@acme.com',
     ])
   })
 
   it('passes the description and action through', () => {
     const onClick = vi.fn()
-    notify.warning('Email not sent', {
+    notify.error('Email not sent', {
       description: 'Resend it',
       action: { label: 'Resend', onClick },
     })
-    expect(toast.warning).toHaveBeenCalledWith(
+    expect(toast.error).toHaveBeenCalledWith(
       'Email not sent',
       expect.objectContaining({ description: 'Resend it', action: { label: 'Resend', onClick } }),
     )

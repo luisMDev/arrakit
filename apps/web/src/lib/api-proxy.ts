@@ -8,6 +8,3 @@ export const apiProxiedPaths = [
   '/.well-known/oauth-authorization-server',
   '/.well-known/oauth-protected-resource',
 ] as const
-
-export const apiOriginFrom = (value: string | undefined) =>
-  (value ?? 'http://localhost:5000').replace(/\/$/, '')

@@ -1,14 +1,10 @@
-import { isRedirect } from '@tanstack/react-router'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { orpc } from '#/lib/orpc'
-import { answer, quiet, renderAt, setupTestApi, testQueryClient } from '#/test/rpc'
+import { answer, meAs, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
-import { canCheckout } from './can-checkout'
 import { CheckoutPage } from './checkout-page'
-import { meOn } from './testing'
 
 const stripe = vi.hoisted(() => {
   const mount = vi.fn()
@@ -33,7 +29,7 @@ function setup(cycle: 'monthly' | 'yearly' = 'yearly') {
     publishableKey: 'pk_test',
   })
   const view = renderAt(<CheckoutPage choice={{ plan: 'team', cycle }} />, {
-    me: meOn('free'),
+    me: meAs({ plan: 'free' }),
     url: `/app/checkout?plan=team&cycle=${cycle}`,
   })
   return { ...view, sessions }
@@ -87,7 +83,7 @@ describe('CheckoutPage', () => {
       'Your organization is on Pro. Switch plans in Settings → Billing.',
     ])
     renderAt(<CheckoutPage choice={{ plan: 'team', cycle: 'yearly' }} />, {
-      me: meOn('pro'),
+      me: meAs({ plan: 'pro' }),
       url: '/app/checkout?plan=team&cycle=yearly',
     })
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -103,7 +99,7 @@ describe('CheckoutPage', () => {
     quiet()
     answer('billing/checkout', [status, message])
     renderAt(<CheckoutPage choice={{ plan: 'team', cycle: 'yearly' }} />, {
-      me: meOn('free'),
+      me: meAs({ plan: 'free' }),
       url: '/app/checkout?plan=team&cycle=yearly',
     })
     expect(await screen.findByRole('alert')).toHaveTextContent(message)
@@ -114,56 +110,11 @@ describe('CheckoutPage', () => {
     quiet()
     answer('billing/checkout', 502)
     renderAt(<CheckoutPage choice={{ plan: 'team', cycle: 'yearly' }} />, {
-      me: meOn('free'),
+      me: meAs({ plan: 'free' }),
       url: '/app/checkout?plan=team&cycle=yearly',
     })
     expect(await screen.findByRole('alert')).toHaveTextContent(
       "Couldn't open the payment form. Reload the page to try again.",
     )
-  })
-})
-
-describe('canCheckout', () => {
-  const contextFor = (role: 'owner' | 'admin' | 'member') => {
-    const queryClient = testQueryClient()
-    queryClient.setQueryData(orpc.me.get.queryOptions().queryKey, meOn('free', role))
-    return { queryClient }
-  }
-
-  it.each(['owner', 'admin'] as const)('lets an %s check out a paid plan', async (role) => {
-    await expect(
-      canCheckout({
-        context: contextFor(role),
-        location: { href: '/app/checkout' },
-        search: { plan: 'pro', cycle: 'monthly' },
-      }),
-    ).resolves.toEqual({ choice: { plan: 'pro', cycle: 'monthly' } })
-  })
-
-  it('sends a member to Plans', async () => {
-    const outcome = await canCheckout({
-      context: contextFor('member'),
-      location: { href: '/app/checkout' },
-      search: { plan: 'pro', cycle: 'yearly' },
-    }).catch((err: unknown) => err)
-    expect(isRedirect(outcome)).toBe(true)
-  })
-
-  it.each([
-    {},
-    { plan: 'free', cycle: 'yearly' },
-    { plan: 'enterprise', cycle: 'yearly' },
-    { plan: 'internal', cycle: 'yearly' },
-    { plan: 'Internal', cycle: 'yearly' },
-    { plan: 'pro', cycle: 'weekly' },
-    { plan: 'pro' },
-  ])('sends %o to Plans', async (search) => {
-    const outcome = await canCheckout({
-      context: contextFor('owner'),
-      location: { href: '/app/checkout' },
-      search,
-    }).catch((err: unknown) => err)
-    expect(isRedirect(outcome)).toBe(true)
-    expect((outcome as { options: { to: string } }).options.to).toBe('/app/plans')
   })
 })

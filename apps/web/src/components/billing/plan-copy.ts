@@ -1,5 +1,5 @@
 import type { BillingView, ChangePreview, PaidChoice, PlanOfferView } from '@arrakit/contract'
-import type { BillingCycle, Plan } from '@arrakit/plans'
+import { type BillingCycle, type Plan, soldOffers } from '@arrakit/plans'
 
 import { tr } from '#/i18n'
 import { fullDay, type Money, money } from '#/lib/format'
@@ -75,10 +75,12 @@ export function planPrice(offer: PlanOfferView, cycle: BillingCycle): PlanPrice 
 export const yearlySaving = ({ monthly, yearly }: PlanOfferView): number =>
   Math.round((1 - yearly.amount / (monthly.amount * 12)) * 100)
 
-export function leastYearlySaving(offers: PlanOfferView[]): number | null {
-  const savings = offers.filter((o) => o.monthly.amount > 0).map(yearlySaving)
-  return savings.length > 0 ? Math.min(...savings) : null
-}
+export const OFFERS = soldOffers()
+
+/** The smallest yearly saving among the paid offers: what the cycle switch promises. */
+export const YEARLY_SAVING = Math.min(
+  ...OFFERS.filter((o) => o.monthly.amount > 0).map(yearlySaving),
+)
 
 export const twelveMonths = ({ monthly }: PlanOfferView): Money => ({
   ...monthly,

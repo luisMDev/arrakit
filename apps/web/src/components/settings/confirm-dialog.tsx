@@ -11,9 +11,12 @@ import {
 } from '#/components/ui/alert-dialog'
 import { Button } from '#/components/ui/button'
 
-export function ConfirmDeleteDialog({
+/** A destructive action to confirm; by default it warns that it cannot be undone. */
+export function ConfirmDialog({
   open,
   title,
+  description,
+  cancelLabel,
   confirmLabel,
   pending,
   onConfirm,
@@ -21,6 +24,8 @@ export function ConfirmDeleteDialog({
 }: {
   open: boolean
   title: string
+  description?: string
+  cancelLabel?: string
   confirmLabel: string
   pending: boolean
   onConfirm: () => void
@@ -32,10 +37,12 @@ export function ConfirmDeleteDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{t('confirmDelete.cannotBeUndone')}</AlertDialogDescription>
+          <AlertDialogDescription>
+            {description ?? t('confirmDelete.cannotBeUndone')}
+          </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>{t('confirmDelete.keepIt')}</AlertDialogCancel>
+          <AlertDialogCancel>{cancelLabel ?? t('confirmDelete.keepIt')}</AlertDialogCancel>
           <Button variant="destructive" disabled={pending} onClick={onConfirm}>
             {confirmLabel}
           </Button>

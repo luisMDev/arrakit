@@ -1,6 +1,6 @@
 import { createOrganizationSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { type QueryClient, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { Controller, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
@@ -45,10 +45,6 @@ async function created(step: ProfileStep): Promise<string> {
   }
 }
 
-async function save(queryClient: QueryClient, step: ProfileStep): Promise<void> {
-  await switchOrganization(queryClient, await created(step))
-}
-
 export function ProfilePage({
   search,
   onDone,
@@ -65,7 +61,8 @@ export function ProfilePage({
   const termsAccepted = useWatch({ control: form.control, name: 'termsAccepted' })
   const step = useApiMutation({
     mutationKey: ['profile'],
-    mutationFn: (variables: ProfileStep) => save(queryClient, variables),
+    mutationFn: async (variables: ProfileStep) =>
+      switchOrganization(queryClient, await created(variables)),
     onSuccess: () => onDone(appLanding(checkoutChoice(search))),
     meta: {
       failure: (variables: ProfileStep) =>

@@ -1,7 +1,5 @@
 import { defineHandler, proxyRequest, type H3Event } from 'nitro/h3'
 
-import { apiOriginFrom } from '../lib/api-proxy'
-
 /**
  * The client IP the API should see: Cloudflare's `cf-connecting-ip` when the web server sits
  * behind Cloudflare (the TCP peer is then a Cloudflare edge), else the peer that connected.
@@ -11,8 +9,8 @@ export function clientIpOf(headers: Headers, peerIp: string | undefined): string
 }
 
 /** Where a request to the web server goes on the API: same path and query on `apiOrigin`. */
-export function apiTargetOf(url: URL, apiOrigin: string | undefined): string {
-  return `${apiOriginFrom(apiOrigin)}${url.pathname}${url.search}`
+export function apiTargetOf(url: URL, apiOrigin = 'http://localhost:5000'): string {
+  return `${apiOrigin.replace(/\/$/, '')}${url.pathname}${url.search}`
 }
 
 /**

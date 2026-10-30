@@ -3,7 +3,6 @@ import {
   type Permissions,
   allows,
   isOwnerRole,
-  isStaticRole,
   permissionsOf,
   rolesOf,
 } from '@arrakit/auth/permissions'
@@ -30,7 +29,7 @@ import {
 import { Separator } from '#/components/ui/separator'
 import { authCall } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
-import { initialOf, useCurrentUser } from '#/lib/current-user'
+import { initialOf, roleLabel, useMember } from '#/lib/current-user'
 import { registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import {
@@ -55,15 +54,6 @@ const inviteMember = (body: InviteBody) =>
   authCall(org.inviteMember(body as Parameters<typeof org.inviteMember>[0]))
 
 const displayName = (member: OrganizationMember) => personName(member.user.name, member.user.email)
-
-const STATIC_ROLE_LABEL = { owner: 'roleOwner', admin: 'roleAdmin', member: 'roleMember' } as const
-
-/** A role string as people read it: built-in roles translated, custom ones by name. */
-export function roleLabel(t: TFunction, role: string): string {
-  return rolesOf(role)
-    .map((name) => (isStaticRole(name) ? t(`${K}.${STATIC_ROLE_LABEL[name]}`) : name))
-    .join(', ')
-}
 
 const MORE_SEATS: Partial<Record<string, string>> = { free: 'moreSeatsFree', pro: 'moreSeatsPro' }
 
@@ -114,11 +104,11 @@ export function assignableRoles(
 
 export function MembersSection() {
   const { t } = useTranslation()
-  const me = useCurrentUser()
+  const me = useMember()
   const queryClient = useQueryClient()
-  const organizationId = me.user?.organization?.id ?? ''
+  const organizationId = me.organization.id
   const meta = { failure: t(`${K}.notLoaded`) }
-  const enabled = me.managesMembers && organizationId !== ''
+  const enabled = me.managesMembers
   const membersQuery = organizationQueries.members(organizationId)
   const invitesQuery = organizationQueries.invitations(organizationId)
   const members = useQuery({ ...membersQuery, enabled, meta })
@@ -129,14 +119,14 @@ export function MembersSection() {
     meta,
   })
 
-  const myEmail = me.user?.email ?? ''
+  const myEmail = me.user.email
   const placeholder = `name@${domainOf(myEmail)}`
   const memberList = members.data ?? []
   const inviteList = invites.data ?? []
   const customRoles = roles.data ?? []
   const customMap = Object.fromEntries(customRoles.map((r) => [r.role, r.permission]))
-  const granted = (me.user?.permissions ?? {}) as Permissions
-  const assignable = assignableRoles(me.role ?? '', granted, customRoles)
+  const granted = me.user.permissions as Permissions
+  const assignable = assignableRoles(me.role, granted, customRoles)
   const form = useClearingForm({
     resolver: zodResolver(
       inviteForm(
@@ -188,8 +178,9 @@ export function MembersSection() {
       authCall(org.removeMember({ memberIdOrEmail: member.id, organizationId })),
     onSuccess: async (_, member) => {
       await reloadMembers()
-      const organization = me.user?.organization?.name ?? ''
-      notify.success(t(`${K}.removed`, { name: displayName(member), organization }))
+      notify.success(
+        t(`${K}.removed`, { name: displayName(member), organization: me.organization.name }),
+      )
     },
     meta: {
       failure: (member: OrganizationMember) => t(`${K}.notRemoved`, { name: displayName(member) }),
@@ -223,7 +214,7 @@ export function MembersSection() {
 
   const busy = invite.isPending || remove.isPending || resend.isPending || cancel.isPending
 
-  if (!me.managesMembers || !me.user) return <></>
+  if (!me.managesMembers) return <></>
 
   const outranks = (member: OrganizationMember) =>
     me.isOwner || allows(granted, permissionsOf(member.role, customMap))
@@ -247,11 +238,11 @@ export function MembersSection() {
   const roleOptions = (current?: string) =>
     [...new Set([...(current ? [current] : []), ...assignable])].map((role) => (
       <SelectItem key={role} value={role}>
-        {roleLabel(t, role)}
+        {roleLabel(role)}
       </SelectItem>
     ))
 
-  const moreSeats = me.user.plan ? MORE_SEATS[me.user.plan] : undefined
+  const moreSeats = MORE_SEATS[me.plan]
   const count = memberList.length
 
   return (
@@ -351,7 +342,7 @@ export function MembersSection() {
                       </Select>
                     ) : (
                       <span className="text-muted-foreground text-sm">
-                        {roleLabel(t, member.role)}
+                        {roleLabel(member.role)}
                       </span>
                     )}
                     {canRemove && manages(member) ? (
@@ -386,7 +377,7 @@ export function MembersSection() {
                     )}
                   </div>
                   <span className="text-muted-foreground text-sm">
-                    {roleLabel(t, invitation.role)}
+                    {roleLabel(invitation.role)}
                   </span>
                   {canInvite ? (
                     <Button

@@ -1,4 +1,4 @@
-import { type BillingCycle, soldOffers } from '@arrakit/plans'
+import type { BillingCycle } from '@arrakit/plans'
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -8,9 +8,7 @@ import { APP_NAME, SITE_URL } from '#/config'
 
 import { BillingCycleSwitch } from './billing-cycle-switch'
 import { FeatureList, PlanCard } from './plan-card'
-import { leastYearlySaving, planLabel, pricingCopy } from './plan-copy'
-
-const OFFERS = soldOffers()
+import { OFFERS, planLabel, pricingCopy } from './plan-copy'
 
 export function PricingPage() {
   const { t } = useTranslation()
@@ -31,7 +29,7 @@ export function PricingPage() {
           </h1>
           <p className="text-muted-foreground">{t('pricing.subtitle')}</p>
         </div>
-        <BillingCycleSwitch cycle={cycle} saving={leastYearlySaving(OFFERS)} onChange={setCycle} />
+        <BillingCycleSwitch cycle={cycle} onChange={setCycle} />
         <div className="grid w-full gap-6 md:grid-cols-3">
           {OFFERS.map((offer) => {
             const copy = pricingCopy(offer)

@@ -3,10 +3,11 @@ import { isRedirect } from '@tanstack/react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import '#/i18n'
-import { testQueryClient } from '#/test/rpc'
+import type { ChoiceSearch } from '#/lib/checkout-choice'
+import { orpc } from '#/lib/orpc'
+import { meAs, testQueryClient } from '#/test/rpc'
 
-import { requireAccount } from './require-account'
-import { skipWhenSignedIn } from './skip-when-signed-in'
+import { canCheckout, requireAccount, skipWhenSignedIn } from './guards'
 
 const ORG: NonNullable<Me['organization']> = {
   id: '0f8fad5b-d9cb-469f-a165-70867728950e',
@@ -150,5 +151,43 @@ describe('any failure but a 401', () => {
       search: { next: '/signin?plan=pro' },
     })
     expect(reported).toHaveBeenCalledWith('[me.get] failed', expect.anything())
+  })
+})
+
+describe('canCheckout (/app/checkout)', () => {
+  const checkout = (role: 'owner' | 'admin' | 'member', search: ChoiceSearch) => {
+    const queryClient = testQueryClient()
+    queryClient.setQueryData(orpc.me.get.queryOptions().queryKey, meAs({ plan: 'free', role }))
+    return outcome(async () => canCheckout({ context: { queryClient }, search }))
+  }
+
+  it.each(['owner', 'admin'] as const)('lets an %s check out a paid plan', async (role) => {
+    expect(await checkout(role, { plan: 'pro', cycle: 'monthly' })).toBe('render')
+  })
+
+  it('sends a member to Plans', async () => {
+    expect(await checkout('member', { plan: 'pro', cycle: 'yearly' })).toMatchObject({
+      to: '/app/plans',
+    })
+  })
+
+  it.each([
+    {},
+    { plan: 'free', cycle: 'yearly' },
+    { plan: 'enterprise', cycle: 'yearly' },
+    { plan: 'internal', cycle: 'yearly' },
+    { plan: 'Internal', cycle: 'yearly' },
+    { plan: 'pro', cycle: 'weekly' },
+    { plan: 'pro' },
+  ])('sends %o to Plans', async (search) => {
+    expect(await checkout('owner', search)).toMatchObject({ to: '/app/plans' })
+  })
+
+  it('hands the choice to the page', () => {
+    const queryClient = testQueryClient()
+    queryClient.setQueryData(orpc.me.get.queryOptions().queryKey, meAs({ plan: 'free' }))
+    expect(
+      canCheckout({ context: { queryClient }, search: { plan: 'pro', cycle: 'monthly' } }),
+    ).toEqual({ choice: { plan: 'pro', cycle: 'monthly' } })
   })
 })
