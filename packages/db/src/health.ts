@@ -13,6 +13,7 @@ export interface HealthReport {
 export const PROBE_TIMEOUT_MS = 3000
 
 async function probe(
+  ctx: DataContext,
   name: string,
   run: (signal: AbortSignal) => Promise<unknown>,
 ): Promise<ProbeState> {
@@ -26,16 +27,16 @@ async function probe(
     await Promise.race([run(signal), timeout])
     return 'up'
   } catch (err) {
-    console.error(`[data] health: ${name} is down:`, err)
+    ctx.log.error({ err, probe: name }, 'health probe down')
     return 'down'
   }
 }
 
 export async function health(ctx: DataContext): Promise<HealthReport> {
   const [postgres, storage, queue] = await Promise.all([
-    probe('postgres', () => ctx.db.execute(sql`select 1`)),
-    probe('storage', (signal) => ctx.storage.probe(signal)),
-    probe('queue', (signal) => ctx.jobs.probe(signal)),
+    probe(ctx, 'postgres', () => ctx.db.execute(sql`select 1`)),
+    probe(ctx, 'storage', (signal) => ctx.storage.probe(signal)),
+    probe(ctx, 'queue', (signal) => ctx.jobs.probe(signal)),
   ])
   const ok = postgres === 'up' && storage === 'up' && queue === 'up'
   return { status: ok ? 'ok' : 'error', postgres, storage, queue }

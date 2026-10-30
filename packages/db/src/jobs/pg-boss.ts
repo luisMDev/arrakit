@@ -1,15 +1,19 @@
 import { type ConstructorOptions, PgBoss } from 'pg-boss'
 
+import type { DataLog } from '../log'
 import { DEFAULT_EXPIRE_IN_SECONDS, type JobRecord, type JobsRuntime, deadLetterOf } from './types'
 
 /**
  * pg-boss in its own `pgboss` schema. `source` is a Postgres URL, or pg-boss constructor options
  * (tests run the same code on PGlite through `{ db: fromPglite(pg), backend: 'pglite' }`).
  */
-export async function pgBossJobs(source: string | ConstructorOptions): Promise<JobsRuntime> {
+export async function pgBossJobs(
+  source: string | ConstructorOptions,
+  log: DataLog,
+): Promise<JobsRuntime> {
   const options = typeof source === 'string' ? { connectionString: source } : source
   const boss = new PgBoss({ schema: 'pgboss', ...options })
-  boss.on('error', (err) => console.error('[data] pg-boss:', err))
+  boss.on('error', (err) => log.error({ err }, 'pg-boss failed'))
   await boss.start()
   await boss.createQueue('health')
   let stopped: Promise<void> | undefined

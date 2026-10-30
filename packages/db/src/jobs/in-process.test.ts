@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { inProcessJobs } from './in-process'
+import { consoleLog } from '../log'
 import { memoryJobs, sentJobs } from './memory'
 import { deadLetterOf } from './types'
 
@@ -17,7 +18,7 @@ describe('inProcessJobs', () => {
   it('retries with backoff, then dead-letters the payload', async () => {
     vi.useFakeTimers()
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const jobs = inProcessJobs()
+    const jobs = inProcessJobs({ log: consoleLog })
     await jobs.defineQueue('q', { retryLimit: 2, retryDelay: 1, retryBackoff: true })
     const attempts: number[] = []
     await jobs.work(
@@ -42,7 +43,7 @@ describe('inProcessJobs', () => {
 
   it('completes a job that fails once and then succeeds', async () => {
     vi.useFakeTimers()
-    const jobs = inProcessJobs()
+    const jobs = inProcessJobs({ log: consoleLog })
     await jobs.defineQueue('q', { retryLimit: 3, retryDelay: 1, retryBackoff: false })
     let calls = 0
     await jobs.work(
@@ -62,7 +63,7 @@ describe('inProcessJobs', () => {
 
   it('honours startAfter', async () => {
     vi.useFakeTimers()
-    const jobs = inProcessJobs()
+    const jobs = inProcessJobs({ log: consoleLog })
     await jobs.defineQueue('q', { retryLimit: 0, retryDelay: 0, retryBackoff: false })
     const ran: object[] = []
     await jobs.work('q', async (data) => void ran.push(data), { pollingIntervalSeconds: 0.1 })
@@ -75,7 +76,7 @@ describe('inProcessJobs', () => {
   })
 
   it('sends once per key on an exclusive queue while a job is pending', async () => {
-    const jobs = inProcessJobs()
+    const jobs = inProcessJobs({ log: consoleLog })
     await jobs.defineQueue(
       'x',
       { retryLimit: 0, retryDelay: 0, retryBackoff: false },
@@ -88,7 +89,7 @@ describe('inProcessJobs', () => {
   })
 
   it('refuses to make an existing standard queue exclusive', async () => {
-    const jobs = inProcessJobs()
+    const jobs = inProcessJobs({ log: consoleLog })
     const policy = { retryLimit: 0, retryDelay: 0, retryBackoff: false }
     await jobs.defineQueue('s', policy)
     await expect(jobs.defineQueue('s', policy, { exclusive: true })).rejects.toThrow(
@@ -98,7 +99,7 @@ describe('inProcessJobs', () => {
   })
 
   it('reports the queue policy with a default expiry of 900 s', async () => {
-    const jobs = inProcessJobs()
+    const jobs = inProcessJobs({ log: consoleLog })
     await jobs.defineQueue('p', { retryLimit: 5, retryDelay: 30, retryBackoff: true })
     expect(await jobs.queuePolicy('p')).toEqual({
       retryLimit: 5,
@@ -112,7 +113,7 @@ describe('inProcessJobs', () => {
 
   it('runs a schedule in UTC and a new schedule replaces the old one', async () => {
     vi.useFakeTimers({ now: new Date('2026-10-30T10:00:30Z') })
-    const jobs = inProcessJobs()
+    const jobs = inProcessJobs({ log: consoleLog })
     const ran: object[] = []
     await jobs.work('tick', async (data) => void ran.push(data), { pollingIntervalSeconds: 1 })
     await jobs.schedule('tick', '* * * * *', { v: 1 })
@@ -123,7 +124,7 @@ describe('inProcessJobs', () => {
   })
 
   it('waits for running handlers on stop, then refuses work and fails the probe', async () => {
-    const jobs = inProcessJobs()
+    const jobs = inProcessJobs({ log: consoleLog })
     let finish!: () => void
     let finished = false
     await jobs.defineQueue('slow', { retryLimit: 0, retryDelay: 0, retryBackoff: false })
@@ -183,7 +184,7 @@ describe('memoryJobs', () => {
 
 describe('inProcessJobs queue definitions', () => {
   it('keeps the policy a queue was created with when it is defined again, like pg-boss', async () => {
-    const jobs = inProcessJobs()
+    const jobs = inProcessJobs({ log: consoleLog })
     await jobs.defineQueue('kept', { retryLimit: 5, retryDelay: 30, retryBackoff: true })
     await jobs.defineQueue('kept', { retryLimit: 1, retryDelay: 2, retryBackoff: false })
     expect(await jobs.queuePolicy('kept')).toEqual({

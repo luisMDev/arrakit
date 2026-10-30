@@ -5,6 +5,7 @@ import { fromPglite } from 'pg-boss'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { pgBossJobs } from './pg-boss'
+import { consoleLog } from '../log'
 import { type JobsRuntime, deadLetterOf } from './types'
 
 /**
@@ -22,7 +23,7 @@ const pgliteTarget: Target = {
   name: 'PGlite (pg-boss pglite backend)',
   async open() {
     const pg = await PGlite.create()
-    const jobs = await pgBossJobs({ db: fromPglite(pg), backend: 'pglite' })
+    const jobs = await pgBossJobs({ db: fromPglite(pg), backend: 'pglite' }, consoleLog)
     const stop = jobs.stop.bind(jobs)
     return {
       jobs: Object.assign(jobs, {
@@ -42,7 +43,7 @@ const postgresTarget: Target = {
     const url = process.env.DATABASE_URL!
     const { default: pg } = await import('pg')
     const pool = new pg.Pool({ connectionString: url, max: 1 })
-    const jobs = await pgBossJobs(url)
+    const jobs = await pgBossJobs(url, consoleLog)
     const stop = jobs.stop.bind(jobs)
     return {
       jobs: Object.assign(jobs, {

@@ -10,6 +10,7 @@ export {
   type Database,
 } from './connection'
 export type { DataContext } from './context'
+export type { DataLog } from './log'
 export * from './errors'
 export { isUuid, toOrganizationId, type OrganizationId } from './organization-id'
 export { forOrganization, type OrganizationScope } from './organization/index'

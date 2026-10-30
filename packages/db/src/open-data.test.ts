@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest'
 
 import { connect } from './connection'
+import { consoleLog } from './log'
 import type { ScopedData } from './open-data'
 import { organizations, users, members } from './schema/index'
 import { type TestData, openTestData } from './testing'
@@ -51,7 +52,7 @@ describe('openTestData', () => {
   })
 
   it('migrating twice is a no-op', async () => {
-    const connection = await connect()
+    const connection = await connect({}, consoleLog)
     await connection.migrate()
     await connection.migrate()
     await connection.close()

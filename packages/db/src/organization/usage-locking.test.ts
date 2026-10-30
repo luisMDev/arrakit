@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { type Database, defaultMigrationsFolder } from '../connection'
 import { memoryJobs } from '../jobs/memory'
+import { consoleLog } from '../log'
 import { type Data, openData } from '../open-data'
 import { toOrganizationId } from '../organization-id'
 import * as schema from '../schema/index'
@@ -38,7 +39,13 @@ describe('usage row lock (emitted SQL)', () => {
       .insert(organizations)
       .values({ name: 'Locked', slug: `locked-${randomUUID()}`, plan: 'free' })
       .returning()
-    const ctx = { db, jobs: memoryJobs(), storage: memoryStorage(), now: () => new Date() }
+    const ctx = {
+      db,
+      jobs: memoryJobs(),
+      storage: memoryStorage(),
+      now: () => new Date(),
+      log: consoleLog,
+    }
     return usageScope(ctx, toOrganizationId(org!.id))
   }
 

@@ -11,6 +11,7 @@ import { drizzle as drizzlePglite } from 'drizzle-orm/pglite'
 import { migrate as migratePglite } from 'drizzle-orm/pglite/migrator'
 import pg from 'pg'
 
+import type { DataLog } from './log'
 import * as schema from './schema/index'
 
 export type Schema = typeof schema
@@ -52,7 +53,7 @@ export function defaultMigrationsFolder(): string {
 }
 
 /** Opens Drizzle over node-postgres when DATABASE_URL is set, otherwise over PGlite. */
-export async function connect(config: ConnectionConfig = {}): Promise<Connection> {
+export async function connect(config: ConnectionConfig, log: DataLog): Promise<Connection> {
   const migrationsFolder = config.migrationsFolder ?? defaultMigrationsFolder()
 
   if (config.databaseUrl) {
@@ -60,7 +61,7 @@ export async function connect(config: ConnectionConfig = {}): Promise<Connection
       connectionString: config.databaseUrl,
       connectionTimeoutMillis: 5000,
     })
-    return postgresConnection(pool, migrationsFolder)
+    return postgresConnection(pool, migrationsFolder, log)
   }
 
   const dir = config.pgliteDir && config.pgliteDir !== 'memory://' ? config.pgliteDir : undefined
@@ -81,9 +82,13 @@ export async function connect(config: ConnectionConfig = {}): Promise<Connection
 }
 
 /** Drizzle over a node-postgres pool; migrations run on one client under MIGRATION_LOCK. */
-export function postgresConnection(pool: pg.Pool, migrationsFolder: string): Connection {
+export function postgresConnection(
+  pool: pg.Pool,
+  migrationsFolder: string,
+  log: DataLog,
+): Connection {
   // An idle client failing must not crash the process.
-  pool.on('error', (err) => console.error('[data] idle Postgres client failed:', err))
+  pool.on('error', (err) => log.error({ err }, 'idle Postgres client failed'))
   const db = drizzlePg({ client: pool, schema })
   return {
     db: db as unknown as Database,
