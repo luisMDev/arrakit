@@ -41,7 +41,8 @@
     },
     "test:e2e": {
       "cache": false,
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "passThroughEnv": ["E2E_WEB_PORT", "E2E_API_PORT", "E2E_MAILPIT_PORT"]
     },
     "dev": {
       "cache": false,
