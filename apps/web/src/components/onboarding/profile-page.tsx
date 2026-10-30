@@ -20,7 +20,7 @@ import { useOnboardingApi } from './onboarding-api'
 const profileForm = z.object({
   personName: createOrganizationSchema.shape.personName.unwrap(),
   organization: createOrganizationSchema.shape.name,
-  termsAccepted: z.boolean().refine((accepted) => accepted),
+  termsAccepted: z.boolean(),
 })
 
 export type ProfileTarget = { to: '/app' } | { to: '/app/checkout'; search: CheckoutChoice }
@@ -78,6 +78,8 @@ export function ProfilePage({
     )
   }
 
+  const notSaved = () => notify.error(t('profile.organizationNotSaved'))
+
   return (
     <main className="mx-auto flex w-full max-w-2xl grow flex-col justify-center gap-8 px-4 py-12">
       <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
@@ -87,7 +89,7 @@ export function ProfilePage({
       <form
         noValidate
         className="flex flex-col gap-6"
-        onSubmit={(e) => void form.handleSubmit(next)(e)}
+        onSubmit={(e) => void form.handleSubmit(next, notSaved)(e)}
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field>
