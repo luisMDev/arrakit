@@ -1,7 +1,9 @@
 import type { UsageView } from '@arrakit/contract'
+import { Coins } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { EmptyState } from '#/components/shell/empty-state'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent } from '#/components/ui/card'
 
@@ -74,7 +76,7 @@ export function TopUpsList({ topUps }: { topUps: UsageView['topUps'] | undefined
               ))}
             </ul>
           ) : (
-            <p className="text-muted-foreground py-4 text-sm">{t(`${KEY}.noTopUps`)}</p>
+            <EmptyState icon={Coins} title={t(`${KEY}.noTopUps`)} />
           )}
         </CardContent>
       </Card>

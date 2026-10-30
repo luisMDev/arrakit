@@ -1,6 +1,7 @@
 import type { BillingView } from '@arrakit/contract'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import { Receipt } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -24,6 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '#/components/ui/alert-dialog'
+import { EmptyState } from '#/components/shell/empty-state'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent } from '#/components/ui/card'
 import { Skeleton } from '#/components/ui/skeleton'
@@ -231,7 +233,7 @@ export function BillingSection({
                   ))}
                 </ul>
               ) : (
-                <p className="text-muted-foreground py-4 text-sm">{t(`${KEY}.noInvoices`)}</p>
+                <EmptyState icon={Receipt} title={t(`${KEY}.noInvoices`)} />
               )}
             </CardContent>
           </Card>
