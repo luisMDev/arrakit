@@ -160,18 +160,18 @@ and remove the stray `cn` dependency if it was added.
 (agents work in parallel; lockfile edits collide). If something is truly missing, stop and report it.
 Highlights per workspace:
 
-- api: hono, @hono/node-server, @orpc/server, @orpc/contract, @orpc/zod, @orpc/client,
-  zod, better-auth, @better-auth/oauth-provider, stripe, resend, @modelcontextprotocol/server
-  (+ @modelcontextprotocol/sdk, and @modelcontextprotocol/client for tests), croner, tsx, tsdown.
-  The api also lists drizzle-orm, pg, pg-boss, @electric-sql/pglite and @aws-sdk/* only so the
-  tsdown bundle keeps them external at runtime; its source still may not import them (lint).
+- api: hono, @hono/node-server, @orpc/server, @orpc/contract, @orpc/client, zod, better-auth,
+  @better-auth/oauth-provider, stripe, @modelcontextprotocol/server, tsx, tsdown (Resend is
+  called over HTTP, no SDK). The api also lists drizzle-orm, pg, pg-boss, @electric-sql/pglite
+  and @aws-sdk/client-s3 only so the tsdown bundle keeps them external at runtime; its source
+  still may not import them (lint).
 - db: drizzle-orm, drizzle-kit, pg, @types/pg, @electric-sql/pglite, pg-boss, @aws-sdk/client-s3,
-  @aws-sdk/s3-request-presigner, better-auth (drizzle adapter), croner, zod.
-- auth: better-auth, @better-auth/oauth-provider, zod, @arrakit/emails (dev: @arrakit/db for tests).
-- contract: @orpc/contract, zod, @arrakit/plans, @arrakit/auth, @arrakit/address.
+  better-auth (drizzle adapter).
+- auth: better-auth, @better-auth/oauth-provider, @arrakit/emails (dev: @arrakit/db for tests).
+- contract: @orpc/contract, zod, @arrakit/plans, @arrakit/auth (permissions), @arrakit/address.
 - web: @tanstack/react-start, @tanstack/react-router, @tanstack/react-query, @orpc/client,
   @orpc/tanstack-query, better-auth, i18next, react-i18next, sonner, @stripe/stripe-js,
-  @stripe/react-stripe-js, react-hook-form, @hookform/resolvers, zod, lucide-react, radix-ui;
+  react-hook-form, @hookform/resolvers, zod, lucide-react, radix-ui;
   dev: vitest, jsdom, @testing-library/{react,dom,user-event,jest-dom}, msw, @playwright/test.
 - landing: astro, @astrojs/sitemap, tailwindcss, @tailwindcss/vite.
 
