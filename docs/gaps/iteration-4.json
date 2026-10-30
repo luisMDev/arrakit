@@ -1,0 +1,90 @@
+[
+  {
+    "area": "auth-onboarding",
+    "gaps": [
+      {
+        "feature": "Legacy URLs /reading, /ready and /ready/<id> go through Sign in: a member with an organization lands on /app and a visitor lands on /signin",
+        "arrakitState": "untested",
+        "detail": "The behaviour exists. /home/luismdev/Projects/arrakit/apps/web/src/routes/$.tsx has a beforeLoad that throws redirect({ to: '/signin' }) for any unknown path. The /signin guard skipWhenSignedIn (/home/luismdev/Projects/arrakit/apps/web/src/lib/guards/skip-when-signed-in.ts) then sends a member with an organization on to /app, and returns early for a visitor. No test covers this chain. grep finds no '/reading' or '/ready' anywhere in apps/web/src or apps/web/e2e, and no test imports or exercises the root '/$' route. onboarding-guards.test.ts only calls the guards directly. The shell test at apps/web/src/components/shell/shell.test.tsx:172 covers only unknown /app/* paths. docs/spec/auth-onboarding.md:313 and :519 require these legacy-URL cases. Removing or changing the root catch-all would therefore break no test. Fix: add a route-tree test, for example apps/web/src/lib/guards/legacy-entry-points.test.tsx, using the real routeTree with a memory history. Render /reading, /ready and /ready/company-1, and assert that a signed-in member with an organization ends on /app and a visitor ends on /signin. Low impact, because the behaviour works today.",
+        "saasBaseRef": "/home/luismdev/Projects/saas-base/apps/web/src/app/onboarding/onboarding.guards.spec.ts:179-193 (describe.each over /reading, /ready, /ready/company-1); /home/luismdev/Projects/saas-base/apps/web/src/app/app.routes.ts:149 `{ path: '**', redirectTo: 'signin' }`"
+      }
+    ]
+  },
+  {
+    "area": "organizations-members",
+    "gaps": [
+      {
+        "feature": "wantsEmail matches a stored address that still has capitals (lower() on the stored column)",
+        "arrakitState": "untested",
+        "detail": "/home/luismdev/Projects/arrakit/packages/db/src/data/account.ts:109-116 compares lower(users.email) with normalizeEmail(input), which matches saas-base. The only wantsEmail assertions are in /home/luismdev/Projects/arrakit/packages/db/src/data/account.test.ts:96-98, and every stored address there is lowercase ('cy@acme.com', 'dee@acme.com'). The capitals appear only in the input (' CY@acme.com'), and normalizeEmail already lowercases the input. Removing lower() on the stored side would therefore leave every test passing. No other test in apps/ or packages/ calls wantsEmail, and nothing outside tests calls it either, so the impact is low. saas-base tests this exact case. Missing test: insert a user with email 'Rosa@Oak.vc', call updateAccount(rosa, ..., { emails: { productNews: true } }), and expect wantsEmail('rosa@oak.vc', 'productNews') to be true.",
+        "saasBaseRef": "/home/luismdev/Projects/saas-base/libs/platform/data/src/members/account.int.spec.ts:206 ('honours the choice of a person whose stored address keeps its capitals')"
+      },
+      {
+        "feature": "updateAccount answers null for a person who is not there, saving nothing",
+        "arrakitState": "untested",
+        "detail": "/home/luismdev/Projects/arrakit/packages/db/src/data/account.ts:89-107 runs the update inside a transaction and then calls readAccount, which returns null when the user is missing. The router turns that null into 401 through accountView() in /home/luismdev/Projects/arrakit/apps/api/src/routers/account.ts:10-11 and :53-55. In /home/luismdev/Projects/arrakit/packages/db/src/data/account.test.ts, the null is checked only for account() (line 58), not for updateAccount(). /home/luismdev/Projects/arrakit/apps/api/src/routers/account.test.ts checks 401 only for me.account.get (line 55) and me.get/me.delete, never for me.account.update with a missing or anonymous user. Missing test: expect data.updateAccount(randomUUID(), 'none', { name: 'Nobody' }) to resolve to null.",
+        "saasBaseRef": "/home/luismdev/Projects/saas-base/libs/platform/data/src/members/account.int.spec.ts:184 ('answers null when the person is not there, saving nothing')"
+      }
+    ]
+  },
+  {
+    "area": "billing-plans",
+    "gaps": []
+  },
+  {
+    "area": "usage-credits",
+    "gaps": []
+  },
+  {
+    "area": "platform",
+    "gaps": [
+      {
+        "feature": "The boot wires the storage purge worker onto its queue (tested in saas-base)",
+        "arrakitState": "untested",
+        "detail": "Confirmed. /home/luismdev/Projects/arrakit/apps/api/src/main.ts:10 calls registerWorkers(deps.data), and /home/luismdev/Projects/arrakit/apps/api/src/workers/index.ts:5-7 calls registerStoragePurge. Nothing in the repo tests either call. The only references to registerWorkers are in main.ts and workers/index.ts. /home/luismdev/Projects/arrakit/apps/api/src/workers/storage-purge.test.ts:25-26 calls registerStoragePurge directly. If the line were dropped from workers/index.ts or main.ts, every test would still pass, and in production queued purges would never run. depsFromEnv in /home/luismdev/Projects/arrakit/apps/api/src/services.ts:42 also has no test. packages/auth/src/config.test.ts tests loadAuthConfig on its own, but no test checks that depsFromEnv fails before openData. Missing test: call registerWorkers(data) on test data, then assert data.jobs.workers.has(STORAGE_PURGE) and that the queue policy equals WORKER_RETRY_POLICY. Optionally also assert that depsFromEnv rejects a production env with a missing auth or mail variable.",
+        "saasBaseRef": "/home/luismdev/Projects/saas-base/apps/api/src/app/app.module.spec.ts:55-57 (\"wires PurgeModule's worker onto the storage purge queue\")"
+      },
+      {
+        "feature": "OpenAPI document: schema contents of /health and Settings > Account are asserted",
+        "arrakitState": "untested",
+        "detail": "Confirmed. /home/luismdev/Projects/arrakit/apps/api/src/routes/openapi.test.ts:34-90 asserts only status codes, that bodies are absent, and that the 503 content equals the 200 content. /home/luismdev/Projects/arrakit/apps/api/src/routes/health.test.ts:60-78 asserts the servers, the health tag and that 503 equals 200. No test in apps or packages reads components.schemas, enums, nullable or maxLength in the OpenAPI document. Not asserted: the health report's required list [status, postgres, storage, queue] and its enums ok/error and up/down; the /me/account GET required list, the signInWith enum [email, google, microsoft], the language enum [en, es] and timeZone nullable; the PATCH body having no required keys and name minLength 1 / maxLength 100; tags ['me'] on /me and /me/account, and ['organizations'] on the /organizations operations.",
+        "saasBaseRef": "/home/luismdev/Projects/saas-base/apps/api/src/app/openapi/openapi.spec.ts:39-56 (health schema), :58-71 and :73-102 (tags), :104-129 (account schema enums, timeZone nullable, PATCH name rules)"
+      },
+      {
+        "feature": "Schema tenancy check is shown to flag a newly added table without organization_id",
+        "arrakitState": "partial",
+        "detail": "Confirmed. In /home/luismdev/Projects/arrakit/packages/db/src/schema.test.ts:27-31, 'still refuses new tables without it' only checks that TENANCY_EXCEPTIONS does not contain the four names. It never runs the offender filter (lines 20-24, hasOrganizationId at lines 12-16) on a new table. If hasOrganizationId always returned true, both tests would still pass. Fix: extract a missingOrganizationId(tables) function, then for each name assert missingOrganizationId([...tables, pgTable(name, { id: text('id').primaryKey() })]) equals [name].",
+        "saasBaseRef": "/home/luismdev/Projects/saas-base/libs/platform/data/src/schema/schema.spec.ts:67-73"
+      },
+      {
+        "feature": "pg-boss start is undone when creating the health queue fails",
+        "arrakitState": "partial",
+        "detail": "Confirmed. /home/luismdev/Projects/arrakit/packages/db/src/jobs/pg-boss.ts:13-14 runs `await boss.start(); await boss.createQueue('health')` with no try/catch. If createQueue throws, pg-boss stays started. The catch in openData (/home/luismdev/Projects/arrakit/packages/db/src/open-data.ts:77-81) closes only storage and the connection, and it cannot stop a boss it never received. Impact is low, because main.ts calls process.exit(1) on a boot failure. Fix: try { await boss.createQueue('health') } catch (err) { await boss.stop(); throw err }.",
+        "saasBaseRef": "/home/luismdev/Projects/saas-base/libs/platform/data/src/jobs/jobs.ts:117-123 (startJobs)"
+      }
+    ]
+  },
+  {
+    "area": "web-shell-landing",
+    "gaps": [
+      {
+        "feature": "Landing canonical origin from PUBLIC_SITE_URL in apps/landing/.env (canonical, og:url, og:image, robots Sitemap line, sitemap)",
+        "arrakitState": "broken",
+        "detail": "apps/landing/astro.config.mjs line 8 sets `site: process.env.PUBLIC_SITE_URL ?? 'https://example.com'`. Astro evaluates the config before it loads .env files, so a value in apps/landing/.env never reaches process.env. The value only takes effect when it is exported in the shell or CI environment. apps/landing/src/lib/config.ts derives SITE_URL from import.meta.env.SITE, which comes from `site`, so siteLink(), robotsTxt() and @astrojs/sitemap all fall back to https://example.com. PUBLIC_APP_URL is read through import.meta.env in config.ts, so it does work from .env. That explains the reported repro, where links used app.test but canonical and robots used example.com. apps/landing/.env.example says these values are 'read at build time', which is misleading. docs/spec/web-shell-landing.md line 384 names PUBLIC_SITE_URL as the source for canonical, og:url, og:image and sitemap. saas-base hardcodes https://example.com in src/index.html (lines 18, 20, 26), src/robots.txt (line 13) and src/sitemap.xml (line 4), and has no env variable. So this is a defect against the arrakit spec and its documented .env setup, not a missing saas-base feature. Fix: in astro.config.mjs, use `loadEnv(process.env.NODE_ENV ?? 'production', process.cwd(), '')` from vite, or Astro's envField or schema. Add a test that builds with a .env file. src/lib/config.test.ts only covers the defaults.",
+        "saasBaseRef": "saas-base/apps/landing/src/index.html:18,20,26; src/robots.txt:13; src/sitemap.xml:4 (hardcoded origin); arrakit docs/spec/web-shell-landing.md:384,404-423"
+      },
+      {
+        "feature": "Stale-chunk recovery reloads only on a navigation, and targets the screen being navigated to",
+        "arrakitState": "partial",
+        "detail": "apps/web/src/components/shell/root-layout.tsx useStaleChunkRecovery() listens to every window `vite:preloadError` event. It calls onPreloadError(event, router.latestLocation.href, window) with no check that a navigation is in progress. apps/web/src/router.tsx sets `defaultPreload: 'intent'` with `defaultPreloadStaleTime: 0`. TanStack Start code-splits route components, so hovering or focusing a link runs the route's lazy import. In a production build, Vite's __vitePreload helper (node_modules/vite/dist/node/chunks/node.js about line 27077, handlePreloadError, wrapping `baseModule().catch(...)`) dispatches vite:preloadError when that chunk is stale. onPreloadError in apps/web/src/components/shell/stale-chunk.ts then calls preventDefault and win.location.assign with the current location. A pointer hover can therefore hard-reload the current screen, and anything typed on it is lost. In saas-base, recoverFromStaleChunk runs only from withNavigationErrorHandler in apps/web/src/app/app.config.ts:20-22, with the failed navigation's error.url as the target (shared/stale-chunk.ts:31). apps/web/src/components/shell/root-layout.test.tsx (around line 60) only checks event cancellation and has no case for a preload. Fix: recover only while a navigation is pending, for example when router.state.status === 'pending' or the pending location differs from the resolved one, and use the pending location as the target. Otherwise leave the event alone so a later real navigation reaches RouteError.",
+        "saasBaseRef": "saas-base/apps/web/src/app/app.config.ts:20-22 (withNavigationErrorHandler); saas-base/apps/web/src/app/shared/stale-chunk.ts:31 (location.assign(error.url))"
+      },
+      {
+        "feature": "Router load-error screen (RouteError errorComponent): stale-chunk reload of the target route, non-chunk error screen and Try again",
+        "arrakitState": "untested",
+        "detail": "apps/web/src/components/shell/route-error.tsx is wired as the root errorComponent in apps/web/src/routes/__root.tsx:34. It is the only router-level caller of recoverFromStaleChunk, using router.state.location.href. It reports other errors through reportError and renders the unreachable title and body, with a Try again button that runs reset() and router.invalidate(). No test or e2e spec imports RouteError or makes a route throw. The \"Couldn't reach Arrakit.\" assertions in apps/web/src/components/shell/shell.test.tsx:149, apps/web/src/components/shell/pages.test.tsx:126 and apps/web/e2e/shell-signed-in.spec.ts:81 all reach the /unavailable page (unavailable-page.tsx), not RouteError. stale-chunk.test.ts tests only the pure functions. Removing the errorComponent, changing the target URL or breaking Try again would leave every test green. Suggested RTL test: make a route's beforeLoad or component throw TypeError('Failed to fetch dynamically imported module: https://x/a.js'), then assert that window.location.assign is called once with that route's URL. Then throw a plain Error and assert that the \"Couldn't reach Arrakit.\" heading appears and that Try again re-runs the load.",
+        "saasBaseRef": "saas-base/apps/web/src/app/app.config.ts:20-22 (withNavigationErrorHandler -> recoverFromStaleChunk); saas-base/apps/web/src/app/shared/stale-chunk.spec.ts"
+      }
+    ]
+  }
+]
