@@ -38,7 +38,7 @@ export const toOrganizationRole = (role: string): OrganizationRole =>
   (ORGANIZATION_ROLES as readonly string[]).includes(role) ? (role as OrganizationRole) : 'member';
 ```
 
-- `owner`: the organization's creator (Better Auth organization plugin `creatorRole: 'owner'`).
+- `owner`: the organization's creator (`createOrganization` inserts the creator as `owner`).
   Everything an admin can, plus naming/demoting/removing admins and deleting the organization.
 - `admin`: manages members, invitations and billing; renames the organization.
 - `member`: uses the app. Reads General (read-only), Usage, Security (sees "owner only" text), Account.
@@ -144,10 +144,9 @@ Port `device-name.spec.ts`.
 
 ## 2. Data model (Drizzle, Postgres; PGlite in dev/tests)
 
-All timestamps `timestamp with time zone`. Better Auth tables are mapped onto these (use Better Auth's
-Drizzle adapter with a schema mapping / `modelName` + `fields` overrides; the organization plugin's
-`organization`, `member`, `invitation` models map to `organizations`, `members`, `invitations` with
-`organizationId` -> `organization_id`).
+All timestamps `timestamp with time zone`. Better Auth's Drizzle adapter maps its user, session, account,
+verification, JWT and OAuth models onto these tables. `organizations`, `members` and `invitations` are app tables:
+there is no Better Auth organization plugin.
 
 ### 2.1 `users` (Better Auth `user`, plus additional fields)
 
@@ -166,8 +165,8 @@ Drizzle adapter with a schema mapping / `modelName` + `fields` overrides; the or
 ### 2.2 `sessions` (Better Auth `session`)
 
 id text PK, expires_at, token unique, created_at, updated_at, ip_address, user_agent,
-user_id -> users.id ON DELETE CASCADE (index), active_organization_id uuid null -> organizations.id ON DELETE SET NULL
-(plugin field; nothing sets it).
+user_id -> users.id ON DELETE CASCADE (index). No organization column (migration `0001` dropped
+`active_organization_id`); the organization is read from `members` on every request.
 
 ### 2.3 `accounts` (Better Auth `account`)
 
@@ -229,7 +228,7 @@ and `user_id`. They must be deleted explicitly (see org delete and member remova
 ### 2.8 Cascades summary (delete organization)
 
 Every table with `organization_id` references `organizations.id ON DELETE CASCADE`: members, invitations, and every
-product table (companies, files, inbound emails, attachments, usage…). `sessions.active_organization_id` set null.
+product table (usage ledger and levels, …).
 OAuth grants deleted manually in the same transaction. Users/accounts/sessions survive.
 Add a schema test: "every table with `organization_id` has an FK to organizations with ON DELETE CASCADE"
 (saas-base `schema.spec.ts`, `delete-organization.int.spec.ts` "walks the tables that carry organization_id").
@@ -243,18 +242,13 @@ Port `libs/platform/data/src/tenancy/*` to arrakit's data package.
 - `toOrganizationId(value)`: must match UUID regex `/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i`;
   returns lowercased branded `OrganizationId`. Throws (before any query) on `''`, `not-a-uuid`, wildcards, slashes,
   padding, braces. Accepts v4 and v7. Uppercase input -> lowercase (one storage prefix per org).
-- `forOrganization(id)` returns `OrganizationDb`:
-  - `organization()` reads its own row.
-  - `table(t)` for any table with an `organizationId` column (throws for a table without it):
-    `select(where?, orderBy?)`, `pick(columns, where?, orderBy?)`, `insert(values)` (forces `organizationId`),
-    `update(set, where)` (drops `organizationId` from `set`; throws if `where` yields no condition),
-    `delete(where)` (same), `lock(where, strength)` with `update | no key update | share | key share`.
-  - `transaction(work)` scoped to the same org.
-  - `where`/`orderBy` callbacks receive a restricted operator set (`and, or, not, eq, ne, gt, gte, lt, lte, inArray, isNull, isNotNull`, `asc, desc`); no raw `sql`.
-  - `members` (section 4), `rename(name)`, `setPlan(...)`, `files`, etc.
-- Tests worth porting: `tenant-db.int.spec.ts` (isolation A/B on read/update/delete/insert/lock, empty-where refusal,
-  transaction commit/rollback, lock waits) and `organization-id.spec.ts`. Run on PGlite in-memory. The "conflicting lock
-  waits" test may need adapting on PGlite (single connection); keep it for real Postgres or skip under PGlite with a note.
+- `forOrganization(id)` validates the id synchronously and returns the organization's scope, composed from one file per
+  domain in `packages/db/src/organization/`: `organization()` (own row), `rename(name)`, `setPlan(...)`,
+  `setStripeCustomer(...)`, `files`, `members` (section 4), `usage`. Each scope function writes its own Drizzle queries
+  filtered by the scope's `organization_id`; callers never get raw SQL or a database handle (app code is typed against
+  `ScopedData`).
+- Tests: `organization-id.test.ts` (accept/reject cases), and per-scope integration tests on PGlite in-memory
+  (`members.test.ts`, `usage.test.ts`, `billing.test.ts`, `data/organizations.test.ts` for isolation and cascades).
 
 ---
 
@@ -400,18 +394,18 @@ General rules:
   "Only an admin of the organization can do this.". Level `owner` and role != owner -> `FORBIDDEN`
   "Only the organization's owner can do this.". Puts `{ organization, role }` in context. The org is ALWAYS the
   session's; any `organizationId`/`slug` in the body is ignored (Zod `strip`).
-- Error mapping (port `member-errors.ts`): `MemberChangeRefusedError`, `SeatLimitError` -> FORBIDDEN with message;
-  `AlreadyMemberError`, `InviteEmailUnusableError` -> BAD_REQUEST with message; `NoSuchMemberError` -> NOT_FOUND with
-  message; `InvitationNotFoundError` -> NOT_FOUND "This invitation is not open for you."; `PersonHasOrganizationError`
-  -> CONFLICT "You already belong to an organization." (on accept) / "You already have an organization." (on create);
-  `PersonOwnsOrganizationError` -> CONFLICT
+- Error mapping: the data layer throws `DomainError` subclasses (`packages/db/src/errors.ts`) carrying their code and
+  message, and the `reportErrors` middleware maps every one to an `ORPCError` with the same code and message; routers
+  do not catch them. `MemberChangeRefusedError`, `SeatLimitError` -> FORBIDDEN; `AlreadyMemberError`,
+  `InviteEmailUnusableError` -> BAD_REQUEST; `NoSuchMemberError` -> NOT_FOUND; `InvitationNotFoundError` -> NOT_FOUND
+  "This invitation is not open for you."; `PersonHasOrganizationError` -> CONFLICT "You already belong to an
+  organization." (on accept) / "You already have an organization." (on create); `PersonOwnsOrganizationError` -> CONFLICT
   "You own an organization. Delete the organization first, in Settings → Security and data.".
-- **Trusted Origin check** on invite and resend: request `Origin` header must be exactly one of the trusted origins
-  (web origin); missing, `null`, or other site -> FORBIDDEN "Invite from the app." with nothing stored or sent.
-- Better Auth organization plugin's own HTTP routes (`/api/auth/organization/*`) must be **closed**: a `before` hook
-  throws `NOT_FOUND` for any path starting `/organization/` (tests: `POST /organization/create`,
-  `POST /organization/update`, `GET /organization/list` -> 404). Orgs are only created via our procedures.
-- Suggested oRPC contract names in parentheses; saas-base REST path given for reference.
+- **CSRF**: every `/api/rpc/*` write (invite and resend included) from a missing, `null` or foreign `Origin` is refused
+  by the app-wide middleware with 403 "Use the app.", before the procedure runs, so nothing is stored or sent.
+- There is no Better Auth organization plugin: `/api/auth/organization/*` does not exist (404). Orgs are only created
+  via our procedures.
+- Procedures are served only over oRPC at `/api/rpc/*`; the saas-base REST path is given for reference only.
 
 ### 5.1 `me.get` (GET /api/me) — session only
 
@@ -494,10 +488,9 @@ member -> 403; no org -> 404; 401; org deleted concurrently -> 404. Body `organi
 
 ### 5.8 `organizations.delete` (DELETE /api/organizations) — level owner
 
-1. If org has `stripe_subscription_id`: if Stripe not configured -> 503 SERVICE_UNAVAILABLE; else call
-   `stripe.subscriptions.cancel(id)` (end now). Failure -> log `ending subscription <sub> of organization <org> failed: <reason>`
-   and 502 BAD_GATEWAY. Message for both:
-   `Couldn't cancel your plan with Stripe, so nothing was deleted. Try again in a minute.` Nothing deleted.
+1. If org has `stripe_subscription_id`: `stripe.endNow(id)` (cancel now). Stripe not configured -> 503
+   `Payments are not set up yet.`; Stripe failure -> 502 `Couldn't reach Stripe. Try again in a minute.` (logged by
+   `guardedStripe`, billing spec 2.2). Nothing deleted either way.
 2. `deleteOrganization(orgId)`; false -> 404.
 3. Queue job `storage-purge` with `{ organizationId, folder: '' }`. Queue failure is logged (message includes
    `organization <id>`) and swallowed: still 204.
@@ -522,18 +515,18 @@ Output 204/void. The removed person's next request (same cookie) gets 404 on org
 Output `[{ id, email, role, invitedOn: 'YYYY-MM-DD' (UTC, of sentAt), expiresAt: ISO, emailSent: boolean }]`, oldest first,
 live only.
 
-### 5.13 `invitations.invite` (POST /api/invitations) — level admin + trusted Origin
+### 5.13 `invitations.invite` (POST /api/invitations) — level admin
 
 Input `{ email: z.string().max(320), role: z.enum(['admin','member']) }` (email normalized server side, e.g.
 `'  Jon@Birch.VC '` -> `jon@birch.vc`).
-Flow: origin check -> `members.invite` -> send invite email (5.17) -> if sent, `markEmailSent` -> return view.
-Output 201 InvitationView. Email failure: invitation kept, error logged with `organization <orgId>` and
-`invitation <id>`, response 201 with `emailSent:false`. If `markEmailSent` finds nothing (canceled meanwhile) or throws:
+Flow: `members.invite` -> send invite email (5.17) -> if sent, `markEmailSent` -> return view.
+Output InvitationView. Email failure: invitation kept, error logged (`invite email not sent`, with `organizationId`
+and `invitationId`), response with `emailSent:false`. If `markEmailSent` finds nothing (canceled meanwhile) or throws:
 log, still answer `emailSent:true`.
 Errors: 400 invalid address (`jon@organization`) or already in org (case-insensitive), nothing sent; 403 member,
-403 seat limit (Free: message in 4.7), 403 untrusted origin; 404 no org; 401.
+403 seat limit (Free: message in 4.7), 403 untrusted origin ("Use the app."); 404 no org; 401.
 
-### 5.14 `invitations.resend` (POST /api/invitations/:id/resend) — level admin + trusted Origin
+### 5.14 `invitations.resend` (POST /api/invitations/:id/resend) — level admin
 
 `members.resend(id)`; undefined -> 404 "No such invitation in your organization." (canceled, other org). Send email;
 failure -> 503 `The invite to <email> is saved, but its email did not go out. Press Resend to send it again.` (emailSent stays
@@ -603,18 +596,17 @@ local-part fallback).
 ## 7. Background jobs
 
 - `storage-purge` queue (pg-boss; in-process fallback on PGlite). Payload `{ organizationId: string, folder: '' }` for an
-  org delete (`''` = every file under the org prefix). Retry policy per files spec; failures logged and rethrown.
-  Queue-send failure in org delete is logged ("deleted, but its storage purge was not queued; its files stay in the bucket")
-  and does not fail the request.
+  org delete (`''` = every file under the org prefix), sent after the delete commits. Retry policy per platform spec;
+  failures logged and rethrown. Queue-send failure in org delete is logged ("storage purge not queued; its files stay in
+  the bucket") and does not fail the request.
 
 ---
 
 ## 8. External integrations
 
-- **Better Auth**: magic link, Google, Microsoft, organization plugin (`creatorRole: 'owner'`, schema mapped to our tables,
-  HTTP routes closed), user `additionalFields` (language, timeZone, emailProductNews as non-input fields), sessions with
+- **Better Auth**: magic link, Google, Microsoft (no organization plugin), user `additionalFields` (language, timeZone, emailProductNews as non-input fields), sessions with
   user agent, `revoke-other-sessions`.
-- **Stripe**: `subscriptions.cancel` on org delete when `stripe_subscription_id` set.
+- **Stripe**: `endNow` (`subscriptions.cancel`) on org delete when `stripe_subscription_id` set.
 - **Resend** mailer (Mailpit in dev/e2e, recording mailer in tests).
 - **pg-boss** for storage purge.
 - **S3** (purge target; files spec).
@@ -632,14 +624,15 @@ S3 vars (purge). Use whatever names AGENTS.md fixes; these are the needs.
 
 ### 10.1 Current user state
 
-Load `me.get` (TanStack Query, key `['me']`) in the `/app` route `beforeLoad`/loader:
+Load `me.get` (TanStack Query, `orpc.me.get.queryOptions()`) in the `/app` route `beforeLoad` (`requireUser` →
+`guardedMe`):
 - 401 -> redirect `/signin`.
 - `organization === null` -> redirect `/profile` (Profile is where an org is made).
-- 403 -> `/unavailable?reason=forbidden`; other failure -> `/unavailable?next=<url>` (report error).
+- any other failure -> `/unavailable?next=<url>`.
 - If `me.language` differs from the active i18n language, switch language before rendering.
 Derived: `role`, `isAdmin = role in (owner, admin)`, `isOwner = role === 'owner'`, `planLabel`.
 `displayName(name, email) = name.trim() || localPart(email)` used for me, account and members.
-Mutations that change name/org name update the `['me']` cache in place (patch) so the app menu reflects them.
+Mutations that change name/org name update the `me.get` cache in place (`patch`) so the app menu reflects them.
 After org delete or account delete: clear the cache (`signedOut`).
 
 ### 10.2 Routes
@@ -647,9 +640,9 @@ After org delete or account delete: clear the cache (`signedOut`).
 | route | screen | access |
 | --- | --- | --- |
 | `/join/$invitationId` | Join page | public (session optional) |
-| `/app/settings` | Settings, section Account | signed in with org |
-| `/app/members` | Settings, section Members | admins; a member sees Account instead |
-| `/app/billing` | Settings, section Billing | admins; a member sees Account instead |
+| `/app/settings?section=<id>` | Settings on that section (default `account`) | signed in with org; a hidden section shows Account |
+| `/app/members` | redirect -> `/app/settings?section=members` | |
+| `/app/billing` | redirect -> `/app/settings?section=billing`, keeping `top_up` | |
 | `/profile` | Profile (onboarding spec) — calls `organizations.create` / `organizations.skip` | signed in without org |
 
 Page titles: `<APP_NAME> · <t('app.titles.settings')>`, join: `app.titles.joinYourOrganization`.
@@ -657,16 +650,16 @@ Page titles: `<APP_NAME> · <t('app.titles.settings')>`, join: `app.titles.joinY
 ### 10.3 Settings page shell
 
 Layout: left nav (Back link to `/app` with arrow icon; visually hidden h1 `settings.title`; nav with `aria-label=settings.title`)
-and the selected section on the right. Sections switch **in page** (state, not route change). Optional: sync to URL search
-param; not required.
+and the selected section on the right. The section lives in the URL search (`?section=account|general|usage|members|
+billing|security`, validated by `settingsSearch`); nav items are links to `/app/settings?section=<id>`.
 
 Nav groups (`SETTINGS_NAV`):
 - `settings.mySettings`: `account` (`settings.account`)
 - `settings.organizationSettings`: `general` (`settings.general`), `usage` (`settings.usage`),
   `members` (`settings.members`, **adminOnly**), `billing` (`settings.billing`, **adminOnly**),
   `security` (`settings.security`).
-Each group is `role="group"` with `aria-label` = group label; the current item has `aria-current="true"`.
-Initial section = route's section if the person may see it, else `account`. Selecting a hidden section is ignored.
+Each group is `role="group"` with `aria-label` = group label; the current item has `aria-current="page"`.
+Shown section = the URL's section if the person may see it, else `account` (a member never sees Members or Billing).
 Cross-section links: Account's owner text opens `security`; Members' "more seats" link opens `billing`.
 
 Settings section component: title (h2) + optional aside on the same row + content. Setting row: muted label, value,
@@ -681,7 +674,7 @@ buttons: confirm (disabled while pending) and `confirmDelete.keepIt` (closes).
 
 Loads `me.account.get`. If `timeZone === null`, the client immediately PATCHes the browser's
 `Intl.DateTimeFormat().resolvedOptions().timeZone` (errors reported, account shown as is).
-Load failure toast: `notLoaded`.
+Load failure toast: `notLoaded` (query `meta.failure`).
 
 Content:
 1. Card: avatar initial of name; Input `yourName` (autocomplete name). Saves **on blur** if changed; blank/whitespace ->
@@ -702,8 +695,10 @@ Content:
    opens confirm dialog (`confirmTitle`, confirm label `deleteAccount`).
 
 Behaviour:
-- Any successful save: replace account state, switch UI language to `account.language` without reload, patch me.name.
-- Save failure: toast `notSaved` and reload from API to put the setting back.
+- Autosave is one mutation with `scope: { id: 'account' }`, so saves run one at a time in order (no hand-made queue).
+  Each save updates the cached account optimistically; on success the server answer replaces it only when no other
+  save is pending; me.name/language are patched and the UI language switches without reload.
+- Save failure: toast `notSaved` (`meta.failure`) and invalidate the account query to put the setting back.
 - Sign out everywhere: single-flight (button disabled while working; multiple presses -> one call). Success: toast
   `signedOut` and reload account (devices: this one alone). Failure: toast `notSignedOut`, devices list kept.
 - Delete account: single-flight; call `me.delete`, then `authClient.signOut()` ignoring its failure; success: close dialog,
@@ -714,7 +709,7 @@ Behaviour:
 Data from `me.get` (`organization.name`, `organization.slug`). Card: square logo with initial of org name,
 Input `organizationName` (autocomplete organization), caption `slug` (`Slug: {{slug}}`).
 Member: input disabled. Admin: saves **on blur** via `organizations.update`; blank -> invalid, not sent. Success: update
-state and patch me.organization.name. Failure: toast `notSaved` and reload (saved name back). Load failure: `notLoaded`.
+state and patch me.organization.name. Failure: toast `notSaved` (`meta.failure`) and show the saved name back.
 
 ### 10.7 Members section (`settings.membersSettings.*`) — admins only
 
@@ -752,10 +747,13 @@ Actions (all except role change are single-flight via a shared `busy` flag disab
 - Remove: success -> drop from list, toast `removed` {name, organization}; failure `notRemoved` {name}.
 - Resend: success -> replace invite (emailSent true clears the red mark), toast `inviteResent` {email}; failure `notResent`.
 - Cancel: success -> drop, toast `inviteCancelled` {email}; failure `notCancelled`.
-General API-call rule (port of `injectApiCall`): on error, show the API `message` for 4xx when present, else the given
-fallback copy; report unexpected errors.
+General API-call rule: mutations run through `useApiMutation` (`run()` drops a second call while one is running;
+`busy`); a failure is handled once by the query client's MutationCache: it reports the error and toasts the API
+`message` when present, else the mutation's `meta.failure` copy (a 401 is never toasted). Queries do the same through
+the QueryCache with `meta.failure`.
 
-A member opening `/app/members`: nav has no Members, section shows Account, no invite form rendered.
+A member opening `/app/members` (→ `/app/settings?section=members`): nav has no Members, section shows Account, no
+invite form rendered.
 
 ### 10.8 Security and data section (`settings.securitySettings.*`) — everyone sees, owner acts
 
@@ -849,13 +847,13 @@ Known es typo to fix while porting: `ownerDeleteFirst` es "Eres el propietario d
 9. Accept counts only members against seats (downgrade: first come first served).
 10. Internal plan allows > 10 members (100 seats).
 11. Invite email address normalized; invitee match on accept is exact normalized equality.
-12. Invite from missing/foreign Origin -> 403, nothing stored or sent.
+12. Invite from missing/foreign Origin -> 403 "Use the app." (app-wide CSRF middleware), nothing stored or sent.
 13. Email send failure on invite -> 201 `emailSent:false`, row kept, ids logged; resend failure -> 503, `emailSent`
     unchanged (stays true if it had been sent before); later successful resend -> `emailSent:true`.
 14. Invite canceled while its email was going out -> answer 201 `emailSent:true`; list is empty.
 15. Another org's invitation/member ids -> 404 (resend, cancel, remove).
 16. Org delete ends Stripe subscription first; Stripe failure -> 502 nothing deleted; no Stripe configured with a
-    subscription -> 503; purge queued with `{organizationId, folder:''}`; queue failure still 204.
+    subscription -> 503; purge queued with `{organizationId, folder:''}` after the delete; queue failure still succeeds.
 17. Org delete keeps users; their sessions survive with no org; former owner can create a new org.
 18. Org delete and member removal revoke OAuth grants (org-wide / that member only); other orgs' grants and the OAuth
     client remain.
@@ -864,7 +862,7 @@ Known es typo to fix while porting: `ownerDeleteFirst` es "Eres el propietario d
 20. Account update: partial; empty update returns current; never affects other users; language only changeable via our
     endpoint, not Better Auth `update-user`.
 21. Devices: only unexpired sessions; current first then newest.
-22. Better Auth organization plugin endpoints closed (404).
+22. `/api/auth/organization/*` does not exist (404; no organization plugin).
 23. Two last admins of an ownerless org stepping down concurrently: exactly one succeeds (row locks).
 24. Invalid invitation ids (`''`, SQL-ish strings, random UUID, non-string) -> not found, never an error 500.
 
@@ -876,7 +874,7 @@ API integration (Vitest + Hono `app.request` + PGlite + Better Auth test utils f
 Stripe gateway + fake jobs):
 
 - `apps/api/src/app/organizations/organizations.controller.spec.ts` — ALL (create, skip naming tables, delete with
-  Stripe/purge, rename, closed Better Auth org routes).
+  Stripe/purge, rename).
 - `apps/api/src/app/organizations/me.controller.spec.ts` — ALL (me, delete account, account get/patch, devices with Mac/iPhone UAs).
 - `apps/api/src/app/members/members.controller.spec.ts` — ALL (list, invite normalization, Free seat 403, admin/owner rules,
   member 403 on every call, owner self-demote refusal, 400 cases, Origin 403, resend/cancel, cross-org 404, 401/404,
@@ -897,15 +895,15 @@ Data layer (Vitest + PGlite in-memory):
 - `organizations/create-organization.int.spec.ts` (slug numbering + concurrency, owner + terms, personName, bare root,
   bySlug, memberOf), `rename-organization.int.spec.ts`, `delete-organization.int.spec.ts` (cascade walk, grants),
   `organization-settings.int.spec.ts` (setPlan, setStripeCustomer — billing spec overlaps).
-- `tenancy/tenant-db.int.spec.ts`, `tenancy/organization-id.spec.ts`.
+- `tenancy/organization-id.spec.ts`.
 - `libs/shared/address` naming/slug/email specs.
 
 Web (Vitest + React Testing Library, mocking the oRPC client):
 
 - `join/join.page.spec.ts` (9 cases: join -> /app; 409 taken; 404 closed; 401 -> send link -> sent; failure reported;
   429; API message; Better Auth refusal -> workEmail; unexpected send failure).
-- `settings/settings.page.spec.ts` (nav sections, switching, member hides Members/Billing and gets Account at their URLs,
-  owner sees Members, Back goes /app).
+- `settings/settings.page.spec.ts` (nav sections, switching via `?section=`, member hides Members/Billing and gets
+  Account at their sections, owner sees Members, Back goes /app).
 - `settings/members-settings/members-settings.spec.ts` (seat line, rows, unsent mark, admin vs owner capabilities, member
   excluded, invite flows incl. double click, 503, unsent toast, validation, API reason, role change, remove, resend, cancel,
   go to Billing).

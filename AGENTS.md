@@ -23,7 +23,7 @@ When a spec and this file disagree on layout or tooling, this file wins; on beha
 | i18n     | i18next + react-i18next, `en` (bundled, fallback) and `es` (lazy)                       |
 | API      | Hono on Node (`@hono/node-server`) + oRPC (contract-first, `@orpc/contract`) + Zod 4    |
 | DB       | Postgres + Drizzle ORM (drizzle-kit migrations); PGlite when `DATABASE_URL` is unset    |
-| Auth     | Better Auth (magic link, Google, Microsoft, organization plugin, OAuth provider + JWT)  |
+| Auth     | Better Auth (magic link, Google, Microsoft, OAuth provider + JWT, 5-min cookie cache)   |
 | Payments | Stripe (`stripe`, `@stripe/stripe-js`, `@stripe/react-stripe-js`), fake gateway in dev  |
 | Email    | Resend in production; Mailpit (local inbox) in dev and e2e; recording mailer in tests   |
 | Jobs     | pg-boss on Postgres; in-process runner with the same interface on PGlite                |
@@ -64,23 +64,23 @@ apps/
     src/config.ts                 APP_NAME, SITE_URL (one place to rebrand the web)
     e2e/                          Playwright specs (playwright.config.ts boots api + web)
   api/          @arrakit/api      Hono server (port 5000)
-    src/app.ts                    createApp(deps): mounts routes/* and the oRPC router; openApiDocument()
-                                  (= routes/openapi.ts generateOpenApiDocument: per-operation statuses)
+    src/app.ts                    createApp(deps): mounts routes/* and the oRPC router at /api/rpc,
+                                  refusing (403) any non-GET RPC call whose Origin is not trusted
     src/router.ts                 root oRPC router composing routers/<module>.ts
     src/routers/                  one oRPC router per module (implements its contract file)
     src/orpc/base.ts              builders: pub, authed, member(level)
-    src/orpc/context.ts           BaseContext {deps, data, headers, log}, procedureContext(); reportErrors
-                                  (logs and reports unexpected errors); requireSession, requireMember(level),
-                                  requireTrustedOrigin(msg), requireStripe; MemberContext adds
+    src/orpc/context.ts           BaseContext {deps, headers, log}, procedureContext(); reportErrors
+                                  (maps DomainError to ORPCError, logs and reports unexpected errors);
+                                  requireSession, requireMember(level); MemberContext adds
                                   {user, session, activeOrganization, role, scope}
-    src/routes/                   plain Hono routes: health, rest (contract served REST-style), auth
-                                  (+ OAuth metadata), stripe-webhook, mcp (+ protected-resource
-                                  metadata), local-files
+    src/routes/                   plain Hono routes: health, auth (+ OAuth metadata), stripe-webhook,
+                                  mcp (+ protected-resource metadata)
     src/services.ts               buildDeps()/depsFromEnv(): AppDeps (env, data, auth, mailer, stripe)
     src/env.ts                    Zod env parsing (loadApiEnv)
     src/mail/mailer.ts            createMailer (Resend / Mailpit / console), recordingMailer()
-    src/billing/                  StripeGateway interface + createStripeGateway (null / fake / real)
-    src/usage/                    requiresUsage() middleware (+ UsageService)
+    src/billing/                  StripeGateway interface + createStripeGateway (unconfigured / fake /
+                                  real); guardedStripe() maps every Stripe failure to 402 or 502 once
+    src/usage/                    requiresUsage() middleware
     src/workers/                  background workers; workers/index.ts registers them at boot
     src/mcp/                      MCP server factory
     src/observability/            createLogger() (Pino), requestLog() (X-Request-Id + access line),
@@ -88,7 +88,7 @@ apps/
     src/testing/                  createTestApp() (in-process app on PGlite + testUtils), fake Stripe
     src/main.ts                   boot (logger, env, error reporter, mailer, openData, workers, serve,
                                   graceful shutdown)
-    scripts/                      operational scripts (Stripe prices, credits product, OpenAPI export, bucket CORS)
+    scripts/                      operational scripts (Stripe prices, credits product)
   landing/      @arrakit/landing  Astro static site (port 5321)
 packages/
   db/           @arrakit/db       Drizzle + Postgres/PGlite. ./drizzle holds the migrations.
@@ -149,7 +149,7 @@ and remove the stray `cn` dependency if it was added.
 (agents work in parallel; lockfile edits collide). If something is truly missing, stop and report it.
 Highlights per workspace:
 
-- api: hono, @hono/node-server, @orpc/server, @orpc/contract, @orpc/openapi, @orpc/zod, @orpc/client,
+- api: hono, @hono/node-server, @orpc/server, @orpc/contract, @orpc/zod, @orpc/client,
   zod, better-auth, @better-auth/oauth-provider, stripe, resend, @modelcontextprotocol/server
   (+ @modelcontextprotocol/sdk, and @modelcontextprotocol/client for tests), croner, tsx, tsdown.
   The api also lists drizzle-orm, pg, pg-boss, @electric-sql/pglite and @aws-sdk/* only so the
@@ -168,20 +168,18 @@ Highlights per workspace:
 
 Run from the repo root.
 
-| Command                                            | What it does                                                            |
-| -------------------------------------------------- | ----------------------------------------------------------------------- |
-| `pnpm install`                                     | Install                                                                 |
-| `pnpm dev`                                         | api (5000) + web (5200) + landing (5321)                                |
-| `pnpm typecheck` / `pnpm lint` / `pnpm test`       | Turborepo across all workspaces                                         |
-| `pnpm build`                                       | Build web (`.output`), api (`dist`), landing (`dist`)                   |
-| `pnpm test:e2e`                                    | Playwright (apps/web) against api + web on PGlite                       |
-| `pnpm --filter @arrakit/<pkg> test`                | One workspace's tests                                                   |
-| `pnpm --filter @arrakit/db db:generate`            | Generate a Drizzle migration from the schema                            |
-| `pnpm --filter @arrakit/api openapi:export <file>` | Write the OpenAPI document (no DB needed)                               |
-| `pnpm --filter @arrakit/api bucket:cors [--print]` | Apply (or print) the R2/S3 bucket CORS policy for the web origin        |
-| `pnpm --filter @arrakit/api stripe:prices`         | Create/align the Stripe products and prices (needs `STRIPE_SECRET_KEY`) |
-| `pnpm --filter @arrakit/api stripe:credits`        | Create/align only the Credits top-up price                              |
-| `pnpm format`                                      | Prettier                                                                |
+| Command                                      | What it does                                                            |
+| -------------------------------------------- | ----------------------------------------------------------------------- |
+| `pnpm install`                               | Install                                                                 |
+| `pnpm dev`                                   | api (5000) + web (5200) + landing (5321)                                |
+| `pnpm typecheck` / `pnpm lint` / `pnpm test` | Turborepo across all workspaces                                         |
+| `pnpm build`                                 | Build web (`.output`), api (`dist`), landing (`dist`)                   |
+| `pnpm test:e2e`                              | Playwright (apps/web) against api + web on PGlite                       |
+| `pnpm --filter @arrakit/<pkg> test`          | One workspace's tests                                                   |
+| `pnpm --filter @arrakit/db db:generate`      | Generate a Drizzle migration from the schema                            |
+| `pnpm --filter @arrakit/api stripe:prices`   | Create/align the Stripe products and prices (needs `STRIPE_SECRET_KEY`) |
+| `pnpm --filter @arrakit/api stripe:credits`  | Create/align only the Credits top-up price                              |
+| `pnpm format`                                | Prettier                                                                |
 
 ## Conventions
 
@@ -204,13 +202,14 @@ Run from the repo root.
   own files; `en` and `es` must keep identical key sets and no key may be defined twice (tests).
 - **Contract first**: add the procedure to `packages/contract`, implement it in apps/api, consume
   it in apps/web via `orpc.<ns>.<proc>.queryOptions()` / `.mutationOptions()`.
-- **Toasts**: only through `notify.success/info/warning/error` from `#/lib/notify` (same text never
+- **Toasts**: only through `notify.success/warning/error` from `#/lib/notify` (same text never
   stacks; errors and warnings stay 6 s). Importing `sonner` anywhere else in the web is a lint error.
-  A failed call toasts the API's own message (`apiMessage()` in `#/lib/api-errors`) or the screen's
-  `failure` text. A screen calls the API through `useApiMutation(options, { context, failure })` from
-  `#/lib/use-api-mutation` (`orpc.<ns>.<proc>.mutationOptions()` or a `mutationFn`; `run()` guards
-  against a double submit); a failed load goes through `useFailureToast(error, context, failure)`
-  from `#/lib/use-failure-toast`. Money and days are written with `#/lib/format` (active language).
+  Failed queries and mutations are reported and toasted once by the query client
+  (`QueryCache`/`MutationCache` `onError` in `integrations/tanstack-query/root-provider.tsx`): the
+  API's own message (`apiMessage()` in `#/lib/api-errors`) or the operation's `meta.failure` text;
+  a 401 is silent. A screen calls the API through `useApiMutation(options)` from
+  `#/lib/use-api-mutation` (`run()` guards against a double submit; `busy` = pending or done).
+  Money and days are written with `#/lib/format` (active language).
 - Errors from procedures use oRPC errors (`ORPCError`) with HTTP-meaningful codes (400/401/403/404/409/402).
 - **Logging (api)**: never `console.*`. Procedures log through `context.log`, Hono routes through
   `c.get('log')` (both carry the request id), the rest through `deps.log` or an injected `Logger`;
@@ -224,8 +223,9 @@ Run from the repo root.
 
 ## HTTP layout and proxy
 
-- API (Hono): `GET /health`, `GET /api/openapi.json`, `/api/auth/*` (Better Auth), `/api/rpc/*`
-  (oRPC), `POST /api/webhooks/stripe`, `/api/mcp`, `/.well-known/oauth-*`. Unknown → 404.
+- API (Hono): `GET /health`, `/api/auth/*` (Better Auth), `/api/rpc/*` (oRPC only: no REST or
+  OpenAPI), `POST /api/webhooks/stripe`, `/api/mcp`, `/.well-known/oauth-*`. Unknown → 404.
+  A non-GET `/api/rpc/*` call from an untrusted Origin answers 403 "Use the app." (CSRF guard).
 - Web and API must be **one site** so the Better Auth cookie is first-party (`BETTER_AUTH_URL` =
   web origin). The web server proxies `/api/**` and `/.well-known/oauth-*/**` to `API_ORIGIN`
   in dev and in the production build. Vite's `server.proxy` is NOT used (the TanStack
@@ -233,10 +233,6 @@ Run from the repo root.
   registered in `apps/web/vite.config.ts` for `apiProxiedPaths`) reads `API_ORIGIN` per request,
   sets `xfwd`, drops the incoming `x-forwarded-for` and sends one client IP (`cf-connecting-ip`
   when present, else the TCP peer); `x-real-ip` passes through.
-- The contract procedures are also served REST-style under `/api` (the paths in
-  `/api/openapi.json`; health only at `/health`).
-- The fallback storages' presigned URLs are served at `/api/files/local/*`, with a sandbox CSP
-  and `nosniff`.
 - Mail in dev and e2e goes to Mailpit (`MAILPIT_URL`, HTTP send API) when `RESEND_API_KEY` is
   unset. `pnpm dev` starts it through `scripts/mailpit.sh` (inbox at http://localhost:5025);
   the script uses `mailpit` from PATH or downloads the pinned release into `.data/bin`.
@@ -254,7 +250,7 @@ Run from the repo root.
 - **Auth**: Better Auth `testUtils` plugin (`import { testUtils } from 'better-auth/plugins'`),
   enabled only in tests. `const { test } = await auth.$context` then `test.createUser()`,
   `test.saveUser()`, `test.login({ userId })` → `{ headers, cookies, session, user }`,
-  `test.getAuthHeaders()`, `test.addMember()`, `test.getOTP()` (with `captureOTP`). Use those
+  `test.getAuthHeaders()`, `test.getOTP()` (with `captureOTP`). Use those
   headers when calling `app.request()` / the oRPC client against `createApp()` in-process.
   (`@better-auth/test-utils` on npm is for adapter conformance, not for this.)
 - **API integration**: `const t = await createTestApp()` (`apps/api/src/testing/app.ts`) builds the
@@ -262,7 +258,9 @@ Run from the repo root.
   Origin, via testUtils), `t.client(headers).me.get()`, `t.app.request(...)`, `t.sent` (recorded
   mail), `t.logs` (parsed log entries), `t.errorLog()` (error entries from now on), `t.captured`
   (errors sent to the tracker), `t.context(headers)` (a procedure context for `call()`), `t.data`,
-  `t.close()`. Pass `{ stripe: fakeStripe() }` for billing. Note: when the
+  `t.close()`. `t.client()` sends the app's Origin unless the headers carry one; `ownerOf()` /
+  `joinAs()` / `joined()` in `testing/people.ts` put people in organizations. Pass
+  `{ stripe: fakeStripe() }` for billing (without it Stripe is unconfigured: 503). Note: when the
   Microsoft provider is configured, Better Auth's `validateUserInfo` makes `testUtils.saveUser()`
   require an endpoint context, so create such users through the API.
 - **Web components**: React Testing Library + user-event; mock the API with msw or by injecting a client.
@@ -270,9 +268,7 @@ Run from the repo root.
   `meAs()`, `renderAt(ui, { me, url })` (router + query client + toaster), `withQueries()`, `quiet()`.
 - **E2E**: Playwright in `apps/web/e2e`; `playwright.config.ts` boots the API on port 5100 with a
   throwaway PGlite dir (`.data/e2e-pglite-<api port>`, reset at boot), `STRIPE_FAKE=1`,
-  `NODE_ENV=test`, mail sent to a Mailpit on 5125, and the web dev server on 5200 with `E2E=1` (turns off Vite's error overlay: a
-  client that aborts mid-upload makes Nitro's dev middleware report `aborted`, and the overlay
-  would cover the page). Specs import `WEB_ORIGIN` from `e2e/origins.ts`;
+  `NODE_ENV=test`, mail sent to a Mailpit on 5125, and the web dev server on 5200. Specs import `WEB_ORIGIN` from `e2e/origins.ts`;
   set `E2E_API_PORT` / `E2E_WEB_PORT` / `E2E_MAILPIT_PORT` to run a second suite side by side (running servers on the
   same ports are reused outside CI). Embedded Checkout cannot load with the fake gateway's client
   secret, so e2e asserts reaching `/app/checkout` and drives payments through the fake webhook.
@@ -288,7 +284,7 @@ Run from the repo root.
 | Organizations and members | [docs/spec/organizations-members.md](docs/spec/organizations-members.md) | Create/rename/delete organization, roles and member change policy, members list, role change, removal, invitations (invite/list/resend/cancel), join page, Settings > Account, account deletion, settings shell, `forOrganization`                                        |
 | Billing and plans         | [docs/spec/billing-plans.md](docs/spec/billing-plans.md)                 | Plans catalog, Stripe gateway + fake, subscription events, Embedded Checkout, billing view, plan/cycle change with preview, cancel/resume, portal, webhook, billing emails, /pricing, /app/plans, /app/checkout, /app/welcome, Settings > Billing, price bootstrap script |
 | Usage and credits         | [docs/spec/usage-credits.md](docs/spec/usage-credits.md)                 | Metrics catalog, credit ledger, usage levels, `requiresUsage` middleware and 402, `usage.get`, top-ups via Checkout, refunds/disputes, Settings > Usage, Add credits dialog, credits product script                                                                       |
-| Platform                  | [docs/spec/platform.md](docs/spec/platform.md)                           | Full Drizzle schema, `openData` (Postgres/PGlite), tenancy guard, jobs, file storage + purge worker, `/health`, OpenAPI, mailer + templates, OAuth 2.1 server, MCP `/api/mcp` with `whoami`, `/oauth/signin`, `/oauth/consent`, API boot                                  |
+| Platform                  | [docs/spec/platform.md](docs/spec/platform.md)                           | Full Drizzle schema, `openData` (Postgres/PGlite), tenancy guard, jobs, file storage + purge worker, `/health`, mailer + templates, OAuth 2.1 server, MCP `/api/mcp` with `whoami`, `/oauth/signin`, `/oauth/consent`, API boot                                           |
 | Web shell and landing     | [docs/spec/web-shell-landing.md](docs/spec/web-shell-landing.md)         | Root layout, route table, `requireUser`, signed-in shell + account menu, Home, Welcome, Unavailable, i18n live switching, API/toast helpers, stale chunk recovery, Astro landing                                                                                          |
 
 ## Make it yours

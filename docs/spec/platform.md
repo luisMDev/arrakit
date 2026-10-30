@@ -3,7 +3,7 @@
 Area: **platform**. Everything under the product features: the data layer
 (full Postgres schema, migrations, tenancy, jobs, file storage, test helpers),
 API bootstrap and env config, health check, mailer and the account email
-templates, storage purge worker, OpenAPI export, the MCP server with OAuth 2.1
+templates, storage purge worker, the MCP server with OAuth 2.1
 (better-auth OAuth provider + `whoami`), the web's OAuth sign-in and consent
 screens, and the `/.well-known` discovery routes.
 
@@ -29,9 +29,9 @@ elsewhere.
 | `libs/platform/data` (`@saas/data`) | `packages/db` (or the name AGENTS.md uses): Drizzle schema, migrations, `openData()`, `forOrganization()`, jobs, storage, testing helpers |
 | `node-postgres` + migrations on boot | `drizzle-orm/node-postgres` when `DATABASE_URL` is set; **`drizzle-orm/pglite`** (file dir) when it is not. Migrations applied on boot in both cases |
 | pg-boss on the same Postgres | pg-boss when on real Postgres; **in-process job runner** with the same `Jobs` interface on PGlite |
-| S3/R2 via `@aws-sdk/client-s3` | Same when `R2_*` env is set; **local filesystem / in-memory** `OrganizationFiles` fallback otherwise |
+| S3/R2 via `@aws-sdk/client-s3` | Same when `R2_*` env is set; **in-memory** `OrganizationFiles` otherwise |
 | testcontainers Postgres + MinIO for `*.int.spec.ts` | **PGlite in-memory** per test file (Docker is not available) + in-memory storage. S3-specific behaviour is covered by unit tests with a mocked `S3Client` (optional) |
-| NestJS controllers + nestjs-zod + `/api/openapi.json` | Hono app; oRPC contract (`@orpc/contract`) + Zod; OpenAPI document generated from the contract with `@orpc/openapi` served at `GET /api/openapi.json` |
+| NestJS controllers + nestjs-zod + `/api/openapi.json` | Hono app; oRPC contract (`@orpc/contract`) + Zod, served only over the oRPC protocol at `/api/rpc/*` (no REST routes, no OpenAPI document) |
 | Nest middleware for `/api/auth/*`, `/api/mcp`, `/.well-known/*` | Plain Hono routes (`app.on(['GET','POST'], '/api/auth/*', c => auth.handler(c.req.raw))`, etc.) |
 | `libs/shared/emails` | `packages/emails` (pure TS, no framework) |
 | Angular `/oauth/signin`, `/oauth/consent` | TanStack Start routes `apps/web/src/routes/oauth/signin.tsx`, `oauth/consent.tsx` built with shadcn/ui (Card, Button, Input, Alert) |
@@ -59,18 +59,17 @@ All timestamps are `timestamp with time zone`. `createdAt` / `updatedAt`
 helpers: `created_at ... not null default now()`, `updated_at ... not null
 default now()` with Drizzle `$onUpdate(() => new Date())`. Ids of better-auth
 tables are `text` (better-auth generates them). Organization ids are `uuid`
-(`gen_random_uuid()`); better-auth must be configured so the organization
-plugin writes UUID ids for organizations (`advanced.database.generateId` per
-model, or let the DB default generate it; verify with the current better-auth
-docs). Drizzle property names are better-auth field names (camelCase); columns
-are snake_case. better-auth Drizzle adapter is configured with
-`usePlural: true` and the schema map shown in section 2.11.
+(`gen_random_uuid()`). better-auth generates every id with
+`advanced.database.generateId: () => randomUUID()`. Drizzle property names are
+better-auth field names (camelCase); columns are snake_case. better-auth
+Drizzle adapter is configured with `usePlural: true` and the schema map shown
+in section 2.11. Organizations, members and invitations are app tables: the
+better-auth organization plugin is not used.
 
 Migrations: generated with `drizzle-kit generate` from `schema/index.ts` into
-`packages/db/src/migrations`. A committed migration is never edited. saas-base
-has `0000_init` (all auth/org/oauth tables) and `0001_usage_credits`
-(`credit_ledger`, `usage_levels`, `organizations.usage_anchor`). Arrakit may
-start with a single fresh `0000` migration containing everything below.
+`packages/db/drizzle`. A committed migration is never edited. `0000_init`
+creates everything; `0001` drops `sessions.active_organization_id` (left over
+from the organization plugin).
 
 ### 2.1 `users` (better-auth `user`)
 
@@ -101,7 +100,8 @@ session carries `user.language` and better-auth's own routes cannot change it.
 | ip_address | text | null |
 | user_agent | text | null |
 | user_id | text | not null → users.id on delete cascade; index `sessions_user_id_idx` |
-| active_organization_id | uuid | null → organizations.id **on delete set null** (organization plugin; nothing sets it yet) |
+
+Sessions carry no organization: the API reads membership fresh (`memberOf`).
 
 ### 2.3 `accounts`
 
@@ -120,22 +120,22 @@ value text not null; expires_at timestamptz not null; created_at, updated_at.
 Magic link tokens are stored **hashed** (`storeToken: 'hashed'`) and deleted on
 use.
 
-### 2.5 `organizations` (tenant root; better-auth `organization`)
+### 2.5 `organizations` (tenant root)
 
 | column | type | constraints |
 | --- | --- | --- |
 | id | uuid | PK default gen_random_uuid() |
 | name | text | not null |
 | slug | text | not null unique (lowercase) |
-| logo | text | null (plugin field) |
-| metadata | text | null (plugin field) |
+| logo | text | null (unused) |
+| metadata | text | null (unused) |
 | plan | text | not null default `'free'`; check `plan in ('free','pro','team','internal')` |
 | stripe_customer_id | text | null, unique |
 | stripe_subscription_id | text | null |
 | usage_anchor | timestamptz | null (billing anchor on a paid plan; months count from `created_at` on Free) |
 | created_at | timestamptz | not null default now() |
 
-### 2.6 `members` (better-auth `member`)
+### 2.6 `members`
 
 | column | type | constraints |
 | --- | --- | --- |
@@ -147,15 +147,12 @@ use.
 | created_at | timestamptz | not null default now() |
 
 Unique `(organization_id, user_id)` (`members_organization_id_user_id_unique`).
-Organization plugin schema option (`ORGANIZATION_SCHEMA`):
-`member.additionalFields.termsAcceptedAt = { type: 'date', required: false, input: false }`.
-Plugin config: `organization({ schema: ORGANIZATION_SCHEMA, creatorRole: 'owner' })`.
 
-### 2.7 `invitations` (better-auth `invitation`)
+### 2.7 `invitations`
 
 | column | type | constraints |
 | --- | --- | --- |
-| id | text | PK |
+| id | text | PK, `$defaultFn(() => randomUUID())` |
 | organization_id | uuid | not null → organizations.id cascade; index `invitations_organization_id_idx` |
 | email | text | not null (normalized); index `invitations_email_idx` |
 | role | text | null (`member` or `admin`, never `owner`) |
@@ -269,7 +266,7 @@ table named e.g. `user_profiles`, `auth_events`, `user`, `organization`).
 
 ### 2.11 better-auth adapter
 
-`drizzleAdapter(db, { provider: 'pg', usePlural: true, transaction: true, schema: { users, sessions, accounts, verifications, organizations, members, invitations, jwkss: jwks, oauthClients, oauthResources, oauthClientResources, oauthRefreshTokens, oauthAccessTokens, oauthConsents, oauthClientAssertions } })`.
+`drizzleAdapter(db, { provider: 'pg', usePlural: true, transaction: true, schema: { users, sessions, accounts, verifications, jwkss: jwks, oauthClients, oauthResources, oauthClientResources, oauthRefreshTokens, oauthAccessTokens, oauthConsents, oauthClientAssertions } })`.
 Note the `jwkss` key (plural of model `jwks`). Must work with both the
 node-postgres and the PGlite Drizzle instances (`provider: 'pg'` for both).
 
@@ -286,7 +283,7 @@ node-postgres and the PGlite Drizzle instances (`provider: 'pg'` for both).
    on one client while migrating, unlock in `finally`; if unlock fails, release
    the client with the error (destroying it). If migration fails, end the pool
    and rethrow.
-3. Open storage (S3 or fallback).
+3. Open storage (S3 when configured, else in-memory).
 4. Start jobs (pg-boss or in-process). If that fails, close storage, end the
    pool, rethrow.
 5. Return `Data`. `close()` is idempotent (memoized promise): stop jobs
@@ -296,16 +293,14 @@ node-postgres and the PGlite Drizzle instances (`provider: 'pg'` for both).
 
 | member | behaviour |
 | --- | --- |
-| `createOrganization(name, admin?)` | First free slug of `slugCandidates(name)` via `INSERT ... ON CONFLICT (slug) DO NOTHING RETURNING`, name trimmed. With admin `{ userId, personName?, termsAccepted }`: lock user row `FOR UPDATE`, throw `PersonHasOrganizationError` if they have any membership, insert owner member with `terms_accepted_at = now()` iff `termsAccepted`, update `users.name` if `personName` trimmed non-empty. One transaction (with jobs, see 3.4). `OrganizationNameUnusableError` when no slug candidate. Error `every slug for "<name>" is taken` if all candidates taken |
-| `deleteOrganization(id)` | Validates id (`toOrganizationId`, throws `not an organization id`). In one transaction: revoke grants for the org (3.6), delete org row (cascades all org tables; `sessions.active_organization_id` set null). Returns true if a row was deleted. Files untouched (caller queues purge). Case-insensitive id |
+| `createOrganization(name, admin?)` | First free slug of `slugCandidates(name)` via `INSERT ... ON CONFLICT (slug) DO NOTHING RETURNING`, name trimmed. With admin `{ userId, personName?, termsAccepted }`: lock user row `FOR UPDATE`, throw `PersonHasOrganizationError` if they have any membership, insert owner member with `terms_accepted_at = now()` iff `termsAccepted`, update `users.name` if `personName` trimmed non-empty. One transaction. `OrganizationNameUnusableError` when no slug candidate. Error `every slug for "<name>" is taken` if all candidates taken |
+| `deleteOrganization(id)` | Validates id (`toOrganizationId`, throws `not an organization id`). In one transaction: revoke grants for the org (3.6), delete org row (cascades all org tables). Returns true if a row was deleted. Files untouched (caller queues purge). Case-insensitive id |
 | `deleteAccount(userId)` | Transaction: lock user `FOR UPDATE`; false if none; throw `PersonOwnsOrganizationError` if they are `owner` of any org; delete invitations where `email = normalizeEmail(user.email)`; delete user (cascades sessions, accounts, members, invitations sent) |
 | `account(userId, currentSessionId)` / `updateAccount(...)` / `wantsEmail(email, kind)` / `languageOf(userId)` | Account settings area |
 | `organizationOf(userId)` / `memberOf(userId)` | The earliest-joined membership (`order by members.created_at asc limit 1`), fresh read every call; `memberOf` returns `{ organization, role }` |
 | `acceptInvitation`, `invitationFor(invitationId, email)` | Members area |
-| `organizationBySlug(slug)` | Org id or undefined |
-| `organizationIds()` | All org ids (for jobs only) |
 | `forOrganization(id)` | Throws synchronously on non-UUID before any query. Returns `OrganizationScope` (3.1) |
-| `jobs` | `Jobs` (3.4) |
+| `jobs` | `JobsRuntime` (3.4) |
 | `authDatabase` | better-auth adapter (2.11) |
 | `health()` | Section 5 |
 | `close()` | Above |
@@ -318,128 +313,112 @@ lowercase branded `OrganizationId`; else throws
 `[data] not an organization id: "<value>"`. Accepts v4 and v7. Rejects: empty,
 blank, `'undefined'`, `'null'`, `*`, `%`, `a/b`, UUID with trailing slash,
 UUID with surrounding whitespace, 35-char near-UUID, UUID in braces.
-`isUuid(value)` exported too.
 
-`OrganizationScope` = `OrganizationDb` + `files`, `members`, `usage`,
-`rename(name)`, `setPlan(plan, stripe?)`, `setStripeCustomer(customerId)`.
+`forOrganization(id)` validates the id synchronously (before any query) and
+composes one scope file per domain under `packages/db/src/organization/`:
 
-`OrganizationDb`:
+- `organization.ts`: `organization()` (own row or undefined), `rename(name)`.
+- `billing.ts`: `setPlan(plan, stripe?)`, `setStripeCustomer(customerId)`.
+- `storage.ts`: `files` (3.2).
+- `members.ts`: `members` (members area).
+- `usage.ts`: `usage` (usage spec).
 
-- `organizationId`
-- `organization()`: own row or undefined.
-- `table(t)`: throws `[data] <table> has no organizationId column, so forOrganization() cannot scope it` for a table without that column (e.g. `organizations`). Returns:
-  - `select(where?, orderBy?)`: every statement ANDs `organization_id = <id>`.
-  - `pick(columns, where?, orderBy?)`: only named columns; may order by another column.
-  - `insert(values)`: forces `organizationId` to the scope (a payload naming another org is stored under this one).
-  - `update(set, where)`: drops `organizationId` from `set`; throws (`update, delete and lock need a where condition`) if `where` returns undefined.
-  - `delete(where)`: same guard; returns removed rows.
-  - `lock(where, strength)`: `SELECT ... FOR <update|no key update|share|key share>`; same guard.
-  - `where` callbacks receive `(table, { and, or, not, eq, ne, gt, gte, lt, lte, inArray, isNull, isNotNull })` (no raw `sql`). `orderBy` receives `(table, { asc, desc })`.
-- `transaction(work)`: one DB transaction; `tx` is an `OrganizationDb` for the same org; rollback on throw.
+Each scope function writes its own Drizzle queries and filters by the scope's
+`organization_id`; callers never get a raw database handle or SQL. `Data`
+for app code is typed as `ScopedData` (no `db`, no `storage`); `Data` adds
+those handles for packages/db and test set-up.
 
 ### 3.2 Storage (`OrganizationFiles`)
 
-Key rules (`toFileKey(orgId, name)` → `<orgId>/<name>`), error
-`[data] not a usable file name: "<name>"` when: empty, `.`, `..`, `../x`,
-`a/../b`, `a/./b`, `/abs`, `a//b`, `a/`, any backslash, any C0 control or DEL
-(`/[\u0000-\u001f\u007f]/`), or full key > 1024 UTF-8 bytes. Allowed:
-`report.v2..final.pdf`, `..hidden`, `trailing..`, `...`, unicode, spaces,
-`file%2e%2e.pdf`.
+Storage is either S3 (`R2_*` set) or in-memory (dev without a bucket, tests).
+There is no local-disk storage and no presigned URL.
 
-`toFolderPrefix(orgId, folder)`: `''` → `<orgId>/`; otherwise folder must end
-with exactly one `/` and the rest pass the same path rules; error
-`[data] not a usable folder: "<folder>"` (rejects `companies/<id>` without
-slash, `/`, `//`, `/companies/`, `companies//`, `../`, `companies/../`, `./`,
-backslash, NUL, newline, > 1024 bytes).
+```ts
+interface StoredFile { path: string } // relative to the organization prefix
+interface OrganizationFiles {
+  removePrefix(folder: string): Promise<void>
+  list(folder: string): Promise<StoredFile[]>
+}
+interface Storage { kind: 's3' | 'memory'; forOrganization(id): OrganizationFiles; probe(signal?); close() }
+```
 
-Interface (per org):
+`folderPrefix(orgId, folder)` (`storage/folder.ts`): `''` → `<orgId>/` (the
+whole organization); otherwise the folder must end with exactly one `/`, every
+segment non-empty and not `.`/`..`, no leading `/`, no backslash, no C0
+control or DEL, key ≤ 1024 UTF-8 bytes; error
+`[data] not a usable folder: "<folder>"`. The organization id is validated
+with `toOrganizationId`.
 
-- `putUrl(name, { contentType?, expiresIn = 900 })` presigned PUT (contentType must be sent with the upload).
-- `put(name, bytes, contentType)`.
-- `get(name)` bytes; `FileNotFoundError` (`[data] no file stored under "<name>"`) for a missing key, other failures rethrown as-is.
-- `copy(from, to)` inside the bucket, type kept; `FileNotFoundError` for missing source; CopySource URL-encoded per segment.
-- `getUrl(name, { expiresIn = 900 })` presigned GET.
-- `remove(names)` all names validated before any request; missing names are fine; batches of 1000 via DeleteObjects; throws `[data] the bucket kept N of M objects, <key> with <code>: <message>` when the response lists `Errors`.
-- `removePrefix(folder)` lists page by page (`listPageSize`, default 1000) and deletes; empty folder is fine.
-- `list(folder)` → `{ path (relative to org prefix), size, modifiedAt ISO }[]`, subfolders included, key order.
-
-Storage-level: `probe(signal)` (HeadBucket), `close()`.
+- `list(folder)`: keys under the prefix, page by page (`listPageSize`,
+  default 1000), paths relative to the organization prefix.
+- `removePrefix(folder)`: lists then deletes in batches of 1000 via
+  DeleteObjects; empty folder sends nothing; throws
+  `[data] the bucket kept N of M objects, <key> with <code>: <message>` when
+  the response lists `Errors`. A sibling sharing the prefix (`c1x/` for
+  `c1/`) is never removed.
+- `probe(signal)`: HeadBucket on S3; always up in memory.
 
 S3 client: `forcePathStyle: true`, `requestChecksumCalculation: 'WHEN_REQUIRED'`,
-`responseChecksumValidation: 'WHEN_REQUIRED'` (otherwise presigned PUTs carry
-an empty-body CRC32 and R2 rejects uploads).
+`responseChecksumValidation: 'WHEN_REQUIRED'`.
 
-Bucket CORS for direct browser upload (saas-base `apps/api/r2-cors.json`):
-origin = web origin, methods PUT, GET, header `content-type`, max age 3600.
-
-Arrakit fallback (no `R2_*` env): an implementation of the same interface on
-the local filesystem under `STORAGE_DIR` (default `.data/storage`) for dev, and
-an in-memory map for tests. Presigned URLs in the fallback point to an API
-route (e.g. `GET/PUT /api/files/local/<token>`) signed with an HMAC derived
-from `BETTER_AUTH_SECRET` (see `derivedSecret` in 6.4) and an expiry; or the
-fallback may not support presigned URLs if no feature needs them yet (in
-saas-base nothing currently calls `putUrl`/`getUrl`). The in-memory fake must
-honour: per-org isolation, `FileNotFoundError` for missing (including another
-org's same name), copy within org only, remove of missing name is no error,
-`get` returns a fresh copy.
+`memoryStorage()` keeps keys in a `Set` (`objects`) and exposes
+`put(organizationId, path)` so tests can seed files.
 
 ### 3.3 Config
 
-`loadDataConfig(env)`: saas-base requires `DATABASE_URL`, `R2_ENDPOINT`,
-`R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`; empty string counts as
-missing; every missing name in one error `[data] missing env: A, B`;
-`R2_REGION` defaults to `auto`.
-
-Arrakit: `DATABASE_URL` optional (absent → PGlite). `R2_*`: all-or-none
-(partial set → error naming the missing ones); absent → local storage. With
-`NODE_ENV=production`, `DATABASE_URL` and all `R2_*` are required (same
-one-error rule).
+`loadDataConfig(env)`: `DATABASE_URL` optional (absent → PGlite at
+`PGLITE_DIR`, default `.data/pglite`; `PGLITE_RESET=1` wipes it at boot).
+`R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`:
+all-or-none (partial set → error naming the missing ones); absent → in-memory
+storage. `R2_REGION` defaults to `auto`. With `NODE_ENV=production`,
+`DATABASE_URL` and all `R2_*` are required. Empty string counts as missing;
+every missing name in one error `[data] missing env: A, B`.
 
 ### 3.4 Jobs
 
-Interface `Jobs` (keep exactly; the API and fakes depend on it):
-
 ```ts
 interface RetryPolicy { retryLimit: number; retryDelay: number /* s */; retryBackoff: boolean; expireInSeconds?: number }
-interface JobRecord { id: string; state: 'created'|'retry'|'active'|'completed'|'cancelled'|'failed'; data: object }
 interface Jobs {
-  defineQueue(name, policy, options?: { exclusive?: boolean }): Promise<void>; // creates `<name>__dead` then `<name>` dead-lettering into it
-  send(name, data, options?: { startAfter?: Date }): Promise<string>;          // throws if not queued
-  sendOnce(name, data, key, options?): Promise<boolean>;                        // exclusive queue: false if a job with key is created/retry/active
-  schedule(name, cron, data): Promise<void>;                                    // UTC, missed ticks: once; one schedule per queue (replaces)
-  work<T>(name, handler: (data: T) => Promise<void>, options?: { pollingIntervalSeconds?: number }): Promise<void>;
-  find(name, filter?: { id?: string }): Promise<JobRecord[]>;
-  queuePolicy(name): Promise<Required<RetryPolicy> | undefined>;               // default expiry 900 s
+  defineQueue(name, policy): Promise<void>; // creates `<name>__dead` then `<name>` dead-lettering into it; an existing queue keeps its policy
+  send(name, data): Promise<string>;        // throws if not queued
+  work<T>(name, handler: (data: T) => Promise<void>): Promise<void>;
+}
+interface JobsRuntime extends Jobs {
+  kind: 'pg-boss' | 'in-process' | 'memory'
+  probe(signal?): Promise<void> // throws when stopped or unreachable
+  stop(): Promise<void>         // graceful (waits for running handlers), idempotent
 }
 deadLetterOf(name) = `${name}__dead`
 ```
 
-pg-boss implementation details: pg-boss in its own `pgboss` schema; an
-`'error'` listener that logs; a `health` queue created at start for the probe;
-`defineQueue(..., { exclusive: true })` on a queue that already exists with
-another policy throws `[data] queue X exists with policy P, not exclusive;
-pg-boss cannot change it`; `sendOnce` uses `singletonKey`; `stop` is graceful.
-`sendOn(connection, name, data)` lets a job be written inside a DB transaction
-(`TransactionWithJobs`): the rows and the job commit together.
+There is no transactional send, no `sendOnce`, `schedule`, `find` or
+`queuePolicy`: a job is sent after the rows it refers to are committed.
 
-In-process fallback (PGlite): same interface, jobs held in memory (or in a
-PGlite table), polled by a timer; retries with `retryDelay` doubling when
-`retryBackoff`; after `retryLimit` retries the payload moves to `<name>__dead`;
-`startAfter` honoured; `exclusive`/`sendOnce` honoured; `schedule` runs a cron
-(use `croner` or similar) in UTC; graceful `stop` waits for running handlers;
-`probe` throws once stopped. "In a transaction" sends are queued after commit.
+pg-boss implementation (real Postgres): its own `pgboss` schema; an `'error'`
+listener that logs; a `health` queue created at start for the probe.
 
-Test fake (`memoryJobs()`), worth porting as-is: records `queues`,
-`exclusive`, `workers`, `sent` (with `startAfter`, `key`), `schedules`, stored
-jobs with state, `moveJob(id, state)`; `sentJobs(jobs, { name, organizationId, since })`.
+In-process runner (PGlite): same interface, jobs held in memory, polled by a
+timer; retries with `retryDelay` doubling when `retryBackoff`; after
+`retryLimit` retries the payload moves to `<name>__dead`; graceful `stop`
+waits for running handlers; `probe` throws once stopped.
+
+Test fake (`memoryJobs()` from `@arrakit/db/testing`): records `queues`,
+`workers`, `sent` (`{ id, name, data, at }`); `sentJobs(jobs, { name, organizationId, since })`.
 
 Retry policy constant `WORKER_RETRY_POLICY = { retryLimit: 5, retryDelay: 30, retryBackoff: true }`.
 
-### 3.5 DB error helpers
+### 3.5 Domain errors
 
-`UNIQUE_VIOLATION = '23505'`, `FOREIGN_KEY_VIOLATION = '23503'`;
-`hasSqlState(err, code)` walks `err.cause` chain; `isUniqueViolation(err)`.
-Must work for PGlite errors too (PGlite exposes `code` on its errors).
+Refusals the data layer raises extend `DomainError(code, message, data?)`
+(`packages/db/src/errors.ts`), `code` one of `BAD_REQUEST`, `FORBIDDEN`,
+`NOT_FOUND`, `CONFLICT`, `PAYMENT_REQUIRED`: `PersonHasOrganizationError`,
+`OrganizationNameUnusableError`, `PersonOwnsOrganizationError`,
+`InvitationNotFoundError`, `MemberChangeRefusedError`, `SeatLimitError`,
+`AlreadyMemberError`, `InviteEmailUnusableError`, `NoSuchMemberError`, and
+`UsageLimitError` (usage scope; `PAYMENT_REQUIRED` with
+`{ metric, requested, available }`). The API's `reportErrors` middleware maps
+every `DomainError` to an `ORPCError` with the same code, message and data
+(402 for `PAYMENT_REQUIRED`), so routers do not catch them one by one.
 
 ### 3.6 Revoking connector grants
 
@@ -458,26 +437,28 @@ Route layout on the Hono app (port `PORT`, default 5000):
 | Method | Path | Handler | Auth |
 | --- | --- | --- | --- |
 | GET | `/health` | health (section 5) | none |
-| GET | `/api/openapi.json` | OpenAPI document generated from the oRPC contract | none |
 | GET, POST | `/api/auth/*` | `auth.handler(c.req.raw)` (better-auth, includes `/api/auth/oauth2/*`, `/api/auth/jwks`) | per route |
 | GET | `/.well-known/oauth-authorization-server/api/auth` | better-auth OAuth provider metadata (RFC 8414). Use the provider's metadata helper (e.g. `oauthProviderAuthServerMetadata(auth)` or the current equivalent); in saas-base the better-auth handler answered it | none |
 | GET | `/.well-known/oauth-protected-resource/api/mcp` | MCP protected-resource metadata (section 7.3) | none |
 | POST | `/api/mcp` | MCP Streamable HTTP, stateless | Bearer JWT |
 | GET, DELETE | `/api/mcp` | 405 when authenticated (no SSE sessions); 401 challenge when not | Bearer JWT |
-| ALL | `/api/rpc/*` | oRPC handler (other areas) | session |
-| POST | `/api/webhooks/stripe` | billing area (saas-base path was `/webhooks/stripe`; arrakit keeps it under `/api` so the proxy reaches it, or keep both; billing spec decides) | Stripe signature |
+| ALL | `/api/rpc/*` | oRPC `RPCHandler` (other areas); the only way the contract is served | session; trusted Origin on writes |
+| POST | `/api/webhooks/stripe` | billing area | Stripe signature |
 | * | anything else | 404 | |
 
 Rules from tests:
 
 - Every route but `/health` is under `/api/` (or `/.well-known/`), because the
   browser reaches the API only through the web origin's `/api` proxy.
-- Unknown route → 404.
+- Unknown route → 404 (`/api/openapi.json` and REST-style paths such as
+  `/api/me` included: there is no REST serving and no OpenAPI document).
 - Invalid request body to a typed procedure → 400 (oRPC Zod validation gives
-  `BAD_REQUEST`; keep 400).
-- The OpenAPI document can be exported offline (`pnpm --filter api openapi:export <file>`)
-  with no DB, no bucket and no env (contract-only), and equals what
-  `/api/openapi.json` serves.
+  `BAD_REQUEST`).
+- CSRF: one Hono middleware on `/api/rpc/*` in `apps/api/src/app.ts` refuses
+  any method but GET/HEAD/OPTIONS whose `Origin` is not one of
+  `authConfig.trustedOrigins` (missing, `null` or another site) with 403 and
+  an oRPC error body `FORBIDDEN` `Use the app.`, before the procedure runs.
+  Procedures do no Origin checks of their own.
 
 ### 4.1 Boot (`main.ts`)
 
@@ -489,7 +470,7 @@ Rules from tests:
 2. Build mailer (`createMailer(process.env)`; throws in production without
    `RESEND_API_KEY`).
 3. `openData(loadDataConfig(env))` (migrations applied).
-4. Register workers: `StoragePurgeWorker` (section 8) and other areas' workers.
+4. Register workers (`workers/index.ts`: the storage purge worker, section 8).
 5. Serve with `@hono/node-server`.
 6. On `SIGTERM`/`SIGINT`: stop accepting, close MCP handler, `data.close()`
    (lets running jobs finish), flush Sentry, exit. Fatal boot errors: log
@@ -504,10 +485,10 @@ Rules from tests:
   logged (`unexpected error`, with `requestId`, `method`, `path`), sent to
   Sentry and answered `500 {"message":"Internal Server Error"}`.
 - oRPC answers procedure errors itself, so every procedure runs under a
-  `reportErrors` middleware doing the same for errors that are not an
-  `ORPCError`, or are its 500 (tags `procedure`, `requestId`), whatever the
-  transport. 4xx, 502 and 503 refusals are logged where they are thrown and
-  never reported.
+  `reportErrors` middleware (`orpc/context.ts`) that first maps a
+  `DomainError` (3.5) to an `ORPCError`, then logs and reports errors that are
+  not an `ORPCError`, or are its 500 (tag `procedure`). 4xx, 502 and 503
+  refusals are never reported.
 - Log messages are constant; ids and amounts go in fields.
 
 ---
@@ -519,15 +500,15 @@ Rules from tests:
 - Runs three probes in parallel, each with a 3 s timeout
   (`AbortSignal.timeout(3000)` raced with the probe):
   - `postgres`: `select 1`.
-  - `storage`: `HeadBucket` (fallback storage: always up, or fs access check).
+  - `storage`: `HeadBucket` (in-memory storage: always up).
   - `queue`: pg-boss running and its `health` queue exists (fallback: runner not stopped).
 - Response body, same shape for both statuses:
   `{ status: 'ok' | 'error', postgres: 'up'|'down', storage: 'up'|'down', queue: 'up'|'down' }`.
 - 200 when all three up (`status: 'ok'`), else **503** with `status: 'error'`.
-- A failing probe logs `[data] health: <name> is down:` with the error.
+- A failing probe logs `health probe down` with `probe` and the error.
 - Never takes longer than ~3 s (test: silent TCP endpoint → between 2.9 s and 4.5 s, storage down, others up).
 - Bucket that does not exist → storage down. Queue stopped (`data.close()` called) → queue down.
-- Listed in OpenAPI with tag `health`, 200 and 503 sharing the schema; required `status, postgres, storage, queue`, enums as above.
+- A plain Hono route (`routes/health.ts`), not a contract procedure.
 
 ---
 
@@ -610,7 +591,6 @@ Plan emails (`receiptEmail`, `renewEmail`, `failedEmail`, `canceledEmail`,
 ("10:00 to 11:00 AM", "11:30 AM to 12:30 PM"; es "10:00 a 11:00"),
 `count(n, one, many?)`, `countWord` (One..Ten / Una..Diez, numeral past ten),
 `initial`, `firstName`, `listing` ("a, b and c" / "a, b y c").
-`derivedSecret(secret, purpose, parts)` = HMAC-SHA256(secret, [purpose, ...parts].join('\n')) base64url (API util).
 
 ---
 
@@ -634,9 +614,9 @@ better-auth options needed by this area:
   `advanced.ipAddress.ipAddressHeaders: ['x-real-ip','x-forwarded-for']`.
 - `disabledPaths: ['/token']`: the jwt plugin's session-to-JWT route is closed
   (`GET /api/auth/token` → 404). Tokens only come from the OAuth flow.
-- Before-hook: any path starting `/organization/` → 404 (the organization
-  plugin's HTTP routes are closed; orgs/members are managed by the app's
-  procedures). `/sign-in/social` and `/sign-in/magic-link` require an exact
+- No organization plugin: `/api/auth/organization/*` does not exist (404);
+  organizations and members are managed by the app's procedures.
+  Before-hook: `/sign-in/social` and `/sign-in/magic-link` require an exact
   trusted `Origin` header, else 403 `Sign in from the app.`
 - `jwt({ disableSettingJwtHeader: true, jwt: { issuer: oauthIssuer(baseURL) } })`.
   Keys in `jwks`; `GET /api/auth/jwks` serves public keys whose `kid`s equal
@@ -758,20 +738,20 @@ Revocation rules (tests):
 Queue `storage-purge` defined with `WORKER_RETRY_POLICY` (5 retries, 30 s,
 backoff) at boot; worker registered at boot.
 
-Job payload: `{ organizationId: string } & ({ folder: string } | { keys: string[] })`.
-`folder` is slash-terminated under the org prefix; `''` = every file of the
-org. `keys` = specific files.
+Job payload: `{ organizationId: string, folder: string }`. `folder` is
+slash-terminated under the org prefix; `''` = every file of the org.
 
-- `handle(job)`: `forOrganization(job.organizationId).files.removePrefix(folder)`
-  or `.remove(keys)` (never both). On failure log
-  `storage purge failed; the queue retries it, then dead-letters it` with
-  `organizationId`, `target` and the error, then rethrow (retried, dead-lettered after last attempt).
-  Target text: `files k1, k2` or `folder "<folder>"` / `folder "<all>"` for `''`.
+- `registerStoragePurge(data, log)` defines the queue and registers the worker:
+  `forOrganization(job.organizationId).files.removePrefix(folder)`. On failure
+  log `storage purge failed; the queue retries it, then dead-letters it` with
+  `organizationId`, `target` and the error, then rethrow (retried,
+  dead-lettered after last attempt). Target text: `folder "<folder>"` /
+  `folder "<all>"` for `''`.
 - `queueStoragePurge(jobs, job, log)`: sends the job; if send fails, log
   `storage purge not queued; its files stay in the bucket` with
   `organizationId` and `target`, and **do not throw** (the delete succeeded).
 - Used by: organization delete (owner) → `{ organizationId, folder: '' }` after
-  the rows are deleted. Future product features use folders/keys.
+  the rows are deleted.
 
 ---
 
@@ -933,12 +913,11 @@ A production proxy (if any) must: keep path+query, method, body (streamed,
 
 | queue | sender | worker | policy |
 | --- | --- | --- | --- |
-| `storage-purge` | org delete (and future deletes) via `queueStoragePurge` | `StoragePurgeWorker` | 5 retries, 30 s, backoff, dead letter `storage-purge__dead` |
+| `storage-purge` | org delete via `queueStoragePurge` | `registerStoragePurge` | 5 retries, 30 s, backoff, dead letter `storage-purge__dead` |
 | `health` | none | none (probe only, pg-boss) | default |
 
-No cron schedules in saas-base (the `schedule` API exists and is tested:
-cron in UTC, `missed: 'once'`, rescheduling replaces). Usage grants are lazy
-(no job). Billing area may add queues.
+No cron schedules (the `Jobs` interface has none). Usage plan grants are
+computed on read (no job).
 
 ---
 
@@ -949,10 +928,9 @@ cron in UTC, `missed: 'once'`, rescheduling replaces). Usage grants are lazy
 | `NODE_ENV` | no | `production` makes Google client, `RESEND_API_KEY`, `DATABASE_URL`, `R2_*` mandatory |
 | `PORT` | no | default 5000 |
 | `DATABASE_URL` | prod | Postgres; absent → PGlite |
-| `PGLITE_DIR` | no | arrakit: PGlite data dir in dev, default `.data/pglite` (relative to apps/api or repo root, AGENTS.md decides) |
-| `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | prod (all or none) | S3-compatible bucket |
+| `PGLITE_DIR` | no | PGlite data dir in dev, default `.data/pglite`; `PGLITE_RESET=1` wipes it at boot |
+| `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | prod (all or none) | S3-compatible bucket; absent → in-memory storage |
 | `R2_REGION` | no | default `auto` |
-| `STORAGE_DIR` | no | arrakit: local storage fallback dir, default `.data/storage` |
 | `BETTER_AUTH_SECRET` | yes | ≥ 32 chars |
 | `BETTER_AUTH_URL` | yes | public web origin (where `/api/auth` is reached); must be a URL |
 | `WEB_URL` | no | web origin when different |
@@ -960,7 +938,8 @@ cron in UTC, `missed: 'once'`, rescheduling replaces). Usage grants are lazy
 | `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | pair; optional | redirect `<BETTER_AUTH_URL>/api/auth/callback/microsoft`; tenant `common` |
 | `RESEND_API_KEY` | prod | absent → Mailpit (`MAILPIT_URL`) or log |
 | `MAIL_FROM` | no | default `Arrakit <hello@example.com>` |
-| `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` | no | billing; without all three Checkout answers 503 |
+| `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` | no | billing; without all three (and without `STRIPE_FAKE=1`) every Stripe call answers 503 |
+| `STRIPE_FAKE` | no | `1`: in-memory fake gateway (dev, e2e); refused in production |
 | `LOG_LEVEL` | no | Pino level; default `silent` in tests, `info` otherwise |
 | `LOG_FORMAT` | no | `json` or `pretty`; default `pretty` in development, `json` otherwise |
 | `SENTRY_DSN` | no | report unexpected errors to Sentry; absent → only logged |
@@ -977,39 +956,31 @@ comments).
 Data package:
 - `schema.spec.ts` – every table but the exceptions has `organization_id`; still refuses new tables without it; OAuth tables present.
 - `organization-id.spec.ts` – all accept/reject cases (3.1).
-- `tenant-db` integration – isolation of select/pick/update/delete/insert,
-  `organizationId` in set/insert ignored, where-guard on update/delete/lock,
-  transaction commit/rollback, lock isolation and waiting (row locks: PGlite is
-  single-connection, so skip the "conflicting lock waits" case or run it only
-  against real Postgres when `DATABASE_URL_TEST` is set), table without
-  `organizationId` refused, non-UUID throws before any query, migrate twice is a no-op.
-  Use a test-only `tenancy_probe` table (`id uuid pk default gen_random_uuid(), organization_id uuid not null references organizations(id), label text not null`).
-- `file-key.spec.ts` – all key/prefix cases.
-- `storage` – port against the in-memory/local fallback: put/get, isolation,
-  `FileNotFoundError`, copy (incl. URL-encoding-needing names), remove/removePrefix
-  (sibling `companies/c1x/` not removed by `companies/c1/`), paging with
-  `listPageSize`, list. Presign/403 cases only if an S3 mock or MinIO is available.
-- `jobs` – retry with backoff then dead letter; fail-once-then-succeed;
-  `startAfter`; exclusive `sendOnce`; exclusive redefine refused; `queuePolicy`
-  expiry (default 900); `schedule` replaces (run against the in-process runner
-  with fake timers, and against pg-boss when real Postgres is available).
+- `storage` – memory storage: removePrefix keeps a sibling sharing the prefix
+  (`c1x/` for `c1/`) and other organizations; unusable folders and ids refused.
+  S3 against a mocked client: folder validated before listing, batches of
+  1000, paging with `listPageSize`, `Errors` reported, HeadBucket probe; an
+  optional integration test against a real bucket.
+- `jobs` – in-process runner and pg-boss: retry with backoff then dead letter;
+  fail-once-then-succeed; redefining a queue keeps its policy; stop waits for
+  running handlers, then the probe fails; `memoryJobs()` records and runs sends.
 - `health` – all up; storage down; queue down after close; hanging probe ≈3 s.
 - `config.spec.ts` – env parsing (adapted to optional DB/R2).
 - `delete-organization` – cascades every org table (discovered from the
-  schema), another org intact, sessions' active org nulled, people kept,
+  schema), another org intact, people kept,
   grants revoked only for that org, idempotent false, uppercase id, non-UUID throws.
 - `delete-account` – member deleted with sessions/accounts/memberships/
   invitations sent and to them; admin removed leaves org whole; owner refused
   (`PersonOwnsOrganizationError`, nothing deleted); owner of any org refused; unknown → false.
 - `auth-database` integration – magic link sign-in writes users/sessions,
   verification consumed; two parallel clicks → exactly one session, the other
-  redirected with `error=INVALID_TOKEN`; deleting user ends sessions; org plugin
-  reads org made by `createOrganization` with `termsAcceptedAt`; unauthenticated
+  redirected with `error=INVALID_TOKEN`; deleting user ends sessions; unauthenticated
   client registration stored with resource link; `/api/auth/jwks` kid = jwks.id, one row.
 - `lint-guard.spec.ts` – driver imports refused in apps/api, allowed in the db package.
 
 API:
-- `health` route (200/503/404), `openapi` (paths under `/api` except `/health`; offline export equals served).
+- `health` route (200/503, the only route outside `/api`); `app` (unknown → 404,
+  no REST or OpenAPI paths, cross-site `/api/rpc` writes → 403 `Use the app.`).
 - `mailer.spec.ts`, `mail-signin.spec.ts`, `mail-member.spec.ts`.
 - `bearer-token.spec.ts`.
 - `oauth-provider.spec.ts` (all 11 cases of 7.2) and `mcp.spec.ts`
@@ -1021,11 +992,8 @@ API:
   current docs) to create users, sessions and cookies instead of driving magic
   links where the flow itself is not under test; keep at least one full
   magic-link flow (read link from `recordingMailer().sent`).
-- `purge.worker.spec.ts` (queue defined with policy, folder vs keys, runs via
-  queue, logs+throws on bucket failure, `queueStoragePurge` logs and does not throw).
-- `coverage.ts` helper + spec: a table of cases must cover every OpenAPI
-  operation / MCP tool (`METHOD /path` keys, whole match, stale and both reported).
-  Useful for an authorization matrix test across all procedures.
+- `storage-purge.test.ts` (queue defined with policy, runs via queue, logs+throws
+  on bucket failure, `queueStoragePurge` logs and does not throw).
 
 Emails: `compose.spec.ts`, `account.spec.ts`, `copy.spec.ts`.
 
@@ -1052,7 +1020,8 @@ Mailpit), consent Allow, assert redirect to callback with `code`; then call
 - Purge send failure never fails the user's delete.
 - A refused MCP token and an internal JWKS failure are distinguished (401 vs 500).
 - Membership is read fresh on every MCP call; tokens are not revoked by time alone.
-- `GET /api/auth/token` and `/api/auth/organization/*` are closed (404).
+- `GET /api/auth/token` is closed and `/api/auth/organization/*` does not exist (404).
+- Writes to `/api/rpc/*` from an untrusted Origin are refused (403) before any procedure runs.
 - Magic link and social sign-in require an exact trusted Origin (no Origin, `null`, lookalike host, other scheme/port → 403).
 - Mailer errors never leak subject or recipients.
 - Production refuses to boot without `RESEND_API_KEY` (and without Google, DB, bucket).

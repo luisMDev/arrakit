@@ -160,15 +160,13 @@ Existing columns read here: `id uuid pk`, `plan text not null default 'free'`
 Rules in `setPlan(plan, stripe?)`:
 - `plan === 'free'` -> `usage_anchor = NULL`.
 - paid plan with `stripe.anchor` -> `usage_anchor = stripe.anchor`; without anchor, leave as is.
-- A new anchor starts a new month immediately (last month's grant lapses; purchased stays).
+- A new anchor starts a new month immediately (last month's plan use stops counting; purchased stays).
 
 `setStripeCustomer(customerId)`: sets `stripe_customer_id` only if null (first
 payment that is not a subscription, i.e. a top-up). An existing one is kept.
 
-> Better Auth note: in arrakit the `organization` table is owned by Better Auth's
-> organization plugin. Add `plan`, `stripeCustomerId`, `stripeSubscriptionId`,
-> `usageAnchor` as `additionalFields` (or a 1:1 side table keyed by org id) —
-> but the ledger FK + row lock below must target the organization row.
+`organizations` is an app table (no Better Auth organization plugin); the
+ledger FK and the row lock below target it.
 
 ### 2.2 `credit_ledger` (append-only)
 
@@ -178,9 +176,9 @@ payment that is not a subscription, i.e. a top-up). An existing one is kept.
 | `organization_id` | uuid not null FK organizations(id) ON DELETE CASCADE | |
 | `metric` | text not null | a METRIC key (not DB-constrained, so metrics can be added without migration) |
 | `bucket` | text not null CHECK in ('plan','purchased') | `plan` lapses monthly, `purchased` never |
-| `reason` | text not null CHECK in ('plan_grant','purchase','consumption','adjustment') | |
+| `reason` | text not null CHECK in ('plan_grant','purchase','consumption','adjustment') | `plan_grant` is allowed by the check but never written (grants are computed on read; such rows are ignored) |
 | `amount` | bigint (mode number) not null | signed; consumption rows negative |
-| `period_start` | timestamptz NULL | set on `plan_grant` and `consumption` rows (the month they belong to); null on purchase/adjustment |
+| `period_start` | timestamptz NULL | set on `consumption` rows (the month they belong to); null on purchase/adjustment |
 | `cents` | integer NULL | money behind a `purchase` row (whole top-up cents, same value on each metric row) |
 | `idempotency_key` | text not null | |
 | `created_at` | timestamptz not null default now() | |
@@ -192,13 +190,12 @@ Constraints / indexes:
 - Rows are never updated or deleted (except by org cascade).
 
 Idempotency key namespaces used:
-- plan grant: `grant:${period.start.toISOString()}:${plan}`
 - top-up: `checkout:${stripeCheckoutSessionId}`
-- refund/dispute: `reversal:${refundOrDisputeId}`
-- consumption: caller-supplied (job id, request id, `report:${id}`). Recommendation for arrakit:
-  document that callers must not reuse the `checkout:`/`reversal:`/`grant:` prefixes
-  (unique constraint is per bucket, so a collision would silently no-op).
-- adjustment: caller-supplied (e.g. `goodwill`).
+- refund/dispute: stored as `reversal-of:${encodeURIComponent(paymentIntentId)}:reversal:${refundOrDisputeId}`
+  (the payment prefix lets `reverse` cap all reversals of one payment)
+- consumption: caller-supplied (job id, request id, `report:${id}`). Callers must not reuse the
+  `checkout:`/`reversal-of:` prefixes (unique constraint is per bucket, so a collision would
+  silently no-op).
 
 ### 2.3 `usage_levels`
 
@@ -213,15 +210,15 @@ PK `(organization_id, metric)`.
 
 ### 2.4 Migration
 
-One migration creates both tables, adds `organizations.usage_anchor`, FKs with
-cascade, and the index (generated with drizzle-kit).
+Both tables, `organizations.usage_anchor`, the cascading FKs and the index are
+in `0000_init` (drizzle-kit).
 
 ---
 
 ## 3. Data-layer service: `OrganizationUsage` (`forOrganization(orgId).usage`)
 
-Factory `organizationUsage(db, organizationId, now = () => new Date())`
-(injectable clock for tests). Interface:
+`usageScope(ctx, organizationId)` (`packages/db/src/organization/usage.ts`;
+`ctx.now` is the injectable clock). Interface:
 
 ```ts
 interface MetricUsage extends MetricBalance { resetsOn: Date }   // = period.end
@@ -233,61 +230,64 @@ check(metric, quantity = 1): Promise<UsageVerdict>
 consume(metric, quantity, { idempotencyKey }): Promise<MetricUsage>
 set(metric, value): Promise<MetricUsage>          // capacity only
 credit(cents, { idempotencyKey }): Promise<boolean>
-reverse(cents, { idempotencyKey }): Promise<boolean>
-adjust(metric, amount, { idempotencyKey }): Promise<boolean>
+reverse(cents, { idempotencyKey, payment: { key, cents } }): Promise<boolean>
 topUps(): Promise<TopUp[]>                        // newest first
 ```
+
+There is no manual `adjust`.
 
 ### 3.1 `UsageLimitError`
 
 ```ts
-class UsageLimitError extends Error {
+class UsageLimitError extends DomainError /* code 'PAYMENT_REQUIRED', data { metric, requested, available } */ {
   name = 'UsageLimitError'; metric; kind; requested; available;
   message (consumable): `Not enough ${label.toLowerCase()}: this needs ${requested} ${unit} and your organization has ${available} left. Add credits in Settings → Billing.`
   message (capacity):   `${label} limit reached: this needs ${requested} ${unit} more and your organization has ${available} left. Add credits in Settings → Billing to raise it.`
 }
 ```
 
-### 3.2 Locking and grant-on-read (`locked(work)`)
+The API's `reportErrors` middleware maps it (like every `DomainError`) to a 402
+oRPC error carrying the same message and data.
 
-Every `summary`, `check`, `consume`, `set` runs in ONE transaction:
+### 3.2 Grant on read, and locking
 
-1. `SELECT plan, created_at, usage_anchor FROM organizations WHERE id = $org FOR NO KEY UPDATE`
-   (NO KEY UPDATE so FK inserts elsewhere that take KEY SHARE are not blocked).
-   No row -> throw `Error('[data] organization <id> is gone')`.
-2. `period = usagePeriod(usage_anchor ?? created_at, now())`.
-3. Sum `amount` of `reason='plan_grant' AND period_start = period.start` grouped by metric.
-4. For each metric: `owed = planGrant(plan)[metric] - grantedSoFar`. If `owed > 0`, insert
-   `{ bucket:'plan', reason:'plan_grant', amount: owed, period_start: period.start,
-   idempotency_key: 'grant:<period.start ISO>:<plan>' }` with `ON CONFLICT DO NOTHING`.
-   - Grant is lazy (on first read or use in a month): no cron job walks orgs.
-   - Upgrade mid-month (Pro->Team) gets the DIFFERENCE (2000 more), new key since plan differs.
-   - Downgrade mid-month keeps what was granted (owed <= 0, nothing written).
-5. Run `work(tx, period)`.
+The plan grant is **not stored**: every read computes `granted =
+planGrant(plan)[metric]` from the organization's current plan. An upgrade
+mid-month raises the grant at once (Pro → Team: granted 3000, plan use so far
+still counted), and a downgrade mid-month lowers it at once (Team → Free:
+granted 100). No job, no grant rows; `plan_grant` rows left in the ledger are
+ignored.
 
-Writes that only ADD purchased rows (`credit`, `reverse`, `adjust`) do NOT lock;
-they rely on the unique constraint + `ON CONFLICT DO NOTHING ... RETURNING id`
-(returned rows > 0 => `true`).
+Each read takes the organization row (`plan`, `created_at`, `usage_anchor`;
+gone → `Error('[data] organization <id> is gone')`) and
+`period = usagePeriod(usage_anchor ?? created_at, now())`.
 
-### 3.3 Sums for the current period (`sumsOf`)
+- `summary` and `check` read without a lock and write nothing.
+- `consume`, `set` and `reverse` run in one transaction that first locks the
+  organization row `FOR NO KEY UPDATE` (FK inserts elsewhere taking KEY SHARE
+  are not blocked), so concurrent uses cannot pass one balance and concurrent
+  reversals of one payment cannot exceed it.
+- `credit` does not lock; it relies on the unique constraint +
+  `ON CONFLICT DO NOTHING ... RETURNING id` (rows returned > 0 means `true`).
 
-Over ALL ledger rows of the org, grouped by metric:
-- `granted` = sum(amount) where reason='plan_grant' and period_start = period.start
+### 3.3 Sums for the current period
+
+Over the org's ledger rows except `plan_grant`, grouped by metric:
 - `planUsed` = -sum(amount) where bucket='plan' and reason='consumption' and period_start = period.start
-- `purchased` = sum(amount) where bucket='purchased' (all time, any reason: purchase, purchased-side consumption, adjustments, reversals)
+- `purchased` = sum(amount) where bucket='purchased' (all time, any reason: purchase, purchased-side consumption, reversals)
 - `used` = -sum(amount) where reason='consumption' and period_start = period.start
 
 Levels: `SELECT metric, value FROM usage_levels WHERE organization_id = $org`.
-Balance per metric = `metricBalance(metric, sums, level)`; `resetsOn = period.end`.
-Last month's grant lapses because only rows with the current `period_start` count
-in the plan bucket. Purchased never lapses.
+Balance per metric = `metricBalance(metric, { granted, planUsed, purchased, used }, level)`;
+`resetsOn = period.end`. Last month's plan use stops counting because only
+consumption with the current `period_start` counts. Purchased never lapses.
 
 ### 3.4 Operations
 
 - `check(metric, quantity=1)`: `metric` must be a known metric (else throws
   `[data] no metric X in METRICS`); `quantity` safe integer >= 0 (else throws
-  `[data] a quantity must be a whole number of at least 0, not X`). Under the lock
-  (so it writes the grant), reads `available`; returns
+  `[data] a quantity must be a whole number of at least 0, not X`). Reads
+  `available` (no lock); returns
   `{ metric, allowed: quantity <= available, available, requested: quantity }`.
   Consumable: quantity is what would be spent; capacity: quantity added to current level
   (`available = limit - level`).
@@ -308,14 +308,15 @@ in the plan bucket. Purchased never lapses.
   one `purchased`/`purchase` row per metric with `amount = metricAmounts(cents)[metric]`,
   `cents = cents`. Returns `true` if written, `false` if the key already existed (webhook
   redelivery). Concurrent identical credits: exactly one `true`.
-- `reverse(cents, { idempotencyKey })`: cents >= 1; inserts `purchased`/`adjustment` rows
-  with `amount = -metricAmounts(cents)[metric]` for metrics with amount > 0. May drive
-  purchased below zero (the debt is consumed before anything bought later). Returns
-  `false` if no rows (all amounts 0) or key already used.
-- `adjust(metric, amount, { idempotencyKey })`: amount safe integer != 0 (else
-  `[data] an adjustment must be a whole number other than 0, not X`); one `purchased`/
-  `adjustment` row. Manual goodwill/correction (no UI/endpoint in saas-base; expose as an
-  internal/admin script or keep data-layer only).
+- `reverse(cents, { idempotencyKey, payment: { key, cents } })`: cents >= 1, key and
+  `payment.key` non-blank, `payment.cents` >= 1 (what the payment bought). Under the lock,
+  reads the earlier reversals of that payment (keys prefixed
+  `reversal-of:<encoded payment key>:`); the same key again → `false`; takes
+  `min(cents, payment.cents - reversedSoFar)`; nothing left → `false`. Inserts
+  `purchased`/`adjustment` rows with `amount = -metricAmounts(take)[metric]` for metrics
+  with amount > 0 and `cents = take`. May drive purchased below zero (the debt is
+  consumed before anything bought later). A refund followed by a dispute of the same
+  payment never takes back more than it bought; caps are per payment.
 - `topUps()`: rows with reason='purchase', ordered `created_at DESC, idempotency_key`,
   grouped by key into `{ at: created_at, cents, amounts: { [metric]: amount } }`, insertion
   order preserved (newest first). Reversals are NOT subtracted from this list.
@@ -324,46 +325,36 @@ in the plan bucket. Purchased never lapses.
 
 - 5 parallel `consume('credits', 30)` with distinct keys on Free (100): exactly 3 succeed,
   used 90, available 10.
-- 3 parallel `summary()` in a fresh month: granted = 100 once (lock + ON CONFLICT).
+- Concurrent reversals of one payment take back at most what it bought.
 
 ---
 
 ## 4. API service layer (Hono + oRPC)
 
-### 4.1 `UsageService` (inject into any procedure that spends usage)
+### 4.1 Spending from a procedure
 
-```ts
-check(orgId, metric, quantity = 1): Promise<UsageVerdict>
-can(orgId, metric, quantity = 1): Promise<boolean>              // check().allowed
-requireAvailable(orgId, metric, quantity = 1): Promise<void>    // throws 402 if !allowed; spends nothing
-consume(orgId, metric, quantity, idempotencyKey): Promise<MetricUsage>  // UsageLimitError -> 402
-set(orgId, metric, value): Promise<MetricUsage>                 // UsageLimitError -> 402
-```
-
-The organization is always the caller's active organization. Other errors rethrown.
+There is no usage service: a procedure behind `member(level)` uses its
+organization scope directly, `context.scope.usage.consume(...)` / `.set(...)`.
+A `UsageLimitError` thrown there becomes a 402 through `reportErrors`.
 
 ### 4.2 402 Payment Required
 
-Shape (saas-base REST body): `{ statusCode: 402, message, metric, requested, available }`.
-
-arrakit (oRPC): define a typed error in the contract, e.g.
-```ts
-PAYMENT_REQUIRED: { status: 402, message: string, data: z.object({
-  metric: z.enum(METRIC_KEYS), requested: z.number().int(), available: z.number().int() }) }
-```
-`message` = `UsageLimitError.message` (contains "Add credits in Settings → Billing").
-The web should surface `message` as a toast/alert and may link admins to Billing.
+`UsageLimitError` → oRPC error `PAYMENT_REQUIRED`, HTTP 402, `message` =
+`UsageLimitError.message` (contains "Add credits in Settings → Billing"),
+`data = { metric, requested, available }`. The RPC client receives it as an
+`ORPCError` with `status: 402` and that data. The web surfaces `message` as a
+toast/alert and may link admins to Billing.
 
 ### 4.3 `requiresUsage(metric, quantity = 1)` oRPC middleware
 
-Equivalent of `@RequiresUsage`. Runs AFTER the organization-membership middleware
-(needs the member/org in context; if absent, throw a programming error
-"requiresUsage runs after the organization role middleware"). Calls
-`requireAvailable(org.id, metric, quantity)`; does NOT spend. The handler then
-calls `consume(...)` itself (a use the handler never makes costs nothing).
+`apps/api/src/usage/requires-usage.ts`. Typed on `MemberContext`, so it can only
+be used after `requireMember`. Calls `context.scope.usage.check(metric, quantity)`
+and throws `UsageLimitError` (→ 402) when not allowed; does NOT spend. The
+handler then calls `consume(...)` itself (a use the handler never makes costs
+nothing).
 
 Behaviour from tests (port with a probe router in tests only):
-- Free org: `can(100)` true, `can(101)` false, nothing spent.
+- Free org: `check(100)` allowed, `check(101)` not, nothing spent.
 - Procedure guarded by `requiresUsage('credits', 40)` + `consume(40, 'report:<id>')`:
   report a -> left 60; report a again -> left 60 (idempotent); report b -> left 20.
 - After spending 70: guarded report -> 402 `{metric:'credits', requested:40, available:30}`, message contains "Add credits in Settings → Billing".
@@ -372,8 +363,9 @@ Behaviour from tests (port with a probe router in tests only):
 
 ### 4.4 Endpoints
 
-All oRPC procedures under `/api/rpc`; session from Better Auth; active organization
-from the session (`activeOrganizationId`). Errors: 401 no session, 404 no organization.
+All oRPC procedures under `/api/rpc`; session from Better Auth; the organization is
+the person's membership read fresh (`memberOf`), never from the session. Errors: 401
+no session, 404 no organization.
 
 #### `usage.get` (saas-base: `GET /api/usage`)
 - Auth: any member of the active organization (member, admin, owner).
@@ -396,32 +388,33 @@ from the session (`activeOrganizationId`). Errors: 401 no session, 404 no organi
                   amounts: Array<{ metric, amount: int }> /* METRICS order, only metrics present */ }>  // newest first
 }
 ```
-- Calling it writes the month's grant if missing.
+- Reading writes nothing (the grant is computed).
 - Expected for a fresh Free org (seen by a plain member): credits `{consumable, granted 100, plan 100, purchased 0, used 0, available 100, limit null}`, storage_gb `{capacity, granted 10, plan 10, purchased 0, used 0, available 10, limit 10}`, `topUps: []`. Signed out -> 401.
 
 #### `billing.topUp` (saas-base: `POST /api/billing/top-up`)
-- Auth: owner or admin of the active org (member -> 403). Lives with billing settings (admins only).
-- CSRF/origin: request `Origin` must be a trusted origin (web origin / Better Auth trusted origins); otherwise 403 with message "Add credits from the app."
+- Auth: owner or admin of the org (member -> 403). Lives with billing settings (admins only).
+- CSRF/origin: the app-wide `/api/rpc/*` middleware refuses an untrusted `Origin` with 403 "Use the app." (platform spec, section 4).
 - Input: `{ cents: z.number().int().min(1000).max(50000) }` (400 on 999, 50001, 1000.5, "2000").
 - Stripe not configured -> 503 "Payments are not set up yet."
-- Stripe failure -> 502 "Couldn't load billing from Stripe. Try again in a minute." (card error -> 402-ish card message is plan-change only; not relevant here).
+- Stripe failure -> 502 "Couldn't reach Stripe. Try again in a minute." (`guardedStripe`, billing spec 2.2).
 - Allowed on any plan, including Free and Internal.
 - Action: create Stripe Checkout Session:
   - `mode: 'payment'`
   - `line_items: [{ price_data: { currency: 'usd', product: <Credits product id>, unit_amount: cents }, quantity: 1 }]`
-    (product found once per process via price lookup key `<prefix>_credits_top_up`, cached; failed lookup retried next time)
+    (product found via the price with lookup key `<prefix>credits_top_up`, memoised; failed lookup retried next time)
   - `client_reference_id: orgId`
-  - `metadata: { kind: 'top_up', organizationId, requestedBy: <admin email> }`
+  - `metadata: { kind: 'top_up', organizationId }`
   - `payment_intent_data.metadata: { kind: 'top_up', organizationId, cents: String(cents) }`
   - `invoice_creation: { enabled: true, invoice_data: { metadata: { kind: 'top_up' } } }`
   - if org has `stripe_customer_id`: `customer`, `customer_update: { name: 'auto', address: 'auto' }`;
     else `customer_email: <admin email>`, `customer_creation: 'always'`
   - `billing_address_collection: 'required'`, `tax_id_collection: { enabled: true }`
   - `success_url: ${WEB_URL}/app/billing?top_up=paid`, `cancel_url: ${WEB_URL}/app/billing`
+    (the web redirects `/app/billing` to `/app/settings?section=billing`, keeping `top_up`)
 - Output: `{ url: string }` (Stripe hosted Checkout URL). Web redirects `window.location.href = url`.
 - Test fake records `{ organizationId, cents, customerId: null, email, successUrl, cancelUrl }`; URL starts with `https://checkout.stripe.test`.
 
-#### Stripe webhook (plain Hono route; saas-base: `POST /webhooks/stripe`)
+#### Stripe webhook (plain Hono route `POST /api/webhooks/stripe`)
 
 Signature verified with `STRIPE_WEBHOOK_SECRET` over the RAW body; bad/missing
 signature -> 401 (log reason only, never the secret/body). Success -> 204. A thrown
@@ -436,7 +429,7 @@ error -> 500 so Stripe redelivers. Usage-relevant events:
    - Find org: null id -> ignore ("names no organization"); invalid uuid -> ignore; org gone -> ignore. Ignored -> 204 + warn log.
    - `credit(cents, { idempotencyKey: 'checkout:' + sessionId })` — completed + async_succeeded for the same session credit once.
    - If `customerId`: `setStripeCustomer(customerId)` (keep first customer so Billing lists invoices; plan unchanged, stays 'free').
-   - Log `organization X topped up N cents` only when newly credited.
+   - Log `credits topped up` (with `organizationId`, `cents`) only when newly credited.
 2. **Refund / dispute** — `refund.created` or `charge.dispute.created`. Normalized:
    `{ kind:'payment-reversed', reversalId: object.id, paymentIntentId, amount: object.amount /* tax included */ }`
    (no payment_intent -> ignore). Settlement:
@@ -444,8 +437,8 @@ error -> 500 so Stripe redelivers. Usage-relevant events:
    - Otherwise `{ organizationId, cents: Number(metadata.cents), total: intent.amount /* charged incl. tax */ }`.
    - Find org (ignored as above).
    - `reversedCents = Math.min(topUp.cents, Math.round(event.amount * topUp.cents / Math.max(topUp.total, 1)))` — proportional, tax apart.
-   - `reversedCents === 0` -> nothing. Else `reverse(reversedCents, { idempotencyKey: 'reversal:' + reversalId })`.
-   - A dispute later WON gives nothing back automatically; an admin uses `adjust` by hand.
+   - `reversedCents === 0` -> nothing. Else `reverse(reversedCents, { idempotencyKey: 'reversal:' + reversalId, payment: { key: paymentIntentId, cents: topUp.cents } })`.
+   - A dispute later WON gives nothing back automatically (there is no manual adjustment).
    - Example: $20 credited, $24.20 charged, refund 1210 -> 1000 cents reversed -> credits purchased 1000, storage purchased 100. Delivered twice -> once.
 
 Webhook endpoint must be subscribed to: `checkout.session.completed`,
@@ -493,19 +486,19 @@ Grid (1 col, 2 cols from `sm`), one shadcn `Card` per metric, `data-metric={metr
 
 - Location: Settings page, nav group "Organization settings", item `usage` (label key
   `settings.usage`), between General and Members. Visible to member, admin, owner.
-  saas-base has no dedicated URL (in-page section switch on `/app/settings`); arrakit may
-  give it `/app/settings/usage` — keep it reachable for every role.
+  URL `/app/settings?section=usage`, reachable for every role.
 - Loads `usage.get` (TanStack Query).
 - Shows section title `settings.usageSettings.title` ("Usage"), `UsageCards`, then a hint `data-hint`:
   - member: `memberHint` "Running low? An owner or an admin can add credits."
   - admin/owner: `adminHint` "Add credits in Billing."
 - Read only: NO buttons (test asserts no `button` in the section, no "Add credits" text for members).
-- Error state: toast `settings.usageSettings.notLoaded` "Couldn't load usage. Reload the page."
+- Error state: toast `settings.usageSettings.notLoaded` "Couldn't load usage. Reload the page." (query `meta.failure`, shown by the QueryCache handler).
 - Loading: render nothing/skeleton until data.
 
 ### 5.3 Settings → Billing → "Usage" section and top-ups (owner/admin only)
 
-Billing (`/app/billing`) is admin-only (hidden from member nav, not shown if opened by URL).
+Billing (`/app/settings?section=billing`; `/app/billing` redirects there keeping `top_up`) is
+admin-only (hidden from member nav, not shown if opened by URL).
 It loads both billing and `usage.get` (usage failure -> toast `settings.usageSettings.notLoaded`).
 
 Usage section (aria-label `settings.billingSettings.usage.title`):
@@ -560,7 +553,7 @@ topUpPay "Continuar al pago", noTopUps "Aún no hay recargas."). i18next uses `{
 
 ## 6. Background jobs, emails, integrations, env vars
 
-- Jobs: none. Monthly grants are written lazily on read/use (no cron).
+- Jobs: none. Monthly grants are computed on read (nothing stored, no cron).
 - Emails: none specific to usage/top-ups (Stripe sends the top-up receipt/invoice via `invoice_creation`).
 - Integrations: Stripe (Checkout payment mode, PaymentIntents retrieve, webhooks, prices/products in setup script).
 - Env vars: `DATABASE_URL` (absent -> PGlite), `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`,
@@ -572,7 +565,7 @@ topUpPay "Continuar al pago", noTopUps "Aún no hay recargas."). i18next uses `{
 ## 7. Business rules and edge cases (from tests)
 
 1. Free grants $1/month: 100 credits, 10 GB; `resetsOn` > signup + 27 days.
-2. Grant written once per month regardless of concurrent reads.
+2. The grant is computed on read: reading writes nothing to the ledger, and `plan_grant` rows are ignored.
 3. Plan grant spent first, then purchased: Free + $20 top-up -> plan 100, purchased 2000, available 2100; consume 150 -> plan 0, purchased 1950, used 150, available 1950.
 4. One top-up adds to every metric by its factor ($20 -> 2000 credits + 200 GB; storage limit 210 on Free).
 5. Top-up credited once per key, even with concurrent deliveries.
@@ -581,10 +574,10 @@ topUpPay "Continuar al pago", noTopUps "Aún no hay recargas."). i18next uses `{
 8. No two concurrent uses pass one balance (5x30 on 100 -> 3 succeed).
 9. `check` never spends (`check('credits',100)` -> allowed, `101` -> not; `check('storage_gb', 11)` on Free -> not allowed).
 10. Last month's grant lapses, purchased is kept: Pro (anchor 5 days ago) + $10 top-up, consume 1200 -> plan 0, purchased 800; new anchor -> granted 1000, plan 1000, purchased 800, used 0.
-11. Upgrade mid-month tops grant up: Pro, consume 400, move to Team -> granted 3000, plan 2600.
+11. The grant follows the current plan mid-month: Pro, consume 400, move to Team -> granted 3000, plan 2600; Team, consume 50, move to Free -> granted 100, plan 50, used 50.
 12. Capacity: set 8 on Free -> used 8, available 2; set 11 -> error {requested 3, available 2}; after $10 top-up set 11 ok (limit 110); set 0 always ok.
 13. Refund reverses proportionally from every metric, once per reversal key; `reverse` second call returns false.
-14. Manual `adjust` once per key.
+14. Reversals of one payment (refunds and disputes, even concurrent) never take back more than it bought; caps are per payment.
 15. `consume` on a capacity metric throws (/capacity/); non-integer quantity throws (/whole number/).
 16. Balances are per organization (same idempotency key in two orgs is independent).
 17. Deleting an organization cascades ledger and levels; usage calls afterwards throw /gone/.
@@ -599,9 +592,9 @@ topUpPay "Continuar al pago", noTopUps "Aún no hay recargas."). i18next uses `{
 | saas-base test | Port to arrakit as |
 |---|---|
 | `libs/shared/plans/src/plans.spec.ts` (metricAmounts, planGrant, isTopUpAmount, usagePeriod, splitConsumption, metricBalance, isMetric/isPlan) | Vitest unit tests of the shared package, verbatim vectors |
-| `libs/platform/data/src/usage/usage.int.spec.ts` (all 17 cases) | Vitest integration on PGlite in-memory with drizzle migrations applied; concurrency cases still valid (PGlite serializes) — also run against real Postgres when `DATABASE_URL` is set |
-| `apps/api/src/app/usage/usage.spec.ts` (probe router with `requiresUsage`/`consume`/`set`; `usage.get` member view; 401) | Vitest API tests through Hono `app.request()` with Better Auth test utils creating users/sessions/orgs |
-| `apps/api/src/app/billing/top-up.spec.ts` (Checkout creation, 400 amounts, 403 origin, 403 member, webhook credit idempotency, keep customer, unpaid, proportional refund, non-top-up reversal, invalid org, 503 without Stripe) | Vitest API tests with a fake Stripe gateway (`FAKE_STRIPE_SIGNATURE`, recorded `topUps`, `topUpPayments` map) |
+| `libs/platform/data/src/usage/usage.int.spec.ts` | `packages/db/src/organization/usage.test.ts` on PGlite (grant on read, plan-then-purchased, idempotent credit/consume, capacity, per-payment reversal caps, cascade) and `usage-locking.test.ts` (reads take no lock; uses and reversals lock the org row; concurrency on real Postgres) |
+| `apps/api/src/app/usage/usage.spec.ts` | `apps/api/src/usage/usage.test.ts` (probe router with `requiresUsage`/`consume`/`set`; 402 with data through the RPC client; `usage.get` member view; 401/404) |
+| `apps/api/src/app/billing/top-up.spec.ts` | `apps/api/src/usage/top-up.test.ts` (Checkout for an admin, 403 origin, 403 member, 502, 503 without Stripe; webhook credit idempotency, keep customer, pending payment, invalid org, proportional refund, refund + dispute capped, non-top-up reversal, 500 when the payment cannot be read) |
 | `apps/web/.../usage-settings.spec.ts` (member vs admin hint, no buttons, load error toast) | React Testing Library |
 | `apps/web/.../billing-settings.spec.ts` usage cases (cards text incl. bar %, plan-then-purchased split, top-ups list ordering/empty, dialog preview 20->45, invalid "5"/"501"/"" disable submit with bounds text, Checkout failure toast, `?top_up=paid` status) | React Testing Library with an oRPC client mock |
 | `delete-organization.int.spec.ts` ledger/levels cascade | Part of the organizations integration suite |
