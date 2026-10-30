@@ -1,13 +1,16 @@
 import { isWorkEmail, normalizeEmail } from '@arrakit/address'
 import type { AuthProviders } from '@arrakit/contract'
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useEffect, useRef, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { z } from 'zod'
 
 import { Alert, AlertDescription } from '#/components/ui/alert'
 import { Button } from '#/components/ui/button'
 import { Field, FieldError, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
+import { notify } from '#/lib/notify'
 
 import { EmailRefusedError, PROVIDERS_UNKNOWN, type SocialProvider, useAuthApi } from './auth-api'
 import { GoogleIcon, MicrosoftIcon } from './provider-icons'
@@ -18,6 +21,8 @@ export interface RefusalSearch {
 }
 
 const PROVIDER_NAMES: Record<SocialProvider, string> = { google: 'Google', microsoft: 'Microsoft' }
+
+const emailForm = z.object({ email: z.string().refine(isWorkEmail) })
 
 const searchText = (value: unknown) =>
   value === undefined || value === null ? undefined : String(value)
@@ -63,9 +68,11 @@ export function SignInOptions({
   const api = useAuthApi()
   const providers = useProviders()
   const refused = refusalOf(search)
-  const [email, setEmail] = useState(initialEmail)
-  const [touched, setTouched] = useState(false)
-  const [refusedByApi, setRefusedByApi] = useState(false)
+  const form = useForm({
+    resolver: zodResolver(emailForm),
+    defaultValues: { email: initialEmail },
+    mode: 'onTouched',
+  })
   const [pending, setPending] = useState(false)
   const pendingRef = useRef(false)
 
@@ -91,21 +98,18 @@ export function SignInOptions({
     setPending(false)
   }
 
-  const invalid = refusedByApi || (touched && !isWorkEmail(email))
+  const invalid = form.formState.errors.email !== undefined
 
-  async function continueWithEmail(event: FormEvent) {
-    event.preventDefault()
-    setTouched(true)
-    setRefusedByApi(false)
-    if (!isWorkEmail(email) || !begin()) return
+  async function continueWithEmail({ email }: z.output<typeof emailForm>) {
+    if (!begin()) return
     const normalized = normalizeEmail(email)
     try {
       await api.sendMagicLink(normalized, landing)
       onSent(normalized)
     } catch (err) {
       fail()
-      if (err instanceof EmailRefusedError) setRefusedByApi(true)
-      else toast.error(t('auth.signInOptions.linkNotSent'))
+      if (err instanceof EmailRefusedError) form.setError('email', { type: 'refused' })
+      else notify.error(t('auth.signInOptions.linkNotSent'))
     }
   }
 
@@ -115,7 +119,7 @@ export function SignInOptions({
       await api.signInWith(provider, landing)
     } catch {
       fail()
-      toast.error(t('auth.signInOptions.notSignedIn'))
+      notify.error(t('auth.signInOptions.notSignedIn'))
     }
   }
 
@@ -161,7 +165,11 @@ export function SignInOptions({
           <div className="h-px grow bg-border" />
         </div>
       ) : null}
-      <form noValidate className="flex flex-col gap-3" onSubmit={(e) => void continueWithEmail(e)}>
+      <form
+        noValidate
+        className="flex flex-col gap-3"
+        onSubmit={(e) => void form.handleSubmit(continueWithEmail)(e)}
+      >
         <Field data-invalid={invalid || undefined}>
           <FieldLabel htmlFor="sign-in-email" className="sr-only">
             {t('auth.signInOptions.workEmail')}
@@ -171,14 +179,9 @@ export function SignInOptions({
             type="email"
             autoComplete="email"
             placeholder={t('auth.signInOptions.yourWorkEmail')}
-            value={email}
             aria-invalid={invalid || undefined}
             aria-describedby={invalid ? 'sign-in-email-error' : undefined}
-            onChange={(e) => {
-              setEmail(e.target.value)
-              setRefusedByApi(false)
-            }}
-            onBlur={() => setTouched(true)}
+            {...form.register('email')}
           />
           {invalid ? (
             <FieldError id="sign-in-email-error">

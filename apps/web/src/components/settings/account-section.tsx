@@ -1,8 +1,10 @@
-import type { AccountView } from '@arrakit/contract'
+import { type AccountView, accountUpdateSchema } from '@arrakit/contract'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { z } from 'zod'
 
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
 import { Button } from '#/components/ui/button'
@@ -18,19 +20,14 @@ import {
 } from '#/components/ui/select'
 import { Switch } from '#/components/ui/switch'
 import { type Language, isLanguage, loadLanguage } from '#/i18n'
-import {
-  type SaveOnChange,
-  reportError,
-  saveOnChange,
-  statusOf,
-  toastError,
-  toastInfo,
-} from '#/lib/api-errors'
+import { apiMessage, reportError, type SaveOnChange, saveOnChange } from '#/lib/api-errors'
 import { authClient } from '#/lib/auth-client'
 import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
+import { registerClearing, useClearingForm } from '#/lib/form'
+import { notify } from '#/lib/notify'
 import { client, orpc } from '#/lib/orpc'
+import { useFailureToast } from '#/lib/use-failure-toast'
 
-import { apiMessage } from './api-message'
 import { ConfirmDeleteDialog } from './confirm-delete-dialog'
 import type { SectionProps } from './settings-page'
 import { SettingRow, SettingsCard, SettingsHeading, SettingsSectionLayout } from './settings-ui'
@@ -47,6 +44,8 @@ export const TIME_ZONES: { zone: string; key: string }[] = [
 ]
 
 const K = 'settings.accountSettings'
+
+const nameSchema = z.object({ name: accountUpdateSchema.shape.name.unwrap() })
 
 type AccountUpdate = Parameters<typeof client.me.account.update>[0]
 
@@ -102,8 +101,11 @@ export function AccountSection({ open }: SectionProps) {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
-  const [draftName, setDraftName] = useState<string | null>(null)
-  const [nameError, setNameError] = useState(false)
+  const form = useClearingForm({
+    resolver: zodResolver(nameSchema),
+    values: { name: account ? displayName(account) : '' },
+  })
+  const nameError = form.formState.errors.name !== undefined
   const [signingOut, setSigningOut] = useState(false)
   const signingOutRef = useRef(false)
   const [confirming, setConfirming] = useState(false)
@@ -111,12 +113,11 @@ export function AccountSection({ open }: SectionProps) {
   const deletingRef = useRef(false)
   const zoneFilled = useRef(false)
 
-  useEffect(() => {
-    if (error && !account) {
-      reportError('[account] loading the account failed', error)
-      toastError(t(`${K}.notLoaded`))
-    }
-  }, [error, account, t])
+  useFailureToast(
+    account ? null : error,
+    '[account] loading the account failed',
+    t(`${K}.notLoaded`),
+  )
 
   /** The saved account, fresh; a failure says `failure` and keeps what the screen shows. */
   async function load(failure: string) {
@@ -124,7 +125,7 @@ export function AccountSection({ open }: SectionProps) {
       await queryClient.fetchQuery({ ...accountQuery, staleTime: 0 })
     } catch (err) {
       reportError('[account] reloading the account failed', err)
-      toastError(failure)
+      notify.error(failure)
     }
   }
 
@@ -185,17 +186,13 @@ export function AccountSection({ open }: SectionProps) {
     if (zone) void fillZoneRef.current(zone)
   }, [needsZone])
 
-  function saveName() {
-    if (!account || draftName === null) return
-    const trimmed = draftName.trim()
-    if (trimmed === '') {
-      setNameError(true)
-      return
-    }
-    setNameError(false)
+  function saveName({ name: trimmed }: z.output<typeof nameSchema>) {
+    if (!account) return
     if (trimmed !== account.name) save({ name: trimmed })
-    setDraftName(null)
+    form.reset({ name: trimmed })
   }
+
+  const nameField = registerClearing(form, 'name')
 
   async function signOutEverywhere() {
     if (signingOutRef.current) return
@@ -204,11 +201,11 @@ export function AccountSection({ open }: SectionProps) {
     try {
       const result = await authClient.revokeOtherSessions()
       if (result?.error) throw result.error
-      toastInfo(t(`${K}.signedOut`))
+      notify.success(t(`${K}.signedOut`))
       void load(t(`${K}.devicesNotLoaded`))
     } catch (err) {
       reportError('[account] signing out everywhere failed', err)
-      toastError(t(`${K}.notSignedOut`))
+      notify.error(t(`${K}.notSignedOut`))
     } finally {
       signingOutRef.current = false
       setSigningOut(false)
@@ -224,14 +221,14 @@ export function AccountSection({ open }: SectionProps) {
     } catch (err) {
       deletingRef.current = false
       setDeleting(false)
-      const message = statusOf(err) === 409 ? apiMessage(err) : null
+      const message = apiMessage(err, (status) => status === 409)
       if (!message) reportError('[account] deleting the account failed', err)
-      toastError(message ?? t(`${K}.notDeleted`))
+      notify.error(message ?? t(`${K}.notDeleted`))
       return
     }
     await authClient.signOut().catch(() => undefined)
     setConfirming(false)
-    toastInfo(t(`${K}.deleted`))
+    notify.success(t(`${K}.deleted`))
     me.signedOut()
     void navigate({ to: '/signin' })
   }
@@ -255,13 +252,12 @@ export function AccountSection({ open }: SectionProps) {
                 <Input
                   id="account-name"
                   autoComplete="name"
-                  value={draftName ?? displayName(account)}
                   aria-invalid={nameError || undefined}
-                  onChange={(event) => {
-                    setDraftName(event.target.value)
-                    setNameError(false)
+                  {...nameField}
+                  onBlur={(event) => {
+                    void nameField.onBlur(event)
+                    if (form.getFieldState('name').isDirty) void form.handleSubmit(saveName)()
                   }}
-                  onBlur={saveName}
                 />
                 {nameError ? <FieldError>{t(`${K}.enterName`)}</FieldError> : null}
               </Field>

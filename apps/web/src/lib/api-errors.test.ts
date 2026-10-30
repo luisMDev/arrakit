@@ -2,9 +2,9 @@ import { ORPCError } from '@orpc/client'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { apiCall, refusalMessage, saveOnChange } from './api-errors'
+import { apiCall, apiMessage, paymentRefusal, refusalMessage, saveOnChange } from './api-errors'
 
-vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn() }) }))
+vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 
 const deferred = <T>() => {
   let resolve!: (value: T) => void
@@ -37,6 +37,58 @@ describe('refusalMessage', () => {
     ['a 403 with a blank message', new ORPCError('FORBIDDEN', { message: '  ' })],
   ])('has none for %s', (_, err) => {
     expect(refusalMessage(err)).toBeNull()
+  })
+})
+
+const refused = (code: string, status: number, message?: string) =>
+  new ORPCError(code, { status, message })
+
+describe('paymentRefusal', () => {
+  it.each([
+    ['BAD_REQUEST', 400],
+    ['PAYMENT_REQUIRED', 402],
+    ['FORBIDDEN', 403],
+    ['CONFLICT', 409],
+    ['BAD_GATEWAY', 502],
+    ['SERVICE_UNAVAILABLE', 503],
+  ])('passes through a %s message', (code, status) => {
+    expect(paymentRefusal(refused(code, status, 'Payments are not set up yet.'))).toBe(
+      'Payments are not set up yet.',
+    )
+  })
+
+  it('ignores a 500', () => {
+    expect(paymentRefusal(refused('INTERNAL_SERVER_ERROR', 500, 'boom'))).toBeNull()
+  })
+
+  it('ignores the generic text oRPC sends when there is no message', () => {
+    expect(paymentRefusal(refused('BAD_GATEWAY', 502))).toBeNull()
+    expect(paymentRefusal(refused('SERVICE_UNAVAILABLE', 503))).toBeNull()
+  })
+
+  it('ignores validation failures and non-API errors', () => {
+    expect(paymentRefusal(refused('BAD_REQUEST', 400, 'Input validation failed'))).toBeNull()
+    expect(paymentRefusal(new Error('Stripe.js did not load'))).toBeNull()
+    expect(paymentRefusal(null)).toBeNull()
+  })
+})
+
+describe('apiMessage', () => {
+  it('says the message of any 4xx by default', () => {
+    expect(apiMessage(refused('CONFLICT', 409, 'Leave your organizations first.'))).toBe(
+      'Leave your organizations first.',
+    )
+    expect(apiMessage(refused('INTERNAL_SERVER_ERROR', 500, 'db down'))).toBeNull()
+  })
+
+  it('takes the statuses it is given', () => {
+    expect(
+      apiMessage(refused('SERVICE_UNAVAILABLE', 503, 'Try later.'), (status) => status >= 400),
+    ).toBe('Try later.')
+  })
+
+  it('ignores the generic text oRPC sends when there is no message', () => {
+    expect(apiMessage(refused('NOT_FOUND', 404))).toBeNull()
   })
 })
 

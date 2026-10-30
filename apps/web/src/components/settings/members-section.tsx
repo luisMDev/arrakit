@@ -1,9 +1,13 @@
-import { isWorkEmail } from '@arrakit/address'
-import type { InvitationView } from '@arrakit/contract'
+import { isWorkEmail, normalizeEmail } from '@arrakit/address'
+import type { AssignableRole } from '@arrakit/auth/roles'
+import { type InvitationView, assignableRoleSchema } from '@arrakit/contract'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import type { TFunction } from 'i18next'
+import { useRef, useState } from 'react'
+import { Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { z } from 'zod'
 
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
 import { Button } from '#/components/ui/button'
@@ -18,19 +22,20 @@ import {
   SelectValue,
 } from '#/components/ui/select'
 import { Separator } from '#/components/ui/separator'
-import { reportError, toastError, toastInfo } from '#/lib/api-errors'
+import { apiFailed, apiMessage } from '#/lib/api-errors'
 import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
+import { registerClearing, useClearingForm } from '#/lib/form'
+import { notify } from '#/lib/notify'
 import { client, orpc } from '#/lib/orpc'
+import { useFailureToast } from '#/lib/use-failure-toast'
 import { cn } from '#/lib/utils'
 
-import { apiMessage } from './api-message'
 import type { SectionProps } from './settings-page'
 import { SettingsSectionLayout } from './settings-ui'
 
 const K = 'settings.membersSettings'
 
 type Member = { name: string; email: string; role: 'owner' | 'admin' | 'member' }
-type AssignableRole = 'admin' | 'member'
 
 const ROLE_LABEL = { owner: 'roleOwner', admin: 'roleAdmin', member: 'roleMember' } as const
 
@@ -46,6 +51,29 @@ export function daysSince(invitedOn: string, today = new Date()): number {
 
 const emailDomain = (email: string) => email.split('@').at(-1) ?? 'organization.com'
 
+function inviteForm(
+  t: TFunction,
+  placeholder: string,
+  members: readonly { email: string }[],
+  invites: readonly { email: string }[],
+) {
+  const listed = (list: readonly { email: string }[], lower: string) =>
+    list.some((entry) => normalizeEmail(entry.email) === lower)
+  return z.object({
+    email: z
+      .string()
+      .trim()
+      .superRefine((address, ctx) => {
+        const lower = normalizeEmail(address)
+        const fail = (message: string) => ctx.addIssue({ code: 'custom', message })
+        if (!isWorkEmail(address)) return fail(t(`${K}.enterWorkEmail`, { example: placeholder }))
+        if (listed(members, lower)) return fail(t(`${K}.alreadyInOrganization`, { email: lower }))
+        if (listed(invites, lower)) return fail(t(`${K}.alreadyInvited`, { email: lower }))
+      }),
+    role: assignableRoleSchema,
+  })
+}
+
 export function MembersSection({ open }: SectionProps) {
   const { t } = useTranslation()
   const me = useCurrentUser()
@@ -55,25 +83,22 @@ export function MembersSection({ open }: SectionProps) {
   const members = useQuery({ ...membersQuery, enabled: me.isAdmin })
   const invites = useQuery({ ...invitesQuery, enabled: me.isAdmin })
 
-  const [email, setEmail] = useState('')
-  const [role, setRole] = useState<AssignableRole>('member')
-  const [emailError, setEmailError] = useState<string | null>(null)
+  const myEmail = me.user?.email ?? ''
+  const placeholder = `name@${emailDomain(myEmail)}`
+  const memberList = members.data ?? []
+  const inviteList = invites.data ?? []
+  const form = useClearingForm({
+    resolver: zodResolver(inviteForm(t, placeholder, memberList, inviteList)),
+    defaultValues: { email: '', role: 'member' as const },
+  })
+  const emailError = form.formState.errors.email?.message
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
 
   const loadError = members.error ?? invites.error
-  useEffect(() => {
-    if (loadError) {
-      reportError('[members] loading members failed', loadError)
-      toastError(t(`${K}.notLoaded`))
-    }
-  }, [loadError, t])
+  useFailureToast(loadError, '[members] loading members failed', t(`${K}.notLoaded`))
 
   if (!me.isAdmin || !me.user) return <></>
-  const myEmail = me.user.email
-  const placeholder = `name@${emailDomain(myEmail)}`
-  const memberList = members.data ?? []
-  const inviteList = invites.data ?? []
 
   const setMembers = (fn: (list: Member[]) => Member[]) =>
     queryClient.setQueryData<Member[]>(membersQuery.queryKey, (list) => fn(list ?? []))
@@ -92,11 +117,8 @@ export function MembersSection({ open }: SectionProps) {
     }
   }
 
-  function failed(context: string, err: unknown, fallback: string) {
-    const message = apiMessage(err)
-    if (!message) reportError(`[members] ${context}`, err)
-    toastError(message ?? fallback)
-  }
+  const failed = (context: string, err: unknown, fallback: string) =>
+    apiFailed(`[members] ${context}`, err, fallback, apiMessage)
 
   const manages = (member: Member) =>
     me.isAdmin &&
@@ -104,23 +126,8 @@ export function MembersSection({ open }: SectionProps) {
     member.role !== 'owner' &&
     (member.role !== 'admin' || me.isOwner)
 
-  function invite(event: FormEvent) {
-    event.preventDefault()
-    const address = email.trim()
-    const lower = address.toLowerCase()
-    if (!address || !isWorkEmail(address)) {
-      setEmailError(t(`${K}.enterWorkEmail`, { example: placeholder }))
-      return
-    }
-    if (memberList.some((m) => m.email.toLowerCase() === lower)) {
-      setEmailError(t(`${K}.alreadyInOrganization`, { email: lower }))
-      return
-    }
-    if (inviteList.some((i) => i.email.toLowerCase() === lower)) {
-      setEmailError(t(`${K}.alreadyInvited`, { email: lower }))
-      return
-    }
-    void once(async () => {
+  const invite = ({ email: address, role }: z.output<ReturnType<typeof inviteForm>>) =>
+    once(async () => {
       try {
         const sent = await client.invitations.invite({ email: address, role })
         setInvites((list) =>
@@ -128,25 +135,23 @@ export function MembersSection({ open }: SectionProps) {
             ? list.map((i) => (i.id === sent.id ? sent : i))
             : [...list, sent],
         )
-        setEmail('')
-        setRole('member')
-        if (sent.emailSent) toastInfo(t(`${K}.inviteSent`, { email: sent.email }))
+        form.reset()
+        if (sent.emailSent) notify.success(t(`${K}.inviteSent`, { email: sent.email }))
         else
-          toast.error(t(`${K}.emailNotSent`), {
+          notify.warning(t(`${K}.emailNotSent`), {
             description: t(`${K}.inviteSavedNotSent`, { email: sent.email }),
           })
       } catch (err) {
         failed('inviting failed', err, t(`${K}.notInvited`, { email: address }))
       }
     })
-  }
 
   async function changeRole(member: Member, next: AssignableRole) {
     const name = displayName(member)
     try {
       const changed = await client.members.changeRole({ email: member.email, role: next })
       setMembers((list) => list.map((m) => (m.email === member.email ? changed : m)))
-      toastInfo(t(changed.role === 'admin' ? `${K}.nowAdmin` : `${K}.nowMember`, { name }))
+      notify.success(t(changed.role === 'admin' ? `${K}.nowAdmin` : `${K}.nowMember`, { name }))
     } catch (err) {
       failed('changing a role failed', err, t(`${K}.roleNotChanged`, { name }))
       setMembers((list) => [...list])
@@ -159,7 +164,7 @@ export function MembersSection({ open }: SectionProps) {
       try {
         await client.members.remove({ email: member.email })
         setMembers((list) => list.filter((m) => m.email !== member.email))
-        toastInfo(t(`${K}.removed`, { name, organization: me.user?.organization?.name ?? '' }))
+        notify.success(t(`${K}.removed`, { name, organization: me.user?.organization?.name ?? '' }))
       } catch (err) {
         failed('removing failed', err, t(`${K}.notRemoved`, { name }))
       }
@@ -170,7 +175,7 @@ export function MembersSection({ open }: SectionProps) {
       try {
         const sent = await client.invitations.resend({ id: invitation.id })
         setInvites((list) => list.map((i) => (i.id === sent.id ? sent : i)))
-        toastInfo(t(`${K}.inviteResent`, { email: sent.email }))
+        notify.success(t(`${K}.inviteResent`, { email: sent.email }))
       } catch (err) {
         failed('resending failed', err, t(`${K}.notResent`))
       }
@@ -181,7 +186,7 @@ export function MembersSection({ open }: SectionProps) {
       try {
         await client.invitations.cancel({ id: invitation.id })
         setInvites((list) => list.filter((i) => i.id !== invitation.id))
-        toastInfo(t(`${K}.inviteCancelled`, { email: invitation.email }))
+        notify.success(t(`${K}.inviteCancelled`, { email: invitation.email }))
       } catch (err) {
         failed('cancelling failed', err, t(`${K}.notCancelled`))
       }
@@ -219,7 +224,11 @@ export function MembersSection({ open }: SectionProps) {
     >
       <Card>
         <CardContent>
-          <form noValidate onSubmit={invite} className="flex flex-col gap-2">
+          <form
+            noValidate
+            onSubmit={(event) => void form.handleSubmit(invite)(event)}
+            className="flex flex-col gap-2"
+          >
             <Field data-invalid={emailError ? true : undefined}>
               <FieldLabel htmlFor="invite-email">{t(`${K}.inviteLabel`)}</FieldLabel>
               <div className="flex flex-wrap gap-2">
@@ -229,22 +238,24 @@ export function MembersSection({ open }: SectionProps) {
                   autoComplete="off"
                   placeholder={placeholder}
                   className="min-w-56 flex-1"
-                  value={email}
                   aria-invalid={emailError ? true : undefined}
-                  onChange={(event) => {
-                    setEmail(event.target.value)
-                    setEmailError(null)
-                  }}
+                  {...registerClearing(form, 'email')}
                 />
-                <Select value={role} onValueChange={(value) => setRole(value as AssignableRole)}>
-                  <SelectTrigger aria-label={t(`${K}.role`)} className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="member">{t(`${K}.roleMember`)}</SelectItem>
-                    <SelectItem value="admin">{t(`${K}.roleAdmin`)}</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Controller
+                  control={form.control}
+                  name="role"
+                  render={({ field }) => (
+                    <Select name={field.name} value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger ref={field.ref} aria-label={t(`${K}.role`)} className="w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="member">{t(`${K}.roleMember`)}</SelectItem>
+                        <SelectItem value="admin">{t(`${K}.roleAdmin`)}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
                 <Button type="submit" disabled={busy}>
                   {t(`${K}.invite`)}
                 </Button>

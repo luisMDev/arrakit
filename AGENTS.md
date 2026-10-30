@@ -56,7 +56,8 @@ apps/
     src/lib/orpc.ts               typed oRPC client + TanStack Query utils (`orpc.x.y.queryOptions()`)
     src/lib/auth-client.ts        Better Auth React client (`@arrakit/auth/client`)
     src/lib/guards/               route guards: require-user, require-account, skip-when-signed-in
-    src/lib/                      session(), statusOf()/reportError(), useCurrentUser(), titled(), checkoutChoice()
+    src/lib/                      session(), statusOf()/reportError()/apiMessage(), notify, useCurrentUser(), titled(), checkoutChoice(),
+                                  useClearingForm()/registerClearing() (form errors hide while a field is edited)
     src/i18n/                     i18next setup, `tr()`, `loadLanguage()`;
                                   locales/{en,es}/<module>.json deep-merged into one namespace
     src/start.ts                  createStart({ defaultSsr: false }): screens render in the browser
@@ -118,7 +119,7 @@ docs/ownership.md  Which files each feature module owns (parallel work without c
 - **Only `packages/db` imports** `drizzle-orm`, `drizzle-kit`, `pg`, `pg-boss`, `@electric-sql/pglite`
   and `@aws-sdk/*`. Everyone else (apps/api included) goes through `openData()` /
   `forOrganization(id)` from `@arrakit/db`. ESLint `no-restricted-imports` enforces it
-  (`@arrakit/eslint-config` → `restrictDataImports`); packages/db opts out with `base({ restrictData: false })`.
+  (`@arrakit/eslint-config` → `base()`); packages/db opts out with `base({ restrictData: false })`.
 - `packages/contract` is the only place where procedure inputs/outputs are declared. The API
   implements it with `implement(contract)`; the web consumes it through `#/lib/orpc`.
 - `packages/plans`, `packages/address`, `packages/emails` are pure (no I/O, no framework), usable from web and api.
@@ -135,7 +136,7 @@ dialog, alert-dialog, dropdown-menu, select, tabs, table, badge, avatar, sonner,
 skeleton, switch, radio-group, tooltip, sheet, sidebar, progress, alert, popover, command,
 checkbox, textarea, scroll-area, breadcrumb, collapsible, hover-card, toggle, toggle-group,
 pagination, input-otp, spinner, empty, item, button-group, kbd, navigation-menu). Forms use
-`react-hook-form` + `@hookform/resolvers/zod`. Theme: shadcn default (`src/styles.css`); do not restyle.
+`react-hook-form` + `@hookform/resolvers/zod` (`#/lib/form` for errors that clear while editing). Theme: shadcn default (`src/styles.css`); do not restyle.
 `<TooltipProvider>` and `<Toaster />` are mounted in `src/routes/__root.tsx`.
 
 If you ever need another component: `cd apps/web && pnpm dlx shadcn@latest add <name>`, then
@@ -203,6 +204,11 @@ Run from the repo root.
   own files; `en` and `es` must keep identical key sets and no key may be defined twice (tests).
 - **Contract first**: add the procedure to `packages/contract`, implement it in apps/api, consume
   it in apps/web via `orpc.<ns>.<proc>.queryOptions()` / `.mutationOptions()`.
+- **Toasts**: only through `notify.success/info/warning/error` from `#/lib/notify` (same text never
+  stacks; errors and warnings stay 6 s). Importing `sonner` anywhere else in the web is a lint error.
+  The API's own error text comes from `apiMessage()` / `refusalMessage()` / `paymentRefusal()` in `#/lib/api-errors`.
+  A failed call goes through `apiFailed()` (or `apiCall()`); a failed load through
+  `useFailureToast(error, context, failure)` from `#/lib/use-failure-toast`.
 - Errors from procedures use oRPC errors (`ORPCError`) with HTTP-meaningful codes (400/401/403/404/409/402).
 - **Logging (api)**: never `console.*`. Procedures log through `context.log`, Hono routes through
   `c.get('log')` (both carry the request id), the rest through `deps.log` or an injected `Logger`;
