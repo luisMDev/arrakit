@@ -1,4 +1,4 @@
-import { type TestData, openTestData } from '@arrakit/db/testing'
+import { type TestData, insertOrganization, openTestData } from '@arrakit/db/testing'
 import { WORKER_RETRY_POLICY } from '@arrakit/db'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
@@ -15,7 +15,7 @@ describe('storage purge worker', () => {
   beforeAll(async () => {
     data = await openTestData()
     await registerStoragePurge(data, log)
-    orgId = (await data.createOrganization('Purge Co')).id
+    orgId = (await insertOrganization(data, { slug: 'purge-co' })).id
   })
   beforeEach(() => void logs.splice(0))
   afterAll(() => data.close())

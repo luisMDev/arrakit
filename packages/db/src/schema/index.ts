@@ -18,4 +18,5 @@ export const TENANCY_EXCEPTIONS = [
   'oauth_access_tokens',
   'oauth_consents',
   'oauth_client_assertions',
+  'team_members',
 ] as const

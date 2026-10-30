@@ -1,4 +1,3 @@
-import type { OrganizationRole } from '@arrakit/address'
 import type { OrganizationRow } from '@arrakit/db'
 import { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
@@ -15,7 +14,7 @@ const MCP_INSTRUCTIONS =
 export interface ConnectorCaller {
   userId: string
   organization: OrganizationRow
-  role: OrganizationRole
+  role: string
   clientId: string
   scopes: string[]
 }
@@ -27,7 +26,7 @@ const WHOAMI_OUTPUT = z.object({
     slug: z.string(),
     plan: z.string(),
   }),
-  role: z.string().describe("The person's role in it: owner, admin or member"),
+  role: z.string().describe("The person's role in it: owner, admin, member or a custom role"),
 })
 
 export function createMcpServer(caller: Pick<ConnectorCaller, 'organization' | 'role'>): McpServer {

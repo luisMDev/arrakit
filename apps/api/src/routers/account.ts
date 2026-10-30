@@ -5,6 +5,7 @@ import { PLAN_OFFERS } from '@arrakit/plans'
 import { ORPCError } from '@orpc/server'
 
 import { authed } from '../orpc/base'
+import { grantedTo } from '../orpc/context'
 import { organizationSummary } from '../organizations/organization-summary'
 
 function accountView(account: Account | null): AccountView {
@@ -22,13 +23,14 @@ function accountView(account: Account | null): AccountView {
 
 export const meRouter = {
   get: authed.me.get.handler(async ({ context }) => {
+    const { data } = context.deps
     // The cached session cookie keeps the name and language it was issued with.
     const [fresh, membership] = await Promise.all([
       context.deps.auth.api.getSession({
         headers: context.headers,
         query: { disableCookieCache: true },
       }),
-      context.deps.data.memberOf(context.user.id),
+      data.activeMembership(context.user.id, context.session.id),
     ])
     if (!fresh) throw new ORPCError('UNAUTHORIZED')
     const { user } = fresh
@@ -39,6 +41,9 @@ export const meRouter = {
       language: isAccountLanguage(user.language) ? user.language : 'en',
       organization: organization && organizationSummary(organization),
       role: membership?.role ?? null,
+      permissions: membership
+        ? await grantedTo(membership.role, data.forOrganization(membership.organization.id))
+        : {},
       plan: organization?.plan ?? null,
       seats: organization ? PLAN_OFFERS[organization.plan].seats : null,
     }

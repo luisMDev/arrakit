@@ -3,6 +3,7 @@ import type { Mail } from '@arrakit/emails'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { createAuth } from './auth'
+import { testOrganizationDeps } from './test-deps'
 import { loadAuthConfig } from './config'
 
 const WEB = 'http://localhost:5200'
@@ -19,7 +20,7 @@ describe('createAuth on the real schema (PGlite)', () => {
       database: data.authDatabase,
       mailer: { send: async (mail) => void sent.push(mail) },
       invitationFor: async () => null,
-      organizationOf: (userId) => data.organizationOf(userId),
+      organizations: testOrganizationDeps(data),
       testing: true,
     })
   })
@@ -34,9 +35,9 @@ describe('createAuth on the real schema (PGlite)', () => {
     expect(session?.user.language).toBe('en')
   })
 
-  it('has no organization routes and closes the session-to-JWT route', async () => {
+  it('serves the organization routes and closes the session-to-JWT route', async () => {
     const list = await auth.handler(new Request(`${WEB}/api/auth/organization/list`))
-    expect(list.status).toBe(404)
+    expect(list.status).toBe(401)
     const token = await auth.handler(new Request(`${WEB}/api/auth/token`))
     expect(token.status).toBe(404)
   })

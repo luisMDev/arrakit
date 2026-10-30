@@ -4,6 +4,7 @@ import type { Mail } from '@arrakit/emails'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { createAuth } from './auth'
+import { testOrganizationDeps } from './test-deps'
 import { loadAuthConfig } from './config'
 import { microsoftVouches } from './social'
 
@@ -30,7 +31,7 @@ async function openAuth(env: Record<string, string>) {
     database: data.authDatabase,
     mailer: { send: async (mail) => void sent.push(mail) },
     invitationFor: async () => null,
-    organizationOf: (userId) => data.organizationOf(userId),
+    organizations: testOrganizationDeps(data),
   })
   return { auth, data, sent }
 }

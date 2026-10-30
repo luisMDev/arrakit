@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
 
-import type { OrganizationRole } from '@arrakit/address'
 import type { Plan } from '@arrakit/plans'
 
 import { type MemoryJobs, memoryJobs } from './jobs/memory'
@@ -48,7 +47,7 @@ export async function insertMember(
   data: Data,
   organizationId: string,
   userId: string,
-  role: OrganizationRole,
+  role: string,
 ): Promise<void> {
   await data.db.insert(members).values({ organizationId, userId, role })
 }

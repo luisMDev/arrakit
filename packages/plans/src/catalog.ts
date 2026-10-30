@@ -65,6 +65,11 @@ export function isPlan(value: unknown): value is Plan {
   return typeof value === 'string' && (PLANS as readonly string[]).includes(value)
 }
 
+export function seatLimitMessage(plan: Plan): string {
+  const seats = PLAN_OFFERS[plan].seats
+  return `Your organization's ${PLAN_LABELS[plan]} plan includes ${seats} ${seats === 1 ? 'seat' : 'seats'}, all taken. Upgrade to invite more people.`
+}
+
 export function soldOffers() {
   return SOLD_PLANS.map((plan) => {
     const offer = PLAN_OFFERS[plan]

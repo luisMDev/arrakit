@@ -1,4 +1,5 @@
-import { normalizeEmail, isAdminRole } from '@arrakit/address'
+import { normalizeEmail } from '@arrakit/address'
+import { allows, permissionsOf } from '@arrakit/auth/permissions'
 import {
   type Charge,
   type Mail,
@@ -58,8 +59,9 @@ export async function sendMails(
 export const daysUntil = (unixSeconds: number, nowMs: number): number =>
   daysUntilDate(new Date(unixSeconds * 1000), new Date(nowMs))
 
+/** The members whose static role manages billing (owners and admins). */
 export const adminsOf = (members: readonly { email: string; role: string }[]): string[] =>
-  members.filter((m) => isAdminRole(m.role)).map((m) => m.email)
+  members.filter((m) => allows(permissionsOf(m.role), { billing: ['manage'] })).map((m) => m.email)
 
 export const downgradeDue = (input: {
   previousPlan: Plan

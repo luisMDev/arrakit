@@ -368,7 +368,7 @@ the person's membership read fresh (`memberOf`), never from the session. Errors:
 no session, 404 no organization.
 
 #### `usage.get` (saas-base: `GET /api/usage`)
-- Auth: any member of the active organization (member, admin, owner).
+- Auth: `usage:read` in the active organization (member, admin, owner; custom roles only when given it).
 - Input: none.
 - Output:
 ```ts
@@ -392,7 +392,7 @@ no session, 404 no organization.
 - Expected for a fresh Free org (seen by a plain member): credits `{consumable, granted 100, plan 100, purchased 0, used 0, available 100, limit null}`, storage_gb `{capacity, granted 10, plan 10, purchased 0, used 0, available 10, limit 10}`, `topUps: []`. Signed out -> 401.
 
 #### `billing.topUp` (saas-base: `POST /api/billing/top-up`)
-- Auth: owner or admin of the org (member -> 403). Lives with billing settings (admins only).
+- Auth: `billing:manage` in the active organization (owner, admin; member -> 403). Lives with billing settings.
 - CSRF/origin: the app-wide `/api/rpc/*` middleware refuses an untrusted `Origin` with 403 "Use the app." (platform spec, section 4).
 - Input: `{ cents: z.number().int().min(1000).max(50000) }` (400 on 999, 50001, 1000.5, "2000").
 - Stripe not configured -> 503 "Payments are not set up yet."

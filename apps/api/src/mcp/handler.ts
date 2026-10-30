@@ -1,4 +1,3 @@
-import { isOrganizationRole } from '@arrakit/address'
 import type { OrganizationRow } from '@arrakit/db'
 import { type McpHttpHandler, createMcpHandler } from '@modelcontextprotocol/server'
 
@@ -13,7 +12,7 @@ export function mcpHandler(log: Logger): McpHttpHandler {
   return createMcpHandler(
     ({ authInfo }) => {
       const { organization, role } = authInfo?.extra ?? {}
-      if (typeof organization !== 'object' || organization === null || !isOrganizationRole(role)) {
+      if (typeof organization !== 'object' || organization === null || typeof role !== 'string') {
         throw new Error('[mcp] a request without a verified person')
       }
       return createMcpServer({ organization: organization as OrganizationRow, role })

@@ -5,7 +5,6 @@ import type { DataContext } from './context'
 import { accountData } from './data/account'
 import { invitationsData } from './data/invitations'
 import { membershipData } from './data/membership'
-import { onboardingData } from './data/onboarding'
 import { organizationsData } from './data/organizations'
 import { health } from './health'
 import { inProcessJobs } from './jobs/in-process'
@@ -31,7 +30,6 @@ function buildData(ctx: DataContext, close: () => Promise<void>, driver: 'postgr
   return {
     driver,
     ...membershipData(ctx),
-    ...onboardingData(ctx),
     ...organizationsData(ctx),
     ...invitationsData(ctx),
     ...accountData(ctx),

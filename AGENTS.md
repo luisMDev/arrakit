@@ -15,25 +15,25 @@ When a spec and this file disagree on layout or tooling, this file wins; on beha
 
 ## Stack
 
-| Area     | Choice                                                                                  |
-| -------- | --------------------------------------------------------------------------------------- |
-| Monorepo | pnpm workspaces + Turborepo (Node 24, pnpm 12)                                          |
-| Web app  | React 19 + TanStack Start (file-based routing, TanStack Router + TanStack Query), Nitro |
-| UI       | Tailwind CSS v4 + shadcn/ui (default theme, Radix primitives, lucide icons), sonner     |
-| i18n     | i18next + react-i18next, `en` (bundled, fallback) and `es` (lazy)                       |
-| API      | Hono on Node (`@hono/node-server`) + oRPC (contract-first, `@orpc/contract`) + Zod 4    |
-| DB       | Postgres + Drizzle ORM (drizzle-kit migrations); PGlite when `DATABASE_URL` is unset    |
-| Auth     | Better Auth (magic link, Google, Microsoft, OAuth provider + JWT, 5-min cookie cache)   |
-| Payments | Stripe (`stripe`, `@stripe/stripe-js`, `@stripe/react-stripe-js`), fake gateway in dev  |
-| Email    | Resend in production; Mailpit (local inbox) in dev and e2e; recording mailer in tests   |
-| Jobs     | pg-boss on Postgres; in-process runner with the same interface on PGlite                |
-| Logs     | Pino (JSON lines; pino-pretty in dev), request id per request; Sentry (`@sentry/node`)  |
-| Files    | S3-compatible storage (`@aws-sdk/client-s3`); local/in-memory fallback in dev/tests     |
-| MCP      | `@modelcontextprotocol/server` (v2, stateless Streamable HTTP) behind Better Auth OAuth |
-| Landing  | Astro (static) + Tailwind                                                               |
-| Tests    | Vitest, React Testing Library, Better Auth `testUtils` plugin, PGlite, Playwright       |
-| Lint/fmt | ESLint 10 flat config (typescript-eslint) + Prettier                                    |
-| Types    | TypeScript 6.0 (typescript-eslint does not support 7 yet; do not upgrade)               |
+| Area     | Choice                                                                                                                                 |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Monorepo | pnpm workspaces + Turborepo (Node 24, pnpm 12)                                                                                         |
+| Web app  | React 19 + TanStack Start (file-based routing, TanStack Router + TanStack Query), Nitro                                                |
+| UI       | Tailwind CSS v4 + shadcn/ui (default theme, Radix primitives, lucide icons), sonner                                                    |
+| i18n     | i18next + react-i18next, `en` (bundled, fallback) and `es` (lazy)                                                                      |
+| API      | Hono on Node (`@hono/node-server`) + oRPC (contract-first, `@orpc/contract`) + Zod 4                                                   |
+| DB       | Postgres + Drizzle ORM (drizzle-kit migrations); PGlite when `DATABASE_URL` is unset                                                   |
+| Auth     | Better Auth (magic link, Google, Microsoft, organization plugin with teams and custom roles, OAuth provider + JWT, 5-min cookie cache) |
+| Payments | Stripe (`stripe`, `@stripe/stripe-js`, `@stripe/react-stripe-js`), fake gateway in dev                                                 |
+| Email    | Resend in production; Mailpit (local inbox) in dev and e2e; recording mailer in tests                                                  |
+| Jobs     | pg-boss on Postgres; in-process runner with the same interface on PGlite                                                               |
+| Logs     | Pino (JSON lines; pino-pretty in dev), request id per request; Sentry (`@sentry/node`)                                                 |
+| Files    | S3-compatible storage (`@aws-sdk/client-s3`); local/in-memory fallback in dev/tests                                                    |
+| MCP      | `@modelcontextprotocol/server` (v2, stateless Streamable HTTP) behind Better Auth OAuth                                                |
+| Landing  | Astro (static) + Tailwind                                                                                                              |
+| Tests    | Vitest, React Testing Library, Better Auth `testUtils` plugin, PGlite, Playwright                                                      |
+| Lint/fmt | ESLint 10 flat config (typescript-eslint) + Prettier                                                                                   |
+| Types    | TypeScript 6.0 (typescript-eslint does not support 7 yet; do not upgrade)                                                              |
 
 ## Code comments
 
@@ -68,11 +68,15 @@ apps/
                                   refusing (403) any non-GET RPC call whose Origin is not trusted
     src/router.ts                 root oRPC router composing routers/<module>.ts
     src/routers/                  one oRPC router per module (implements its contract file)
-    src/orpc/base.ts              builders: pub, authed, member(level)
+    src/orpc/base.ts              builders: pub, authed, member(permissions?)
     src/orpc/context.ts           BaseContext {deps, headers, log}, procedureContext(); reportErrors
-                                  (maps DomainError to ORPCError, logs and reports unexpected errors);
-                                  requireSession, requireMember(level); MemberContext adds
-                                  {user, session, activeOrganization, role, scope}
+                                  (maps DomainError and Better Auth APIError to ORPCError, logs and
+                                  reports unexpected errors); requireSession, requireMember(permissions?)
+                                  (membership in the session's active organization, read fresh);
+                                  MemberContext adds {user, session, activeOrganization, role,
+                                  permissions, scope}
+    src/organizations/            organizationDeps() (what the Better Auth organization plugin's rules
+                                  need: seats, Stripe end, grants, purge) + its integration tests
     src/routes/                   plain Hono routes: health, auth (+ OAuth metadata), stripe-webhook,
                                   mcp (+ protected-resource metadata)
     src/services.ts               buildDeps()/depsFromEnv(): AppDeps (env, data, auth, mailer, stripe)
@@ -94,18 +98,20 @@ packages/
   db/           @arrakit/db       Drizzle + Postgres/PGlite. ./drizzle holds the migrations.
     src/schema/                   complete schema, one file per domain (auth, organizations, oauth, usage)
     src/open-data.ts              openData(config): connect, migrate, storage, jobs -> Data facade
-    src/data/<domain>.ts          non-scoped data functions (membership, onboarding, organizations,
+    src/data/<domain>.ts          non-scoped data functions (membership, organizations (grants),
                                   invitations, account)
     src/organization/             forOrganization(id): tenant-db guard + one scope file per domain
-                                  (organization, billing, members, usage, storage)
+                                  (organization, billing, members, roles, teams, usage, storage)
     src/jobs/, src/storage/       Jobs (pg-boss / in-process / memory), Storage (S3 / local / memory)
     src/testing.ts                `@arrakit/db/testing`: openTestData() (in-memory PGlite, migrated)
   auth/         @arrakit/auth     createAuth(deps) (Better Auth + plugins; one file per concern: hooks,
-                                  magic-link, social, oauth), loadAuthConfig(); `./client` (React
-                                  client). The DB adapter is injected.
+                                  magic-link, social, oauth, organization (+ organization-policy)),
+                                  loadAuthConfig(); `./client` (React client with organizationClient);
+                                  `./permissions` (pure access control shared with the web: statements,
+                                  ac, roles, permissionsOf, allows). The DB adapter is injected.
   contract/     @arrakit/contract oRPC contract, one file per module + common.ts; index.ts composes them
   plans/        @arrakit/plans    Pure plans catalog (catalog.ts) and usage arithmetic (usage.ts)
-  address/      @arrakit/address  Pure email/slug/org-name/time-zone/device-name/role rules, one file each
+  address/      @arrakit/address  Pure email/slug/org-name/time-zone/device-name/language rules, one file each
   emails/       @arrakit/emails   Mail/Mailer types, composeEmail layout, copy helpers, one file per
                                   template in templates/, APP_NAME brand
   tsconfig/     @arrakit/tsconfig Shared tsconfig presets: base.json, node.json, react.json
@@ -190,7 +196,7 @@ Run from the repo root.
   procedures (PGlite), component tests for screens (RTL), and the end-to-end flows in the specs
   (Playwright). Port the saas-base tests listed in each spec.
 - **Tenancy rule**: every table except the named exceptions (users, sessions, accounts,
-  verifications, organizations, OAuth/JWT tables; see `docs/spec/platform.md` 2.10) has
+  verifications, organizations, OAuth/JWT tables, team_members; see `docs/spec/platform.md` 2.10) has
   `organization_id uuid not null references organizations(id) on delete cascade`, and
   organization data is only reached through `forOrganization(orgId)`.
 - **i18n rule**: no hard-coded user-facing strings in the web app. Use `useTranslation()` /
@@ -259,7 +265,8 @@ Run from the repo root.
   mail), `t.logs` (parsed log entries), `t.errorLog()` (error entries from now on), `t.captured`
   (errors sent to the tracker), `t.context(headers)` (a procedure context for `call()`), `t.data`,
   `t.close()`. `t.client()` sends the app's Origin unless the headers carry one; `ownerOf()` /
-  `joinAs()` / `joined()` in `testing/people.ts` put people in organizations. Pass
+  `joinAs()` / `joined()` in `testing/people.ts` put people in organizations, and `orgApi(t, headers)`
+  calls the organization plugin over HTTP (`.post('invite-member', body)`, `.get('list-teams', query)`). Pass
   `{ stripe: fakeStripe() }` for billing (without it Stripe is unconfigured: 503). Note: when the
   Microsoft provider is configured, Better Auth's `validateUserInfo` makes `testUtils.saveUser()`
   require an endpoint context, so create such users through the API.
@@ -280,8 +287,8 @@ Run from the repo root.
 
 | Area                      | Spec                                                                     | Summary                                                                                                                                                                                                                                                                   |
 | ------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auth and onboarding       | [docs/spec/auth-onboarding.md](docs/spec/auth-onboarding.md)             | Better Auth config, magic link, Google, Microsoft, sessions and role middleware, `me.get`, profile onboarding (create org / skip), signup/signin screens, guards, Unavailable, MailSignin, proxy, i18n                                                                    |
-| Organizations and members | [docs/spec/organizations-members.md](docs/spec/organizations-members.md) | Create/rename/delete organization, roles and member change policy, members list, role change, removal, invitations (invite/list/resend/cancel), join page, Settings > Account, account deletion, settings shell, `forOrganization`                                        |
+| Auth and onboarding       | [docs/spec/auth-onboarding.md](docs/spec/auth-onboarding.md)             | Better Auth config, magic link, Google, Microsoft, sessions and permission middleware, `me.get`, profile onboarding (create org / skip), signup/signin screens, guards, Unavailable, MailSignin, proxy, i18n                                                              |
+| Organizations and members | [docs/spec/organizations-members.md](docs/spec/organizations-members.md) | Better Auth organization plugin: several organizations per person, active organization, rename/delete, roles, custom roles, teams, member change policy, invitations, join page, Settings > Account, account deletion, settings shell, `forOrganization`                  |
 | Billing and plans         | [docs/spec/billing-plans.md](docs/spec/billing-plans.md)                 | Plans catalog, Stripe gateway + fake, subscription events, Embedded Checkout, billing view, plan/cycle change with preview, cancel/resume, portal, webhook, billing emails, /pricing, /app/plans, /app/checkout, /app/welcome, Settings > Billing, price bootstrap script |
 | Usage and credits         | [docs/spec/usage-credits.md](docs/spec/usage-credits.md)                 | Metrics catalog, credit ledger, usage levels, `requiresUsage` middleware and 402, `usage.get`, top-ups via Checkout, refunds/disputes, Settings > Usage, Add credits dialog, credits product script                                                                       |
 | Platform                  | [docs/spec/platform.md](docs/spec/platform.md)                           | Full Drizzle schema, `openData` (Postgres/PGlite), tenancy guard, jobs, file storage + purge worker, `/health`, mailer + templates, OAuth 2.1 server, MCP `/api/mcp` with `whoami`, `/oauth/signin`, `/oauth/consent`, API boot                                           |

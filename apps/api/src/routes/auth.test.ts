@@ -1,10 +1,13 @@
+import { randomUUID } from 'node:crypto'
+
+import type { Permissions } from '@arrakit/auth/permissions'
 import { ORPCError, call, os } from '@orpc/server'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { BaseContext } from '../orpc/context'
 import { requireMember, requireSession } from '../orpc/context'
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp, sessionCookieOf } from '../testing/app'
-import { joinAs, ownerOf, sqlOf } from '../testing/people'
+import { joinAs, orgApi, ownerOf, sqlOf } from '../testing/people'
 
 const WEB = TEST_WEB_ORIGIN
 
@@ -41,10 +44,24 @@ describe('Better Auth routes on Hono', () => {
     expect(await res.json()).toBeNull()
   })
 
-  it('closes the organization routes and the token route', async () => {
-    for (const path of ['/api/auth/organization/list', '/api/auth/token']) {
-      expect((await t.app.request(path)).status).toBe(404)
-    }
+  it('serves the organization routes and closes the token route', async () => {
+    expect((await t.app.request('/api/auth/organization/list')).status).toBe(401)
+    expect((await t.app.request('/api/auth/token')).status).toBe(404)
+  })
+
+  it('refuses an organization change posted from another site', async () => {
+    const owner = await ownerOf(t, 'owner@csrf.vc', 'team')
+    const headers = new Headers(owner.headers)
+    headers.set('origin', 'https://evil.example')
+    const answer = await orgApi(t, headers).post('invite-member', {
+      email: 'ana@csrf.vc',
+      role: 'member',
+      organizationId: owner.organizationId,
+    })
+    expect(answer.status).toBe(403)
+    expect(
+      await sqlOf(t)('select id from invitations where email = $1', ['ana@csrf.vc']),
+    ).toMatchObject({ rows: [] })
   })
 
   it('serves the authorization server metadata', async () => {
@@ -100,18 +117,16 @@ describe('Better Auth routes on Hono', () => {
 
   describe('requireMember', () => {
     const base = os.$context<BaseContext>()
-    const procedure = (level: 'member' | 'admin' | 'owner') =>
+    const procedure = (wanted?: Permissions) =>
       base
         .use(requireSession)
-        .use(requireMember(level))
+        .use(requireMember(wanted))
         .handler(({ context }) => context.role)
 
-    const run = (level: 'member' | 'admin' | 'owner', headers?: Headers) =>
-      call(procedure(level), undefined, {
-        context: t.context(headers),
-      })
+    const run = (wanted: Permissions | undefined, headers?: Headers) =>
+      call(procedure(wanted), undefined, { context: t.context(headers) })
 
-    async function withRole(email: string, role: 'owner' | 'admin' | 'member') {
+    async function withRole(email: string, role: string) {
       const owner = await ownerOf(t, `owner-of-${email}`, 'free')
       return role === 'owner' ? owner : joinAs(t, owner.organizationId, email, role)
     }
@@ -126,57 +141,61 @@ describe('Better Auth routes on Hono', () => {
     }
 
     it('answers 401 without a session', async () => {
-      expect((await errorOf(run('member'))).status).toBe(401)
+      expect((await errorOf(run(undefined))).status).toBe(401)
     })
 
     it('answers 404 without an organization', async () => {
       const { headers } = await t.signIn({ email: 'orgless@acme.com' })
-      const err = await errorOf(run('member', headers))
+      const err = await errorOf(run(undefined, headers))
       expect(err.status).toBe(404)
       expect(err.message).toBe('Not found in your organization.')
     })
 
-    it.each([
-      ['owner', 'owner', 'owner'],
-      ['owner', 'admin', 'owner'],
-      ['admin', 'admin', 'admin'],
-      ['member', 'member', 'member'],
-    ] as const)('lets a %s through at %s level', async (role, level, _expected) => {
-      const { headers } = await withRole(`${role}-${level}@pass.vc`, role)
-      expect(await run(level, headers)).toBe(role)
+    it.each<[string, Permissions]>([
+      ['owner', { organization: ['delete'] }],
+      ['admin', { billing: ['manage'] }],
+      ['member', { usage: ['read'] }],
+    ])('lets a %s through when the role grants %j', async (role, wanted) => {
+      const { headers } = await withRole(`${role}@pass.vc`, role)
+      expect(await run(wanted, headers)).toBe(role)
     })
 
-    it('refuses an admin at owner level and a member at admin level', async () => {
+    it('refuses a role without the permission with 403', async () => {
       const admin = await withRole('admin@refuse.vc', 'admin')
-      const ownerErr = await errorOf(run('owner', admin.headers))
-      expect(ownerErr.status).toBe(403)
-      expect(ownerErr.message).toBe("Only the organization's owner can do this.")
-
+      const err = await errorOf(run({ organization: ['delete'] }, admin.headers))
+      expect(err.status).toBe(403)
+      expect(err.message).toBe("You don't have permission to do this.")
       const member = await withRole('member@refuse.vc', 'member')
-      const adminErr = await errorOf(run('admin', member.headers))
-      expect(adminErr.status).toBe(403)
-      expect(adminErr.message).toBe('Only an admin of the organization can do this.')
+      expect((await errorOf(run({ billing: ['read'] }, member.headers))).status).toBe(403)
+    })
+
+    it("reads a custom role's permissions from the organization", async () => {
+      const owner = await ownerOf(t, 'owner@custom.vc', 'free')
+      await sqlOf(t)(
+        `insert into organization_roles (id, organization_id, role, permission)
+         values ($1, $2, 'finance', '{"billing":["read"]}')`,
+        [randomUUID(), owner.organizationId],
+      )
+      const { headers } = await joinAs(t, owner.organizationId, 'fin@custom.vc', 'finance')
+      expect(await run({ billing: ['read'] }, headers)).toBe('finance')
+      expect((await errorOf(run({ billing: ['manage'] }, headers))).status).toBe(403)
     })
 
     it('reads the membership fresh: a removed member gets 404 on the next call', async () => {
       const { headers, userId } = await withRole('removed@fresh.vc', 'member')
-      expect(await run('member', headers)).toBe('member')
+      expect(await run(undefined, headers)).toBe('member')
       await sqlOf(t)('delete from members where user_id = $1', [userId])
-      expect((await errorOf(run('member', headers))).status).toBe(404)
+      expect((await errorOf(run(undefined, headers))).status).toBe(404)
     })
 
     it('lets a handler-level requirement override a router-level one', async () => {
       const admin = await withRole('admin@override.vc', 'admin')
       const ownerOnly = base
         .use(requireSession)
-        .use(requireMember('admin'))
-        .use(requireMember('owner'))
+        .use(requireMember({ billing: ['manage'] }))
+        .use(requireMember({ organization: ['delete'] }))
         .handler(() => 'ok')
-      const err = await errorOf(
-        call(ownerOnly, undefined, {
-          context: t.context(admin.headers),
-        }),
-      )
+      const err = await errorOf(call(ownerOnly, undefined, { context: t.context(admin.headers) }))
       expect(err.status).toBe(403)
     })
   })

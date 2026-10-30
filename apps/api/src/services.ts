@@ -6,6 +6,7 @@ import { type StripeGateway, createStripeGateway, guardedStripe } from './billin
 import type { AppDeps } from './deps'
 import { type ApiEnv, loadApiEnv } from './env'
 import { createMailer } from './mail/mailer'
+import { organizationDeps } from './organizations/organization-deps'
 import { type ErrorReporter, createErrorReporter } from './observability/error-reporter'
 import type { Logger } from './observability/logger'
 
@@ -21,13 +22,14 @@ interface DepsParts {
 }
 
 export function buildDeps(parts: DepsParts): AppDeps {
-  const { authConfig } = parts
+  const { authConfig, data, log } = parts
+  const stripe = guardedStripe(parts.stripe, log.child({ component: 'stripe' }))
   const auth = createAuth({
     config: authConfig,
-    database: parts.data.authDatabase,
+    database: data.authDatabase,
     mailer: parts.mailer,
-    invitationFor: (id, email) => parts.data.invitationFor(id, email),
-    organizationOf: (userId) => parts.data.organizationOf(userId),
+    invitationFor: (id, email) => data.invitationFor(id, email),
+    organizations: organizationDeps(data, stripe, log.child({ component: 'organizations' })),
     testing: parts.testing,
     logger: betterAuthLogger(parts.log),
   })
@@ -37,7 +39,7 @@ export function buildDeps(parts: DepsParts): AppDeps {
     auth,
     authConfig,
     mailer: parts.mailer,
-    stripe: guardedStripe(parts.stripe, parts.log.child({ component: 'stripe' })),
+    stripe,
     log: parts.log,
     errors: parts.errors,
   }

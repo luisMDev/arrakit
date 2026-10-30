@@ -2,8 +2,9 @@ import { members, organizations, users } from '@arrakit/db/schema'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { type TestApp, createTestApp } from '../testing/app'
+import { orgApi } from '../testing/people'
 
-describe('organizations.create / organizations.skip / me.get', () => {
+describe('onboarding.create / onboarding.skip / me.get', () => {
   let t: TestApp
 
   beforeAll(async () => {
@@ -31,6 +32,7 @@ describe('organizations.create / organizations.skip / me.get', () => {
       language: 'en',
       organization: null,
       role: null,
+      permissions: {},
       plan: null,
       seats: null,
     })
@@ -38,7 +40,7 @@ describe('organizations.create / organizations.skip / me.get', () => {
 
   it('creates the organization on Next and shows it in me.get', async () => {
     const client = await as('ana@seaya.capital')
-    const org = await client.organizations.create({
+    const org = await client.onboarding.create({
       name: 'Seaya Ventures',
       personName: 'Ana Ibarra',
       termsAccepted: true,
@@ -51,11 +53,14 @@ describe('organizations.create / organizations.skip / me.get', () => {
       plan: 'free',
       seats: 1,
     })
+    const { permissions } = await client.me.get()
+    expect(permissions.organization).toEqual(['update', 'delete'])
+    expect(permissions.billing).toEqual(['read', 'manage'])
   })
 
   it('stamps the terms, sets the person name and makes them owner', async () => {
     const client = await as('lucia@alder.vc')
-    const org = await client.organizations.create({
+    const org = await client.onboarding.create({
       name: 'Alder Ventures',
       personName: 'Lucía Gómez',
       termsAccepted: true,
@@ -74,7 +79,7 @@ describe('organizations.create / organizations.skip / me.get', () => {
     ['北京基金', 'dana@pine.vc', 'Pine', 'pine'],
   ])('falls back from %j to the domain of %s', async (name, email, orgName, slug) => {
     const client = await as(email)
-    expect(await client.organizations.create({ name, termsAccepted: true })).toMatchObject({
+    expect(await client.onboarding.create({ name, termsAccepted: true })).toMatchObject({
       name: orgName,
       slug,
     })
@@ -88,7 +93,7 @@ describe('organizations.create / organizations.skip / me.get', () => {
     'names a free-mail organization after the person (%s)',
     async (email, sessionName, personName, orgName, slug) => {
       const client = await as(email, sessionName)
-      const org = await client.organizations.create({
+      const org = await client.onboarding.create({
         name: '',
         ...(personName === undefined ? {} : { personName }),
         termsAccepted: true,
@@ -100,7 +105,7 @@ describe('organizations.create / organizations.skip / me.get', () => {
 
   it('names it after personName when the domain has no label', async () => {
     const client = await as('dana@co.uk')
-    const org = await client.organizations.create({
+    const org = await client.onboarding.create({
       name: '&.!',
       personName: 'Lucía Gómez',
       termsAccepted: true,
@@ -108,13 +113,12 @@ describe('organizations.create / organizations.skip / me.get', () => {
     expect(org.name).toBe('Lucía Gómez')
   })
 
-  it('answers 409 to a second create and keeps the first organization', async () => {
+  it('creates a second organization, makes it active and keeps the first', async () => {
     const client = await as('twice@birch.vc')
-    await client.organizations.create({ name: 'First', termsAccepted: true })
-    await expect(
-      client.organizations.create({ name: 'Second', termsAccepted: true }),
-    ).rejects.toMatchObject({ status: 409, message: 'You already have an organization.' })
-    expect((await client.me.get()).organization?.slug).toBe('first')
+    const first = await client.onboarding.create({ name: 'First', termsAccepted: true })
+    const second = await client.onboarding.create({ name: 'Second', termsAccepted: true })
+    expect((await client.me.get()).organization?.id).toBe(second.id)
+    expect((await memberRow(first.id))?.role).toBe('owner')
   })
 
   it.each([
@@ -124,14 +128,14 @@ describe('organizations.create / organizations.skip / me.get', () => {
   ])('refuses terms %s with 400 and creates nothing', async (_, termsAccepted) => {
     const client = await as(`terms-${String(termsAccepted)}@maple.vc`)
     await expect(
-      client.organizations.create({ name: 'Maple', termsAccepted } as never),
+      client.onboarding.create({ name: 'Maple', termsAccepted } as never),
     ).rejects.toMatchObject({ status: 400 })
     expect((await client.me.get()).organization).toBeNull()
   })
 
   it('ignores a client-sent termsAcceptedAt', async () => {
     const client = await as('stamp@spruce.vc')
-    const org = await client.organizations.create({
+    const org = await client.onboarding.create({
       name: 'Spruce',
       termsAccepted: true,
       termsAcceptedAt: '2000-01-01T00:00:00Z',
@@ -144,16 +148,16 @@ describe('organizations.create / organizations.skip / me.get', () => {
     const slugs = []
     for (const email of ['a@one.vc', 'b@two.vc', 'c@three.vc']) {
       const client = await as(email)
-      slugs.push((await client.organizations.create({ name: 'Alder', termsAccepted: true })).slug)
+      slugs.push((await client.onboarding.create({ name: 'Alder', termsAccepted: true })).slug)
     }
     expect(slugs).toEqual(['alder', 'alder-2', 'alder-3'])
   })
 
   it('answers 401 without a session', async () => {
     await expect(
-      t.client().organizations.create({ name: 'X', termsAccepted: true }),
+      t.client().onboarding.create({ name: 'X', termsAccepted: true }),
     ).rejects.toMatchObject({ status: 401 })
-    await expect(t.client().organizations.skip()).rejects.toMatchObject({ status: 401 })
+    await expect(t.client().onboarding.skip()).rejects.toMatchObject({ status: 401 })
     await expect(t.client().me.get()).rejects.toMatchObject({ status: 401 })
   })
 
@@ -171,7 +175,7 @@ describe('organizations.create / organizations.skip / me.get', () => {
     const fresh = await createTestApp()
     try {
       const { headers } = await fresh.signIn({ email, name })
-      const org = await fresh.client(headers).organizations.skip()
+      const org = await fresh.client(headers).onboarding.skip()
       expect(org.name).toBe(orgName)
       expect(org.slug.startsWith(slug)).toBe(true)
       expect(org.slug).not.toMatch(/gmail|hotmail|outlook/)
@@ -182,7 +186,7 @@ describe('organizations.create / organizations.skip / me.get', () => {
 
   it('skip ignores any body and records no terms', async () => {
     const { headers } = await t.signIn({ email: 'postmaster@hazel.vc' })
-    const res = await t.app.request('/api/rpc/organizations/skip', {
+    const res = await t.app.request('/api/rpc/onboarding/skip', {
       method: 'POST',
       headers: { ...Object.fromEntries(headers.entries()), 'content-type': 'application/json' },
       body: JSON.stringify({ json: { name: 'Postmaster', termsAccepted: true } }),
@@ -193,15 +197,21 @@ describe('organizations.create / organizations.skip / me.get', () => {
     expect((await memberRow(json.id))?.termsAcceptedAt).toBeNull()
   })
 
-  it('answers 409 to skip twice and to skip after Next', async () => {
-    const client = await as('skipper@larch.vc')
-    const first = await client.organizations.skip()
-    await expect(client.organizations.skip()).rejects.toMatchObject({ status: 409 })
-    expect((await client.me.get()).organization?.slug).toBe(first.slug)
+  it('skips into another organization after Next, with a free slug', async () => {
+    const client = await as('nexter@poplar.vc')
+    const first = await client.onboarding.create({ name: 'Poplar', termsAccepted: true })
+    const skipped = await client.onboarding.skip()
+    expect(skipped).toMatchObject({ name: 'Poplar', slug: 'poplar-2' })
+    expect((await client.me.get()).organization?.id).not.toBe(first.id)
+  })
 
-    const other = await as('nexter@poplar.vc')
-    await other.organizations.create({ name: 'Poplar', termsAccepted: true })
-    await expect(other.organizations.skip()).rejects.toMatchObject({ status: 409 })
+  it('ignores a slug the client sends to Better Auth', async () => {
+    const { headers } = await t.signIn({ email: 'slug@quince.vc' })
+    const created = await orgApi(t, headers).post<{ slug: string }>('create', {
+      name: 'Quince',
+      slug: 'chosen-by-client',
+    })
+    expect(created).toMatchObject({ status: 200, body: { slug: 'quince' } })
   })
 
   it('keeps organizations unique per slug across creates', async () => {

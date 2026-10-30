@@ -76,7 +76,7 @@ Better Auth's Drizzle adapter, with `provider: 'pg'`, **`usePlural: true`**, `tr
 | created_at, updated_at | timestamptz not null default now() | `updated_at` is set on update |
 
 ### `sessions`
-id text PK, expires_at timestamptz, token text unique, created_at, updated_at, ip_address text null, user_agent text null, user_id text FK→users **on delete cascade** (index `sessions_user_id_idx`). No organization column (migration `0001` dropped `active_organization_id`): the organization is read from `members` on every request.
+id text PK, expires_at timestamptz, token text unique, created_at, updated_at, ip_address text null, user_agent text null, user_id text FK→users **on delete cascade** (index `sessions_user_id_idx`). `active_organization_id` uuid null FK→organizations **on delete set null** and `active_team_id` text null FK→teams on delete set null (organization plugin). A new session starts in the person's earliest organization (`databaseHooks.session.create.before`); the API re-reads the membership on every request (§5).
 
 ### `accounts`
 id text PK, account_id text, provider_id text (`google` | `microsoft` | Better Auth's own `credential` is unused), user_id FK→users cascade (index), access_token, refresh_token, id_token, access_token_expires_at, refresh_token_expires_at, scope, password (unused), created_at, updated_at.
@@ -85,14 +85,14 @@ id text PK, account_id text, provider_id text (`google` | `microsoft` | Better A
 ### `verifications`
 id text PK, identifier text (indexed), value text, expires_at, created_at, updated_at. Magic link tokens live here **hashed** (`storeToken: 'hashed'`). A consumed link leaves no row behind.
 
-### `organizations` (app table; Better Auth has no organization plugin)
-id uuid PK default random, name text not null, slug text not null **unique**, logo, metadata, plan text not null default `'free'` CHECK in (free, pro, team, internal), stripe_customer_id unique, stripe_subscription_id, usage_anchor timestamptz, created_at.
+### `organizations` (Better Auth organization plugin)
+id uuid PK default random, name text not null, slug text not null **unique**, logo, metadata, plan text not null default `'free'` CHECK in (free, pro, team, internal), stripe_customer_id unique, stripe_subscription_id, usage_anchor timestamptz, created_at. Only `plan` is declared to Better Auth (`input: false`); the Stripe and usage columns stay invisible to it.
 
 ### `members`
-id text PK (default randomUUID), organization_id uuid FK cascade, user_id text FK cascade, role text default `'member'` (`owner` | `admin` | `member`), **terms_accepted_at timestamptz null** (set to `now()` by Postgres when the creator ticked the Terms, never taken from the client), created_at. UNIQUE (organization_id, user_id), index on user_id.
+id text PK (default randomUUID), organization_id uuid FK cascade, user_id text FK cascade, role text default `'member'` (`owner` | `admin` | `member`), role string (`owner` | `admin` | `member` | custom roles, several joined by `,`), **terms_accepted_at timestamptz null** (declared `input: false`; set to `now()` by Postgres by `onboarding.create`, never taken from the client), created_at. UNIQUE (organization_id, user_id), index on user_id.
 
 ### `invitations`
-(owned by the members spec. Auth reads it for the MailMember choice.) id, organization_id, email, role, status default 'pending', email_sent bool default false, expires_at, created_at, inviter_id FK users.
+(owned by the members spec. Auth reads it for the MailMember choice.) id, organization_id, email, role, team_id, status default 'pending', email_sent bool default false, expires_at, created_at, inviter_id FK users. Teams, team members and custom roles: organizations spec §2.7.
 
 ### OAuth / JWT tables
 (owned by the MCP spec but registered in the same adapter): `jwks`, `oauth_clients`, `oauth_resources`, `oauth_client_resources`, `oauth_refresh_tokens`, `oauth_access_tokens`, `oauth_consents`, `oauth_client_assertions`. Use the Better Auth CLI (`@better-auth/cli generate`) to get the exact columns for `jwt()` and `@better-auth/oauth-provider` for the installed version. Better Auth refuses **every** request if a table declared by a plugin is missing from the adapter schema, or if a required column has no default.
@@ -100,17 +100,10 @@ id text PK (default randomUUID), organization_id uuid FK cascade, user_id text F
 Generate the schema with the Better Auth CLI, then adjust names to plural snake_case, and keep it in the db package. Migrations use drizzle-kit and work on both Postgres and PGlite.
 
 ### Data functions (db package)
-- `memberOf(userId) → { organization, role } | null`: the **earliest joined** membership (`ORDER BY members.created_at ASC LIMIT 1`), read fresh from the DB on every call (never cached in the session).
-- `organizationOf(userId) → Organization | null` = `memberOf(...)?.organization`.
-- `createOrganization(name, admin?: { userId, personName?, termsAccepted })`. In one transaction:
-  1. `candidates = slugCandidates(name)`. If empty, throw `OrganizationNameUnusableError`.
-  2. If an admin is given: `SELECT ... FROM users WHERE id=$1 FOR UPDATE` (throw if missing). If any `members` row exists for the user, throw `PersonHasOrganizationError`. The row lock makes a double submit serialize: the second one sees the first membership and throws.
-  3. For each candidate: `INSERT INTO organizations(name trimmed, slug) ON CONFLICT (slug) DO NOTHING RETURNING *`. The first row returned wins. If all 50 candidates are taken, throw.
-  4. Insert a `members` row with role `'owner'`, `terms_accepted_at = termsAccepted ? now() : null`.
-  5. If `personName?.trim()` is non-empty, `UPDATE users SET name = personName.trim()`.
-- PGlite note: `FOR UPDATE` and `ON CONFLICT` work on PGlite. Concurrency tests that need two connections can only run on real Postgres, so mark them as skipped when `DATABASE_URL` is unset, or simulate them.
-
----
+- `memberOf(userId) → { organization, role } | null`: the **earliest joined** membership.
+- `membershipIn(userId, organizationId)`: that membership or null.
+- `activeMembership(userId, sessionId)`: the membership in the session's active organization read from the database, else `memberOf`. Read on every oRPC call (never trusted from the cookie cache).
+- Organizations are created by Better Auth (`auth.api.createOrganization`), see §6.2.
 
 ## 4. Shared package: address rules (`packages/address` or similar, pure TS, runs in web and api)
 
@@ -153,7 +146,7 @@ Organization naming:
 
 ## 5. Better Auth server configuration (apps/api)
 
-`createAuth({ db, mailer, config, invitationFor, organizationOf })` returns `betterAuth({...})`:
+`createAuth({ database, mailer, config, invitationFor, organizations })` returns `betterAuth({...})` (`organizations: OrganizationDeps`, organizations spec §4):
 
 - `appName: APP_NAME`, `baseURL: config.baseURL`, `basePath: '/api/auth'`, `secret`, `trustedOrigins: config.trustedOrigins`, `database: drizzleAdapter(...)`.
 - `emailAndPassword: { enabled: false }`. No passwords exist anywhere.
@@ -171,28 +164,31 @@ Organization naming:
 - `hooks.before` (`createAuthMiddleware`):
   1. `ctx.path === '/sign-in/social' || '/sign-in/magic-link'` → `isTrustedOrigin`: the `Origin` header must **exactly equal** one of `trustedOrigins`, otherwise `APIError('FORBIDDEN', { message: 'Sign in from the app.' })` (403). The check runs before Google or Microsoft are contacted and before any email goes out. This includes requests with no Origin, `'null'`, a lookalike host (`http://localhost:5200.evil.example`), another scheme or another port.
   2. `ctx.path === '/sign-in/magic-link'`: replace the body's email with `normalizeEmail(email)`. If `!isWorkEmail`, throw `APIError('BAD_REQUEST', { message: 'Enter a work email, like name@company.com.' })` (400). No email is sent.
+  3. Organization paths (`/organization/create`, `/organization/invite-member`, `/organization/update-member-role`, `/organization/remove-member`): naming and slug, invite address, member change policy (organizations spec §4.2–4.3).
+- `hooks.after`: `/organization/leave` revokes the leaver's grants; `/organization/invite-member` answers 503 when the invite email failed.
+- `databaseHooks.session.create.before`: `activeOrganizationId` = the earliest organization joined (or null).
 - Plugins:
   - `magicLink({ expiresIn: 15*60, storeToken: 'hashed', sendMagicLink })` (see §7 for the email choice).
   - `jwt({ disableSettingJwtHeader: true, jwt: { issuer: oauthIssuer(baseURL) } })`.
-  - `oauthProvider({...})` from `@better-auth/oauth-provider` (configuration details in the MCP spec): `loginPage: ${webOrigin}/oauth/signin`, `consentPage: ${webOrigin}/oauth/consent`, dynamic and unauthenticated client registration, `grantTypes: ['authorization_code','refresh_token']` (no `client_credentials`), `resources` and `clientRegistrationDefaultResources: [mcpResourceURL]`. `postLogin`: `{ page: consentPage, shouldRedirect: user has no org, consentReferenceId: org.id or throw FORBIDDEN access_denied "You are not in an organization here." }`, `customAccessTokenClaims: ({referenceId}) => referenceId ? { organization_id: referenceId } : {}`.
+  - `organization({...})` (`packages/auth/src/organization.ts`): `ac`/`roles` from `@arrakit/auth/permissions`, `creatorRole: 'owner'`, `membershipLimit` = plan seats, invitations expire after 7 days, `cancelPendingInvitationsOnReInvite`, `requireEmailVerificationOnInvitation`, teams (no default team), dynamic access control (20 roles), `sendInvitationEmail`, `organizationHooks` (organizations spec §4.2). The web client adds `organizationClient` with the same `ac`, `roles` and schema (`@arrakit/auth/client`).
+  - `oauthProvider({...})` from `@better-auth/oauth-provider` (configuration details in the MCP spec): `loginPage: ${webOrigin}/oauth/signin`, `consentPage: ${webOrigin}/oauth/consent`, dynamic and unauthenticated client registration, `grantTypes: ['authorization_code','refresh_token']` (no `client_credentials`), `resources` and `clientRegistrationDefaultResources: [mcpResourceURL]`. `postLogin`: `{ page: consentPage, shouldRedirect: no usable org, consentReferenceId: the session's active organization while the person is in it, else their earliest one, or throw FORBIDDEN access_denied "You are not in an organization here." }`, `customAccessTokenClaims: ({referenceId}) => referenceId ? { organization_id: referenceId } : {}`.
 
 Hono mount: `app.on(['GET','POST'], '/api/auth/*', c => auth.handler(c.req.raw))` plus `/.well-known/oauth-authorization-server/*` → `auth.handler` (oauth-provider serves the RFC 8414 metadata there). CORS is not needed because everything is same-origin through the proxy.
 
 Trusted origin helper `isTrustedOrigin(origin, trusted) = typeof origin === 'string' && trusted.includes(origin)`, exported from `@arrakit/auth`. Besides the sign-in hook, the API's `/api/rpc/*` CSRF middleware uses it: any write from an untrusted Origin → 403 `Use the app.` (platform spec, section 4). Procedures do no Origin checks of their own.
 
-There is no Better Auth organization plugin: `/api/auth/organization/*` does not exist (404). Organizations, members and invitations go through our own oRPC procedures.
+Organizations, members, invitations, teams and custom roles are the organization plugin's endpoints under `/api/auth/organization/*` (organizations spec §5.8). Only Profile's create/skip go through oRPC (they call `auth.api.createOrganization`).
 
 ### Session middleware for oRPC
 
 - `getSession(headers)` = `auth.api.getSession({ headers })`. It returns `null` for no cookie, a forged token, an unsigned token, a token signed with another secret, the cookie under another name (`better-auth.session_token=…`), an expired session, or a session whose user row was deleted (sessions cascade).
 - oRPC middleware `requireSession` → `ORPCError('UNAUTHORIZED')` (401). It puts `{ user, session }` in the context.
-- oRPC middleware `requireMember(level: 'member'|'admin'|'owner')`, which runs after `requireSession`:
-  - `memberOf(user.id)` is read **fresh on every call**. A member removed between two requests gets 404 on the next request, even though the cookie is still valid.
+- oRPC middleware `requireMember(wanted?: Permissions)` (builder `member(wanted?)`), which runs after `requireSession`:
+  - `activeMembership(user.id, session.id)` is read **fresh on every call**. A member removed between two requests gets 404 on the next request, even though the cookie is still valid.
   - No membership → `NOT_FOUND` with message `'Not found in your organization.'` (404).
-  - `owner` level and role ≠ owner → `FORBIDDEN` with `"Only the organization's owner can do this."` (403).
-  - `admin` level and role ∉ {owner, admin} → `FORBIDDEN` with `'Only an admin of the organization can do this.'`.
-  - On success, put the membership in the context.
-  - A handler-level requirement overrides a router-level one (an owner-only handler inside an admin router refuses an admin).
+  - The role's permissions (static roles, plus the organization's custom roles when the role is not static) lacking `wanted` → `FORBIDDEN` `"You don't have permission to do this."` (403).
+  - On success, put `{ activeOrganization, role, permissions, scope }` in the context.
+  - A handler-level requirement adds to a router-level one.
 
 ---
 
@@ -211,7 +207,7 @@ There is no Better Auth organization plugin: `/api/auth/organization/*` does not
 | `POST /api/auth/revoke-other-sessions` | Settings → "Sign out everywhere" | `{}` + Origin | 200. Ends every session of this user **except this one**. Other users stay signed in. Afterwards the account's device list has length 1. | 401 without a session. |
 | `POST /api/auth/update-user` | (not used by the web) | | Must NOT change `language` (`input:false`). | |
 | `GET /api/auth/token` | — | | **404** (disabled). | |
-| `/api/auth/organization/*` | — | | **404** (no organization plugin). | |
+| `/api/auth/organization/*` | Settings, org switcher, join page | | The organization plugin (organizations spec §5.8). | |
 | `/api/auth/oauth2/*`, `/api/auth/jwks`, `/.well-known/oauth-authorization-server/api/auth` | MCP spec | | | |
 
 ### 6.2 oRPC procedures (contract-first with `@orpc/contract`, mounted at `/api/rpc`)
@@ -232,36 +228,37 @@ Names are suggestions. Keep them consistent with the contract package. Map error
     name: string;               // '' after a magic link until Profile/Settings
     language: 'en' | 'es';
     organization: { id: uuid; name: string; slug: string; plan: 'free'|'pro'|'team'|'internal' } | null;
-    role: 'owner'|'admin'|'member' | null;   // null with no org
+    role: string | null;                      // Better Auth role string; null with no org
+    permissions: Record<string, readonly string[]>; // what the role grants; {} with no org
     plan: Plan | null;                        // null with no org
     seats: number | null;                     // PLAN_OFFERS[plan].seats (free = 1); null with no org
   }
   ```
-- Reads the session with `disableCookieCache: true` (fresh name and language) and the membership with `memberOf`.
+- Reads the session with `disableCookieCache: true` (fresh name and language) and the membership with `activeMembership` (the active organization).
 - Errors: 401 without a session.
-- Tests: right after sign-in → `{ email, name:'', language:'en', organization:null, role:null, plan:null, seats:null }`. After Profile Next with `{name:'Seaya Ventures', personName:'Ana Ibarra', termsAccepted:true}` → name `'Ana Ibarra'`, organization `{ name:'Seaya Ventures', slug:'seaya-ventures', plan:'free' }`, role `'owner'`, plan `'free'`, seats `1`.
+- Tests: right after sign-in → `{ email, name:'', language:'en', organization:null, role:null, permissions:{}, plan:null, seats:null }`. After Profile Next with `{name:'Seaya Ventures', personName:'Ana Ibarra', termsAccepted:true}` → name `'Ana Ibarra'`, organization `{ name:'Seaya Ventures', slug:'seaya-ventures', plan:'free' }`, role `'owner'`, plan `'free'`, seats `1`.
 
-**`organizations.create`** (Profile → Next; session required, no org required)
+**`onboarding.create`** (Profile → Next; session required, no org required)
 - Input (Zod; unknown keys are stripped, e.g. a client-sent `termsAcceptedAt` is ignored):
   - `name: z.string().trim().max(200)`. This is the Organization field. It can be blank.
   - `personName: z.string().trim().max(200).optional()`. Blank keeps the existing name.
   - `termsAccepted: z.literal(true, { error: 'Accept the Terms and the Privacy Policy.' })`. Anything else, including `false`, missing or `"true"` (a string), → 400 and nothing is created.
-- Logic: `personNameForNaming = input.personName || session.user.name`. `orgName = organizationNameOr(input.name, session.user.email, personNameForNaming)`. `createOrganization(orgName, { userId, personName: input.personName, termsAccepted: true })`.
+- Logic: a non-blank `personName` updates the user's name. `orgName = organizationNameOr(input.name, session.user.email, personName || session.user.name)`. `auth.api.createOrganization({ headers, body: { name: orgName, slug } })` (the auth hook picks the first free slug and the plugin makes the creator owner and the organization active), then `terms_accepted_at = now()` on the creator's member row.
 - Output: `{ id, name, slug, plan }`.
-- Errors: 401 without a session. 409 `'You already have an organization.'` (`PersonHasOrganizationError`). 400 `'Give the organization a name with letters or digits.'` (`OrganizationNameUnusableError`; unreachable in practice because naming always falls back). 400 for a validation failure.
+- Errors: 401 without a session. 400 for a validation failure. There is no organization limit: someone already in organizations gets another one, made active.
 - Behaviour tests:
   - `{name:'Alder Ventures', personName:'Lucía Gómez', termsAccepted:true}` → `{name:'Alder Ventures', slug:'alder-ventures', plan:'free'}`. The member row has role owner, `terms_accepted_at` is non-null, and the user name is set to `Lucía Gómez`.
   - A name that is not addressable falls back to the email domain: `''`+`dana@elm.vc`→`Elm`/`elm`. `'   '`+`dana@oak-partners.com`→`Oak Partners`/`oak-partners`. `'&.!'`+`dana@mail.yew.co.uk`→`Yew`/`yew`. `'北京基金'`+`dana@pine.vc`→`Pine`/`pine`.
   - Free mail falls back to the person: `ana.perez@gmail.com`, session name none, personName `'Ana Pérez'` → `Ana Pérez`/`ana-perez`. `x@outlook.com`, session name `'Marta Ruiz'`, personName `''` → `Marta Ruiz`. `bruno.diaz@hotmail.com`, no names → `Bruno Diaz`.
   - `dana@co.uk` with name `'&.!'` and personName `'Lucía Gómez'` → `Lucía Gómez`.
-  - A second create by the same user → 409, and the first organization stays (`me.organization.slug` unchanged).
-  - Same-named organizations get `alder`, `alder-2`, `alder-3`. Concurrent creates with the same name get different slugs. Concurrent double submit by one user creates exactly one org.
+  - A second create by the same user makes a second organization and makes it active; the first stays.
+  - Same-named organizations get `alder`, `alder-2`, `alder-3`. A slug sent straight to `/api/auth/organization/create` is ignored.
 
-**`organizations.skip`** (Profile → Skip; session required)
+**`onboarding.skip`** (Profile → Skip; session required)
 - Input: none. **Any body is ignored.** The name comes only from the session (a client sending `{name:'Postmaster', termsAccepted:true}` still gets the domain name, and terms are not recorded).
-- Logic: `createOrganization(organizationNameOnSkip(session.user.email, session.user.name), { userId, termsAccepted: false })`. `terms_accepted_at` stays NULL.
-- Output/errors: as for create (401, 409).
-- Tests: `lucia@alder.vc`→`Alder`/`alder`. `x@mail.cedar.co.uk`→`Cedar`. `x@birch-ventures.com`→`Birch Ventures`. `x@team.rowan.com.au`→`Rowan`. `x@info.co.uk`→`Info`. `ana.perez@gmail.com`→`Ana Perez`/`ana-perez` (never a slug containing gmail/hotmail). `x@outlook.com` with session name `Marta Ruiz`→`Marta Ruiz`. `_@gmail.com`→`My Organization`/`my-organization` (never a 400). `sara@oak.vc` with name `Sara Gil`→`Oak` (the domain wins). `x@co.uk` with name `Ana Pérez`→`Ana Pérez`, slug starting `ana`. Skip twice → 201 then 409, and the slug stays. Skip after Next → 409.
+- Logic: creates `organizationNameOnSkip(session.user.email, session.user.name)` like create. `terms_accepted_at` stays NULL.
+- Output/errors: as for create (401).
+- Tests: `lucia@alder.vc`→`Alder`/`alder`. `x@mail.cedar.co.uk`→`Cedar`. `x@birch-ventures.com`→`Birch Ventures`. `x@team.rowan.com.au`→`Rowan`. `x@info.co.uk`→`Info`. `ana.perez@gmail.com`→`Ana Perez`/`ana-perez` (never a slug containing gmail/hotmail). `x@outlook.com` with session name `Marta Ruiz`→`Marta Ruiz`. `_@gmail.com`→`My Organization`/`my-organization` (never a 400). `sara@oak.vc` with name `Sara Gil`→`Oak` (the domain wins). `x@co.uk` with name `Ana Pérez`→`Ana Pérez`, slug starting `ana`. Skip after Next makes another organization (`poplar-2`).
 
 The rename/delete organization procedures and `me.account`/`me.updateAccount`/`me.delete` belong to the organization/settings spec.
 
@@ -395,8 +392,8 @@ Purpose: "Tell us about your organization." This is the first screen after a fir
   - Buttons: primary **Next** (`profile.next`), disabled while the Terms box is unticked or while a request is pending. Ghost **Skip** (`profile.skip`), always enabled except while pending.
   - The page shows nothing else (no radio groups, no extra questions).
 - Actions:
-  - **Next**: `organizations.create({ name: organization.trim(), personName: name.trim(), termsAccepted: true })`. A blank name is fine (`name:''` is sent).
-  - **Skip**: `organizations.skip()`, with nothing asked.
+  - **Next**: `onboarding.create({ name: organization.trim(), personName: name.trim(), termsAccepted: true })`. A blank name is fine (`name:''` is sent).
+  - **Skip**: `onboarding.skip()`, with nothing asked.
   - After either succeeds: if `checkoutChoice(search)` → navigate `/app/checkout?plan&cycle`, else `/app`.
   - On failure: re-read `me.get`. If the user now **has** an org (a 409, or a create whose answer was lost), continue as on success. Otherwise the mutation fails and its `meta.failure` toasts the API's message, or `profile.organizationNotSaved` for Next ("Couldn't save your organization. Check its name and try again.") / `profile.notSkipped` for Skip ("Couldn't skip this step. Try again."); the buttons re-enable so the user can retry.
   - Pending lock: one request at a time. Next and Skip are both disabled while pending, and extra clicks are ignored.
@@ -479,8 +476,8 @@ Copy the full en/es strings from the saas-base JSON files, replacing "SaaS" with
 11. Sessions are refused when: there is no cookie, the token is forged or unsigned, it is signed with another secret, the cookie has a different name (prefix), the session has expired (+8 days), or the user was deleted.
 12. Revoke other sessions keeps the current session and ends the user's other sessions only.
 13. Membership and role are read fresh on every request (removal takes effect immediately).
-14. A user has at most **one** organization they create (409 on the second). Skip never reads the client body. The Terms timestamp is set by the DB and only when accepted through Next.
-15. `/api/auth/organization/*` is 404 (no organization plugin). `/api/auth/token` is 404.
+14. A user may create several organizations; each new one becomes active. Skip never reads the client body. The Terms timestamp is set by the DB and only when accepted through Next.
+15. `/api/auth/organization/*` is the organization plugin. `/api/auth/token` is 404.
 16. Google access tokens are stored encrypted.
 17. `language` cannot be changed through `/api/auth/update-user`.
 18. The web distinguishes "signed out" (`me.get` answers 401) from "API down" (any other failure → Unavailable). It never signs a user out because the API failed.
@@ -497,12 +494,12 @@ API integration (port all of these):
 - `google-signin.spec`: the consent URL and redirect_uri. Origin refusals (6 cases). Callback refusals (4 URLs × 2 fields). Success lands on `/profile`. The name and email come from Google, and `signInWith:'google'`. A denial goes to `/signup?via=google&error=access_denied`. Linking to an existing magic-link user. The encrypted token.
 - `microsoft-signin.spec`: the authorize URL uses `common`. Origin refusals. Three unvouched-claim cases create nothing. Four vouched-claim cases succeed. Account linking only when vouched. `verified_primary_email` alone → `account_not_linked`. Without an Azure app → 404, while Google and the link still work.
 - `session.guard.spec` → oRPC `requireSession` middleware (six refusal cases).
-- `organization-role.guard.spec` → `requireMember` middleware (owner/admin/member/no-org/no-session, removal between requests, handler overrides router).
+- `organization-role.guard.spec` → `requireMember` middleware (permissions of owner/admin/member and a custom role, no-org/no-session, removal between requests, handler adds to router).
 - `sessions.spec`: revoke-other-sessions.
 - `auth-providers.spec`: two cases.
 - `organizations create/skip spec` and `me.get spec`: every case in §6.2.
 - `auth-database.int.spec` (with PGlite): the user and session are persisted with email_verified. A consumed link leaves no verification row. Of two parallel clicks one wins. Deleting the user kills the session. Claude's dynamic client registration is stored (MCP). JWKS.
-- `create-organization.int.spec`: the slug equals the name. Numbered slugs. Concurrent same-name creates. Owner with terms stamped. Skip with no terms. A second org is refused and nothing is created. A double submit creates one org. An unaddressable name (`北京基金`, `&.!`) is refused by the data function. personName is applied or kept. `organizationOf` / `memberOf` return null for a user without an org. A bare org without an admin. Lookup by slug.
+- `create-organization.int.spec` (now `apps/api/src/routers/onboarding.test.ts` through Better Auth): the slug equals the name. Numbered slugs. Owner with terms stamped. Skip with no terms. A second org is made and becomes active. A client slug is ignored. personName is applied or kept. `memberOf` returns null for a user without an org (`packages/db/src/data/membership.test.ts`).
 - `mail-signin.spec`: four cases.
 - Address package specs: `email.spec`, `slug.spec`, `naming.spec` (every example in §4).
 

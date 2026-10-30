@@ -63,13 +63,14 @@ tables are `text` (better-auth generates them). Organization ids are `uuid`
 `advanced.database.generateId: () => randomUUID()`. Drizzle property names are
 better-auth field names (camelCase); columns are snake_case. better-auth
 Drizzle adapter is configured with `usePlural: true` and the schema map shown
-in section 2.11. Organizations, members and invitations are app tables: the
-better-auth organization plugin is not used.
+in section 2.11. Organizations, members, invitations, teams, team members and
+custom roles belong to the better-auth organization plugin (organizations spec).
 
 Migrations: generated with `drizzle-kit generate` from `schema/index.ts` into
 `packages/db/drizzle`. A committed migration is never edited. `0000_init`
-creates everything; `0001` drops `sessions.active_organization_id` (left over
-from the organization plugin).
+creates everything; `0001` dropped `sessions.active_organization_id`; `0002`
+adds the organization plugin's session columns, `invitations.team_id`, `teams`,
+`team_members` and `organization_roles`.
 
 ### 2.1 `users` (better-auth `user`)
 
@@ -100,8 +101,12 @@ session carries `user.language` and better-auth's own routes cannot change it.
 | ip_address | text | null |
 | user_agent | text | null |
 | user_id | text | not null → users.id on delete cascade; index `sessions_user_id_idx` |
+| active_organization_id | uuid | null → organizations.id on delete set null |
+| active_team_id | text | null → teams.id on delete set null |
 
-Sessions carry no organization: the API reads membership fresh (`memberOf`).
+A new session starts in the earliest organization joined. The API reads the
+membership in it fresh on every call (`activeMembership`), falling back to the
+earliest one when it is unset or no longer the person's.
 
 ### 2.3 `accounts`
 
@@ -127,13 +132,16 @@ use.
 | id | uuid | PK default gen_random_uuid() |
 | name | text | not null |
 | slug | text | not null unique (lowercase) |
-| logo | text | null (unused) |
-| metadata | text | null (unused) |
-| plan | text | not null default `'free'`; check `plan in ('free','pro','team','internal')` |
+| logo | text | null (refused on update) |
+| metadata | text | null (refused on update) |
+| plan | text | not null default `'free'`; check `plan in ('free','pro','team','internal')`; declared to better-auth `input: false` |
 | stripe_customer_id | text | null, unique |
 | stripe_subscription_id | text | null |
 | usage_anchor | timestamptz | null (billing anchor on a paid plan; months count from `created_at` on Free) |
 | created_at | timestamptz | not null default now() |
+
+The Stripe and usage columns are not declared to better-auth, so it never
+returns or writes them.
 
 ### 2.6 `members`
 
@@ -142,8 +150,8 @@ use.
 | id | text | PK, Drizzle `$defaultFn(() => randomUUID())` |
 | organization_id | uuid | not null → organizations.id cascade |
 | user_id | text | not null → users.id cascade; index `members_user_id_idx` |
-| role | text | not null default `'member'` (`owner` / `admin` / `member`) |
-| terms_accepted_at | timestamptz | null (stamped with DB `now()` when the creator ticks Terms) |
+| role | text | not null default `'member'` (better-auth role string: `owner` / `admin` / `member` / custom, `a,b` for several) |
+| terms_accepted_at | timestamptz | null; declared `input: false` (stamped with DB `now()` by `onboarding.create`) |
 | created_at | timestamptz | not null default now() |
 
 Unique `(organization_id, user_id)` (`members_organization_id_user_id_unique`).
@@ -155,9 +163,10 @@ Unique `(organization_id, user_id)` (`members_organization_id_user_id_unique`).
 | id | text | PK, `$defaultFn(() => randomUUID())` |
 | organization_id | uuid | not null → organizations.id cascade; index `invitations_organization_id_idx` |
 | email | text | not null (normalized); index `invitations_email_idx` |
-| role | text | null (`member` or `admin`, never `owner`) |
-| status | text | not null default `'pending'` (`pending` / `accepted` / `canceled`) |
-| email_sent | boolean | not null default false (ours; true once an invite email reached the address) |
+| role | text | null (role string; never `owner`) |
+| team_id | text | null (plugin; comma-separated team ids, no FK) |
+| status | text | not null default `'pending'` (`pending` / `accepted` / `canceled` / `rejected`) |
+| email_sent | boolean | not null default false (declared `input: false`; true once an invite email went out) |
 | expires_at | timestamptz | not null |
 | created_at | timestamptz | not null default now() |
 | inviter_id | text | not null → users.id cascade |
@@ -165,6 +174,19 @@ Unique `(organization_id, user_id)` (`members_organization_id_user_id_unique`).
 Note: every non-better-auth column on a better-auth table must have a default
 (better-auth refuses requests when a declared table has a required column it
 never writes).
+
+### 2.7.1 `teams`, `team_members`, `organization_roles` (organization plugin)
+
+- `teams`: id text PK; name text not null; organization_id uuid not null →
+  organizations.id cascade (index); member_count integer not null default 0;
+  created_at; updated_at timestamptz null.
+- `team_members`: id text PK; team_id text not null → teams.id cascade (index);
+  user_id text not null → users.id cascade (index); membership_key text unique
+  null; created_at timestamptz null.
+- `organization_roles` (custom roles): id text PK; organization_id uuid not null
+  → organizations.id cascade; role text not null; permission text not null
+  (JSON statements); created_at not null default now(); updated_at null;
+  unique `(organization_id, role)`.
 
 ### 2.8 Usage tables
 
@@ -260,13 +282,14 @@ the behaviour (reference_id = organization id) is what matters.
 `organizations`, `users`, `sessions`, `accounts`, `verifications`, `jwks`,
 `oauth_clients`, `oauth_resources`, `oauth_client_resources`,
 `oauth_refresh_tokens`, `oauth_access_tokens`, `oauth_consents`,
-`oauth_client_assertions`. A schema test fails for any other table lacking an
+`oauth_client_assertions`, `team_members` (reached through
+`teams.organization_id`). A schema test fails for any other table lacking an
 `organizationId` property mapped to `organization_id` (and still refuses a new
 table named e.g. `user_profiles`, `auth_events`, `user`, `organization`).
 
 ### 2.11 better-auth adapter
 
-`drizzleAdapter(db, { provider: 'pg', usePlural: true, transaction: true, schema: { users, sessions, accounts, verifications, jwkss: jwks, oauthClients, oauthResources, oauthClientResources, oauthRefreshTokens, oauthAccessTokens, oauthConsents, oauthClientAssertions } })`.
+`drizzleAdapter(db, { provider: 'pg', usePlural: true, transaction: true, schema: { users, sessions, accounts, verifications, organizations, members, invitations, teams, teamMembers, organizationRoles, jwkss: jwks, oauthClients, oauthResources, oauthClientResources, oauthRefreshTokens, oauthAccessTokens, oauthConsents, oauthClientAssertions } })`.
 Note the `jwkss` key (plural of model `jwks`). Must work with both the
 node-postgres and the PGlite Drizzle instances (`provider: 'pg'` for both).
 
@@ -293,12 +316,11 @@ node-postgres and the PGlite Drizzle instances (`provider: 'pg'` for both).
 
 | member | behaviour |
 | --- | --- |
-| `createOrganization(name, admin?)` | First free slug of `slugCandidates(name)` via `INSERT ... ON CONFLICT (slug) DO NOTHING RETURNING`, name trimmed. With admin `{ userId, personName?, termsAccepted }`: lock user row `FOR UPDATE`, throw `PersonHasOrganizationError` if they have any membership, insert owner member with `terms_accepted_at = now()` iff `termsAccepted`, update `users.name` if `personName` trimmed non-empty. One transaction. `OrganizationNameUnusableError` when no slug candidate. Error `every slug for "<name>" is taken` if all candidates taken |
-| `deleteOrganization(id)` | Validates id (`toOrganizationId`, throws `not an organization id`). In one transaction: revoke grants for the org (3.6), delete org row (cascades all org tables). Returns true if a row was deleted. Files untouched (caller queues purge). Case-insensitive id |
 | `deleteAccount(userId)` | Transaction: lock user `FOR UPDATE`; false if none; throw `PersonOwnsOrganizationError` if they are `owner` of any org; delete invitations where `email = normalizeEmail(user.email)`; delete user (cascades sessions, accounts, members, invitations sent) |
 | `account(userId, currentSessionId)` / `updateAccount(...)` / `wantsEmail(email, kind)` / `languageOf(userId)` | Account settings area |
-| `organizationOf(userId)` / `memberOf(userId)` | The earliest-joined membership (`order by members.created_at asc limit 1`), fresh read every call; `memberOf` returns `{ organization, role }` |
-| `acceptInvitation`, `invitationFor(invitationId, email)` | Members area |
+| `memberOf(userId)` / `membershipIn(userId, orgId)` / `activeMembership(userId, sessionId)` | `{ organization, role }` or null: the earliest-joined membership; the one in an organization; the one in the session's active organization (else the earliest). Fresh reads |
+| `revokeGrants(orgId, userId?)` | 3.6 |
+| `invitationFor(invitationId, email)` | Members area (the invite email) |
 | `forOrganization(id)` | Throws synchronously on non-UUID before any query. Returns `OrganizationScope` (3.1) |
 | `jobs` | `JobsRuntime` (3.4) |
 | `authDatabase` | better-auth adapter (2.11) |
@@ -317,10 +339,11 @@ UUID with surrounding whitespace, 35-char near-UUID, UUID in braces.
 `forOrganization(id)` validates the id synchronously (before any query) and
 composes one scope file per domain under `packages/db/src/organization/`:
 
-- `organization.ts`: `organization()` (own row or undefined), `rename(name)`.
+- `organization.ts`: `organization()` (own row or undefined).
 - `billing.ts`: `setPlan(plan, stripe?)`, `setStripeCustomer(customerId)`.
 - `storage.ts`: `files` (3.2).
-- `members.ts`: `members` (members area).
+- `members.ts`: `members` (`list`, `seatsTaken`, `markInvitationEmailSent`, `acceptTerms`).
+- `roles.ts`: `customRoles()`; `teams.ts`: `teamMembers(teamId)`.
 - `usage.ts`: `usage` (usage spec).
 
 Each scope function writes its own Drizzle queries and filters by the scope's
@@ -411,22 +434,21 @@ Retry policy constant `WORKER_RETRY_POLICY = { retryLimit: 5, retryDelay: 30, re
 
 Refusals the data layer raises extend `DomainError(code, message, data?)`
 (`packages/db/src/errors.ts`), `code` one of `BAD_REQUEST`, `FORBIDDEN`,
-`NOT_FOUND`, `CONFLICT`, `PAYMENT_REQUIRED`: `PersonHasOrganizationError`,
-`OrganizationNameUnusableError`, `PersonOwnsOrganizationError`,
-`InvitationNotFoundError`, `MemberChangeRefusedError`, `SeatLimitError`,
-`AlreadyMemberError`, `InviteEmailUnusableError`, `NoSuchMemberError`, and
+`NOT_FOUND`, `CONFLICT`, `PAYMENT_REQUIRED`: `PersonOwnsOrganizationError` and
 `UsageLimitError` (usage scope; `PAYMENT_REQUIRED` with
 `{ metric, requested, available }`). The API's `reportErrors` middleware maps
 every `DomainError` to an `ORPCError` with the same code, message and data
-(402 for `PAYMENT_REQUIRED`), so routers do not catch them one by one.
+(402 for `PAYMENT_REQUIRED`), so routers do not catch them one by one. It maps
+better-auth `APIError`s below 500 (from `auth.api.*` calls) the same way.
+Organization refusals are better-auth `APIError`s answered by `/api/auth/*`.
 
 ### 3.6 Revoking connector grants
 
-`revokeGrants(tx, organizationId, userId?)`: delete from
+`data.revokeGrants(organizationId, userId?)`: delete from
 `oauth_access_tokens`, `oauth_refresh_tokens`, `oauth_consents` where
-`reference_id = organizationId` (and `user_id = userId` when given). Called in
-the same transaction as deleting the org (all users) and removing a member
-(that user only). `oauth_clients` rows always stay.
+`reference_id = organizationId` (and `user_id = userId` when given). Called by
+the organization plugin's hooks after deleting the org (all users), removing a
+member and leaving (that user only). `oauth_clients` rows always stay.
 
 ---
 
@@ -614,14 +636,13 @@ better-auth options needed by this area:
   `advanced.ipAddress.ipAddressHeaders: ['x-real-ip','x-forwarded-for']`.
 - `disabledPaths: ['/token']`: the jwt plugin's session-to-JWT route is closed
   (`GET /api/auth/token` → 404). Tokens only come from the OAuth flow.
-- No organization plugin: `/api/auth/organization/*` does not exist (404);
-  organizations and members are managed by the app's procedures.
-  Before-hook: `/sign-in/social` and `/sign-in/magic-link` require an exact
+- The organization plugin serves `/api/auth/organization/*` (organizations
+  spec). Before-hook: `/sign-in/social` and `/sign-in/magic-link` require an exact
   trusted `Origin` header, else 403 `Sign in from the app.`
 - `jwt({ disableSettingJwtHeader: true, jwt: { issuer: oauthIssuer(baseURL) } })`.
   Keys in `jwks`; `GET /api/auth/jwks` serves public keys whose `kid`s equal
   `jwks.id` rows (exactly one row after first use).
-- `oauthProvider({ loginPage: `${webOrigin}/oauth/signin`, consentPage: `${webOrigin}/oauth/consent`, allowDynamicClientRegistration: true, allowUnauthenticatedClientRegistration: true, grantTypes: ['authorization_code','refresh_token'], resources: [mcpResourceURL], clientRegistrationDefaultResources: [mcpResourceURL], postLogin: { page: `${webOrigin}/oauth/consent`, shouldRedirect: ({ user }) => organizationOf(user.id) === null, consentReferenceId: ({ user }) => org.id or throw APIError('FORBIDDEN', { error: 'access_denied', error_description: 'You are not in an organization here.' }) }, customAccessTokenClaims: ({ referenceId }) => referenceId ? { organization_id: referenceId } : {} })`.
+- `oauthProvider({ loginPage: `${webOrigin}/oauth/signin`, consentPage: `${webOrigin}/oauth/consent`, allowDynamicClientRegistration: true, allowUnauthenticatedClientRegistration: true, grantTypes: ['authorization_code','refresh_token'], resources: [mcpResourceURL], clientRegistrationDefaultResources: [mcpResourceURL], postLogin: { page: `${webOrigin}/oauth/consent`, shouldRedirect: ({ user, session }) => no usable organization, consentReferenceId: ({ user, session }) => session.activeOrganizationId while the person is still in it, else their earliest organization, or throw APIError('FORBIDDEN', { error: 'access_denied', error_description: 'You are not in an organization here.' }) }, customAccessTokenClaims: ({ referenceId }) => referenceId ? { organization_id: referenceId } : {} })`.
   Check the current `@better-auth/oauth-provider` docs for option names; keep
   the behaviour.
 - `ORGANIZATION_CLAIM = 'organization_id'`.
@@ -638,8 +659,7 @@ better-auth options needed by this area:
    no cookie, no Origin → 201 with `client_id` and same `redirect_uris`.
    Stored in `oauth_clients` (name, redirect_uris) and linked in
    `oauth_client_resources` to `<base>/api/mcp`.
-3. `GET /api/auth/organization/list`, `POST /api/auth/organization/create`,
-   `POST /api/auth/organization/invite-member` with a valid session → 404.
+3. (removed: the organization plugin now serves `/api/auth/organization/*`.)
 4. `GET /api/auth/token` with session → 404.
 5. `POST /api/auth/sign-in/magic-link` without Origin → 403.
 6. `GET /api/auth/oauth2/authorize?response_type=code&client_id&redirect_uri&state&code_challenge&code_challenge_method=S256&resource=<mcp>`
@@ -690,8 +710,9 @@ Bearer parsing (`bearerToken(header)`): regex
    Invalid signature/alg none/other key/other `aud`/other `iss`/expired → null.
    **If reading the JWKS itself fails, rethrow → 500, no `www-authenticate`.**
 3. Claims `sub` and `organization_id` must be strings, else null.
-4. `memberOf(sub)` read fresh; its organization id must equal the claim, else
-   null (removed member, or org they are not in).
+4. `membershipIn(sub, claim)` read fresh; null when the person is not (or no
+   longer) in that exact organization. The grant stays bound to the
+   organization that was active at consent, whatever the session switches to later.
 5. Return `{ userId, organizationId, role, organizationSlug, clientId: claims.client_id ?? '', scopes: claims.scope split by space }`.
 
 Unauthenticated response: 401, `content-type: application/json`, body
@@ -718,7 +739,7 @@ Tools (exactly this list today: `tools/list` → `['whoami']`):
 - `whoami`: title `Who am I`; description `The person this connection acts as: their organization and their role in it.`;
   no input; annotations `readOnlyHint: true, openWorldHint: false`;
   `outputSchema` = `{ organization: { id, name, slug, plan }, role }` (role
-  description: `The person's role in it: owner, admin or member`).
+  description: `The person's role in it: owner, admin, member or a custom role`).
   Result: `content: [{ type: 'text', text: '<org name> (<role>)' }]`,
   `structuredContent` = the output. If the org row is gone:
   `{ isError: true, content: [{ type: 'text', text: 'The organization is gone.' }] }`.
@@ -1016,11 +1037,11 @@ Mailpit), consent Allow, assert redirect to callback with `code`; then call
 
 - An organization id is always validated and lowercased before reaching SQL or a storage key.
 - Raw SQL is never available to callers of `forOrganization`.
-- Org delete order: end Stripe subscription (billing) → delete rows (+ grants) → queue purge. If the delete returns false (race) → 404.
+- Org delete order: end Stripe subscription (billing, `beforeDeleteOrganization`) → better-auth deletes the rows → revoke grants and queue purge (`afterDeleteOrganization`).
 - Purge send failure never fails the user's delete.
 - A refused MCP token and an internal JWKS failure are distinguished (401 vs 500).
 - Membership is read fresh on every MCP call; tokens are not revoked by time alone.
-- `GET /api/auth/token` is closed and `/api/auth/organization/*` does not exist (404).
+- `GET /api/auth/token` is closed (404); `/api/auth/organization/*` is the organization plugin.
 - Writes to `/api/rpc/*` from an untrusted Origin are refused (403) before any procedure runs.
 - Magic link and social sign-in require an exact trusted Origin (no Origin, `null`, lookalike host, other scheme/port → 403).
 - Mailer errors never leak subject or recipients.

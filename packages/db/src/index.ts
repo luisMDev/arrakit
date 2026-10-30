@@ -10,13 +10,9 @@ export { toOrganizationId, type OrganizationId } from './organization-id'
 export { forOrganization, type OrganizationScope } from './organization/index'
 export type { OrganizationRow } from './organization/organization'
 export type { StripeRefs } from './organization/billing'
-export type {
-  AssignableRole,
-  MemberView,
-  OrganizationMembers,
-  OrganizationRole,
-  PendingInvitation,
-} from './organization/members'
+export type { MemberView, OrganizationMembers } from './organization/members'
+export type { CustomRole } from './organization/roles'
+export type { TeamMemberView } from './organization/teams'
 export {
   UsageLimitError,
   type MetricBalance,
@@ -26,8 +22,6 @@ export {
   type UsageVerdict,
 } from './organization/usage'
 export type { Membership } from './data/membership'
-export type { OrganizationAdmin } from './data/onboarding'
-export { revokeGrants } from './data/organizations'
 export type { InvitationForPerson } from './data/invitations'
 export type { Account, AccountChanges } from './data/account'
 export { health, type HealthReport } from './health'

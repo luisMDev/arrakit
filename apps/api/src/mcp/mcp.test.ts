@@ -1,6 +1,5 @@
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto'
 
-import { revokeGrants } from '@arrakit/db'
 import { insertMember } from '@arrakit/db/testing'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -12,7 +11,7 @@ import {
   jwtPayload,
   rpcResult,
 } from '../testing/app'
-import { sqlOf } from '../testing/people'
+import { orgApi, sqlOf } from '../testing/people'
 
 const ISSUER = `${TEST_WEB_ORIGIN}/api/auth`
 const METADATA_PATH = '/.well-known/oauth-protected-resource/api/mcp'
@@ -49,10 +48,9 @@ describe('the MCP endpoint', () => {
   const connectedOrganization = async (email: string, organizationName: string) => {
     const cookie = await t.magicLinkSignIn(email)
     const userId = await sessionUserId(cookie)
-    const organization = await t.data.createOrganization(organizationName, {
-      userId,
-      termsAccepted: true,
-    })
+    const organization = await t
+      .client(new Headers({ cookie }))
+      .onboarding.create({ name: organizationName, termsAccepted: true })
     const { clientId, tokens } = await t.connector.connect(cookie)
     return { cookie, userId, organization, clientId, tokens }
   }
@@ -187,7 +185,7 @@ describe('the MCP endpoint', () => {
     expect((await whoami(tokens.access_token))?.structuredContent).toMatchObject({ role: 'member' })
 
     await sqlOf(t)('delete from members where user_id = $1', [memberId])
-    await t.data.db.transaction((tx) => revokeGrants(tx, owner.organization.id, memberId))
+    await t.data.revokeGrants(owner.organization.id, memberId)
 
     for (const token of [tokens.access_token, refreshedTokens.access_token]) {
       const res = await t.mcp(token, 'tools/call', { name: 'whoami', arguments: {} })
@@ -203,11 +201,49 @@ describe('the MCP endpoint', () => {
     const owner = await connectedOrganization('owner@ash.vc', 'Ash Capital')
     const other = await connectedOrganization('owner@oak.vc', 'Oak Capital')
 
-    expect(await t.data.deleteOrganization(owner.organization.id)).toBe(true)
+    const deleted = await orgApi(t, new Headers({ cookie: owner.cookie })).post('delete', {
+      organizationId: owner.organization.id,
+    })
+    expect(deleted.status).toBe(200)
 
     expect((await t.mcp(owner.tokens.access_token, 'tools/list')).status).toBe(401)
     expect((await t.connector.refresh(owner.clientId, owner.tokens.refresh_token)).status).toBe(400)
     expect((await t.connector.refresh(other.clientId, other.tokens.refresh_token)).status).toBe(200)
+  })
+
+  it('binds a grant to the organization active at consent, and keeps it there after a switch', async () => {
+    const first = await connectedOrganization('two@orgs.vc', 'First Orgs')
+    const api = t.client(new Headers({ cookie: first.cookie }))
+    const second = await api.onboarding.create({ name: 'Second Orgs', termsAccepted: true })
+    const { tokens } = await t.connector.connect(first.cookie)
+    expect((await whoami(tokens.access_token))?.structuredContent).toMatchObject({
+      organization: { id: second.id },
+    })
+
+    await orgApi(t, new Headers({ cookie: first.cookie })).post('set-active', {
+      organizationId: first.organization.id,
+    })
+    expect((await whoami(tokens.access_token))?.structuredContent).toMatchObject({
+      organization: { id: second.id },
+    })
+    expect((await whoami(first.tokens.access_token))?.structuredContent).toMatchObject({
+      organization: { id: first.organization.id },
+    })
+  })
+
+  it('stops a token once its person leaves that organization through Better Auth', async () => {
+    const owner = await connectedOrganization('owner@leave.vc', 'Leave Capital')
+    const cookie = await t.magicLinkSignIn('leaver@leave.vc')
+    await insertMember(t.data, owner.organization.id, await sessionUserId(cookie), 'member')
+    const { tokens } = await t.connector.connect(cookie)
+    expect((await whoami(tokens.access_token))?.isError).toBeFalsy()
+
+    const left = await orgApi(t, new Headers({ cookie })).post('leave', {
+      organizationId: owner.organization.id,
+    })
+    expect(left.status).toBe(200)
+    expect((await t.mcp(tokens.access_token, 'tools/list')).status).toBe(401)
+    expect((await whoami(owner.tokens.access_token))?.isError).toBeFalsy()
   })
 
   it('answers a GET or DELETE with a token with 405: sessions are not served', async () => {

@@ -15,6 +15,13 @@
       "when": 1793381875215,
       "tag": "0001_conscious_changeling",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793391389698,
+      "tag": "0002_abnormal_silver_sable",
+      "breakpoints": true
     }
   ]
 }

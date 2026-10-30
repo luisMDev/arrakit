@@ -7,19 +7,18 @@ describe('contract', () => {
     expect(Object.keys(contract)).toEqual([
       'authProviders',
       'me',
-      'organizations',
-      'members',
-      'invitations',
+      'onboarding',
+      'teams',
       'plans',
       'billing',
       'usage',
     ])
-    expect(Object.keys(contract.organizations)).toEqual(['create', 'skip', 'update', 'delete'])
+    expect(Object.keys(contract.onboarding)).toEqual(['create', 'skip'])
     expect(Object.keys(contract.billing)).toContain('topUp')
   })
 
   it('refuses a create without accepted terms', () => {
-    const schema = contract.organizations.create['~orpc'].inputSchema!
+    const schema = contract.onboarding.create['~orpc'].inputSchema!
     const result = schema['~standard'].validate({ name: 'Acme', termsAccepted: 'true' })
     expect('issues' in (result as object)).toBe(true)
   })

@@ -19,6 +19,19 @@ export function restoreNavigation(request: Request): Request | undefined {
   return new Request(request.url, { method: request.method, headers: restored })
 }
 
+/** The session's active organization while the person is still in it, else their default one. */
+async function grantedOrganization(
+  deps: AuthDeps,
+  userId: string,
+  session: Record<string, unknown>,
+): Promise<string | null> {
+  const active = session.activeOrganizationId
+  if (typeof active === 'string' && (await deps.organizations.isMember(userId, active))) {
+    return active
+  }
+  return deps.organizations.defaultOf(userId)
+}
+
 export function connectorProvider(deps: AuthDeps) {
   const { config } = deps
   const resource = mcpResourceURL(config.baseURL)
@@ -32,16 +45,17 @@ export function connectorProvider(deps: AuthDeps) {
     clientRegistrationDefaultResources: [resource],
     postLogin: {
       page: `${config.webOrigin}/oauth/consent`,
-      shouldRedirect: async ({ user }) => (await deps.organizationOf(user.id)) === null,
-      consentReferenceId: async ({ user }) => {
-        const organization = await deps.organizationOf(user.id)
-        if (!organization) {
+      shouldRedirect: async ({ user, session }) =>
+        (await grantedOrganization(deps, user.id, session)) === null,
+      consentReferenceId: async ({ user, session }) => {
+        const organizationId = await grantedOrganization(deps, user.id, session)
+        if (!organizationId) {
           throw new APIError('FORBIDDEN', {
             error: 'access_denied',
             error_description: 'You are not in an organization here.',
           })
         }
-        return organization.id
+        return organizationId
       },
     },
     customAccessTokenClaims: ({ referenceId }) =>

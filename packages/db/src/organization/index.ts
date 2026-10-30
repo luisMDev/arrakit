@@ -3,6 +3,8 @@ import { type OrganizationId, toOrganizationId } from '../organization-id'
 import { billingScope } from './billing'
 import { membersScope } from './members'
 import { organizationScope } from './organization'
+import { rolesScope } from './roles'
+import { teamsScope } from './teams'
 import { storageScope } from './storage'
 import { usageScope } from './usage'
 
@@ -13,6 +15,8 @@ export function forOrganization(ctx: DataContext, id: string) {
     ...organizationScope(ctx, organizationId),
     ...billingScope(ctx, organizationId),
     ...storageScope(ctx, organizationId),
+    ...rolesScope(ctx, organizationId),
+    ...teamsScope(ctx, organizationId),
     members: membersScope(ctx, organizationId),
     usage: usageScope(ctx, organizationId),
   }

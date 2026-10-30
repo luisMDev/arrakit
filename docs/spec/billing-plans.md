@@ -292,7 +292,7 @@ no organization / organization gone / malformed id (no writes).
   `143000 usd → '$1,430'`, `1499 usd → '$14.99'`, `143000 eur → '€1,430'`, `1430 jpy → '¥1,430'`.
   Card: `'Visa ending 4242'` (brand capitalised), or `'your card'` when none.
 - `daysUntil(unixSeconds, nowMs)`: ceil of days, minimum 1 (3 days → 3, 1 hour → 1, past → 1, 2.1 days → 3).
-- `adminsOf(members)`: emails with role `owner` or `admin` (never `member`).
+- `adminsOf(members)`: emails of members whose static role manages billing (`owner`, `admin`; never `member`; custom roles are not mailed).
 - `downgradeDue({ previousPlan, plan, cancellationReason })`:
   `cancellationReason === 'payment_failed' && previousPlan !== 'free' && plan === 'free'`.
 - `billingLink(webOrigin)` = `${webOrigin}/app/billing`.
@@ -345,10 +345,12 @@ All procedures live in the oRPC contract (`@orpc/contract` + Zod) under
 and a custom `PAYMENT_REQUIRED` with `status: 402`. Error `message` strings
 below are user-facing and must be exact (the web shows them).
 
-Common middleware for every `billing.*` procedure (`member('admin')`):
+Common middleware for every `billing.*` procedure (`member({ billing: [...] })`):
 1. **Session required** (Better Auth session) → 401.
-2. **Organization membership required**, read fresh (`memberOf`); no organization → 404.
-3. **Admin only**: role `owner` or `admin`; `member` → 403.
+2. **Membership in the active organization required**, read fresh (`activeMembership`); no organization → 404.
+3. **Permission**: `billing.get` needs `billing:read`, every other procedure `billing:manage` (owner and admin have both,
+   `member` neither, a custom role what the owner gave it) → 403 "You don't have permission to do this.".
+   The billing contract keeps working on the session's active organization.
 4. Writes from an untrusted `Origin` are refused 403 `Use the app.` by the
    app-wide `/api/rpc/*` middleware (platform spec §4), before any of this.
 

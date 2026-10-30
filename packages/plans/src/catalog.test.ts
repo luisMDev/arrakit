@@ -9,6 +9,7 @@ import {
   isBillingCycle,
   isPaidPlan,
   isPlan,
+  seatLimitMessage,
   soldOffers,
 } from './catalog'
 
@@ -68,5 +69,12 @@ describe('plans catalog', () => {
     expect(isPaidPlan(undefined)).toBe(false)
     expect(isBillingCycle('yearly')).toBe(true)
     expect(isBillingCycle('weekly')).toBe(false)
+  })
+
+  it('says how many seats the plan has when they are all taken', () => {
+    expect(seatLimitMessage('free')).toBe(
+      "Your organization's Free plan includes 1 seat, all taken. Upgrade to invite more people.",
+    )
+    expect(seatLimitMessage('team')).toContain('Team plan includes 10 seats')
   })
 })

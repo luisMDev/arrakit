@@ -9,7 +9,8 @@ import { dayOf } from '../day'
 import { member } from '../orpc/base'
 import type { MemberContext } from '../orpc/context'
 
-const admin = member('admin')
+const reader = member({ billing: ['read'] })
+const manager = member({ billing: ['manage'] })
 
 async function setCancelled(context: MemberContext, cancelledBy: string | null) {
   const service = billingService(context)
@@ -21,7 +22,7 @@ async function setCancelled(context: MemberContext, cancelledBy: string | null) 
 }
 
 export const billingRouter = {
-  checkout: admin.billing.checkout.handler(async ({ context, input }) => {
+  checkout: manager.billing.checkout.handler(async ({ context, input }) => {
     const { activeOrganization: organization } = context
     const { stripe, env } = context.deps
     if (organization.plan !== 'free') {
@@ -40,11 +41,11 @@ export const billingRouter = {
     return { clientSecret, publishableKey: stripe.publishableKey }
   }),
 
-  get: admin.billing.get.handler(async ({ context }) =>
+  get: reader.billing.get.handler(async ({ context }) =>
     billingService(context).view(context.activeOrganization),
   ),
 
-  previewChange: admin.billing.previewChange.handler(async ({ context, input }) => {
+  previewChange: manager.billing.previewChange.handler(async ({ context, input }) => {
     const service = billingService(context)
     const paid = await service.paidOrganization(context.activeOrganization)
     const applies = service.applies(paid, input)
@@ -61,7 +62,7 @@ export const billingRouter = {
     }
   }),
 
-  change: admin.billing.change.handler(async ({ context, input }) => {
+  change: manager.billing.change.handler(async ({ context, input }) => {
     const service = billingService(context)
     const paid = await service.paidOrganization(context.activeOrganization)
     const { stripe } = context.deps
@@ -74,11 +75,13 @@ export const billingRouter = {
     return service.view({ ...paid.organization, plan })
   }),
 
-  cancel: admin.billing.cancel.handler(({ context }) => setCancelled(context, context.user.email)),
+  cancel: manager.billing.cancel.handler(({ context }) =>
+    setCancelled(context, context.user.email),
+  ),
 
-  resume: admin.billing.resume.handler(({ context }) => setCancelled(context, null)),
+  resume: manager.billing.resume.handler(({ context }) => setCancelled(context, null)),
 
-  portal: admin.billing.portal.handler(async ({ context, input }) => {
+  portal: manager.billing.portal.handler(async ({ context, input }) => {
     const { activeOrganization: organization } = context
     refuseInternal(organization)
     const customerId = organization.stripeCustomerId
@@ -95,7 +98,7 @@ export const billingRouter = {
     return { url }
   }),
 
-  topUp: admin.billing.topUp.handler(async ({ context, input }) => {
+  topUp: manager.billing.topUp.handler(async ({ context, input }) => {
     const { activeOrganization: organization } = context
     const web = context.deps.env.webUrl
     return context.deps.stripe.topUpCheckout({

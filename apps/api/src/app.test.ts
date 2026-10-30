@@ -54,7 +54,7 @@ describe('api app', () => {
       organization: null,
       role: null,
     })
-    await expect(t.client(headers).members.list()).rejects.toMatchObject({ status: 404 })
+    await expect(t.client(headers).usage.get()).rejects.toMatchObject({ status: 404 })
   })
 
   it('mounts Better Auth, the MCP challenge and the Stripe webhook', async () => {

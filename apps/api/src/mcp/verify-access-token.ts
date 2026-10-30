@@ -37,8 +37,8 @@ export async function verifyAccessToken(
 
   const { sub: userId, [ORGANIZATION_CLAIM]: organizationId, client_id: clientId, scope } = claims
   if (typeof userId !== 'string' || typeof organizationId !== 'string') return null
-  const membership = await deps.data.memberOf(userId)
-  if (!membership || membership.organization.id !== organizationId.toLowerCase()) return null
+  const membership = await deps.data.membershipIn(userId, organizationId)
+  if (!membership) return null
 
   return {
     userId,

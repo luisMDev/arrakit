@@ -7,7 +7,7 @@ rules**, not styles. Where saas-base paths are cited, they are for traceability 
 Scope:
 
 - Organization create (Profile "Next" / "Skip"), rename, delete.
-- Roles `owner` / `admin` / `member` and the role policy.
+- Roles `owner` / `admin` / `member`, custom roles, teams, the role policy, several organizations per person.
 - Members list, role change, removal.
 - Invitations: invite, list, resend, cancel, accept; the `MailMember` email; seat limits.
 - `/join/:invitationId` page.
@@ -26,23 +26,33 @@ storage purge worker internals (files spec), OAuth provider/MCP grants (mcp spec
 
 Put these in a shared package (e.g. `packages/shared` or `packages/domain`) so API and web use the same values.
 
-### 1.1 Roles
+### 1.1 Roles and permissions (`@arrakit/auth/permissions`)
+
+Organizations, members, invitations, teams and roles belong to the Better Auth `organization` plugin. Access
+control is shared by API and web from `@arrakit/auth/permissions` (pure; imports only Better Auth's access helpers):
 
 ```ts
-export const ORGANIZATION_ROLES = ['owner', 'admin', 'member'] as const;
-export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
-export type AssignableRole = 'admin' | 'member'; // never 'owner'
-export const isAdminRole = (role: string | null | undefined) => role === 'owner' || role === 'admin';
-// Any stored role that is not exactly one of the three reads as 'member' (least privilege).
-export const toOrganizationRole = (role: string): OrganizationRole =>
-  (ORGANIZATION_ROLES as readonly string[]).includes(role) ? (role as OrganizationRole) : 'member';
+statements = { ...defaultStatements /* organization, member, invitation, team, ac */,
+               billing: ['read', 'manage'], usage: ['read'] }
+ac = createAccessControl(statements)
+roles = { owner, admin, member }   // Better Auth roles
+STATIC_ROLES = ['owner', 'admin', 'member']
+permissionsOf(role, customRoles?) // union over a role string (`a,b`), static + custom; unknown roles grant nothing
+allows(granted, wanted)           // every wanted action is granted
+isOwnerRole(role)                 // the role string includes `owner`
 ```
 
-- `owner`: the organization's creator (`createOrganization` inserts the creator as `owner`).
-  Everything an admin can, plus naming/demoting/removing admins and deleting the organization.
-- `admin`: manages members, invitations and billing; renames the organization.
-- `member`: uses the app. Reads General (read-only), Usage, Security (sees "owner only" text), Account.
-- Case-sensitive: `'Admin'` is NOT an admin role (`isAdminRole('Admin') === false`).
+| role | grants |
+| --- | --- |
+| `owner` | everything: `organization:update,delete`, `member:*`, `invitation:*`, `team:*`, `ac:*`, `billing:read,manage`, `usage:read` |
+| `admin` | the owner's grants minus `organization:delete` |
+| `member` | `ac:read`, `usage:read` |
+| custom | what the owner gave it (Better Auth dynamic access control, at most 20 per organization) |
+
+- `owner` is the creator (`creatorRole: 'owner'`); no one else is ever made owner (no ownership transfer).
+- Owner and admin manage custom roles (`ac:*`), but nobody grants permissions they don't have: a role's permissions must
+  be within the actor's when it is created, updated, deleted or given to someone (4.2, 4.3).
+- Role names are case-sensitive and Better Auth stores several as `a,b`.
 
 ### 1.2 Plans and seats (from the plans package; billing spec owns the rest)
 
@@ -144,9 +154,9 @@ Port `device-name.spec.ts`.
 
 ## 2. Data model (Drizzle, Postgres; PGlite in dev/tests)
 
-All timestamps `timestamp with time zone`. Better Auth's Drizzle adapter maps its user, session, account,
-verification, JWT and OAuth models onto these tables. `organizations`, `members` and `invitations` are app tables:
-there is no Better Auth organization plugin.
+All timestamps `timestamp with time zone`. Better Auth's Drizzle adapter (`usePlural`) maps its user, session,
+account, verification, JWT, OAuth and organization plugin models (`organization`, `member`, `invitation`, `team`,
+`teamMember`, `organizationRole`) onto these tables. Ids come from `generateId: randomUUID()`.
 
 ### 2.1 `users` (Better Auth `user`, plus additional fields)
 
@@ -165,8 +175,10 @@ there is no Better Auth organization plugin.
 ### 2.2 `sessions` (Better Auth `session`)
 
 id text PK, expires_at, token unique, created_at, updated_at, ip_address, user_agent,
-user_id -> users.id ON DELETE CASCADE (index). No organization column (migration `0001` dropped
-`active_organization_id`); the organization is read from `members` on every request.
+user_id -> users.id ON DELETE CASCADE (index),
+`active_organization_id uuid null -> organizations.id ON DELETE SET NULL`,
+`active_team_id text null -> teams.id ON DELETE SET NULL`. A new session starts in the person's earliest
+organization (`databaseHooks.session.create.before`). The API never trusts it blindly: see 5 (org-scoped middleware).
 
 ### 2.3 `accounts` (Better Auth `account`)
 
@@ -177,13 +189,13 @@ user_id -> users.id ON DELETE CASCADE.
 
 | column | type | notes |
 | --- | --- | --- |
-| id | uuid PK default random | Must stay a UUID (tenancy checks UUID shape). Configure Better Auth id generation accordingly or let the DB default win. |
+| id | uuid PK default random | Must stay a UUID (tenancy checks UUID shape) |
 | name | text not null | trimmed |
 | slug | text not null **unique** | lowercase, never changes after creation |
-| logo | text null | plugin field, unused |
-| metadata | text null | plugin field, unused |
-| plan | text not null default `'free'` | CHECK `plan in ('free','pro','team','internal')` |
-| stripe_customer_id | text unique null | billing spec |
+| logo | text null | plugin field, refused on update |
+| metadata | text null | plugin field, refused on update |
+| plan | text not null default `'free'` | CHECK `plan in ('free','pro','team','internal')`; declared to Better Auth with `input: false` |
+| stripe_customer_id | text unique null | billing spec; not declared to Better Auth (never returned by it) |
 | stripe_subscription_id | text null | billing spec; used by org delete |
 | usage_anchor | timestamptz null | billing/usage spec |
 | created_at | timestamptz not null default now() | |
@@ -192,176 +204,145 @@ user_id -> users.id ON DELETE CASCADE.
 
 | column | type | notes |
 | --- | --- | --- |
-| id | text PK, default `randomUUID()` | |
+| id | text PK | |
 | organization_id | uuid not null -> organizations.id ON DELETE CASCADE | |
 | user_id | text not null -> users.id ON DELETE CASCADE | index `members_user_id_idx` |
-| role | text not null default `'member'` | |
-| terms_accepted_at | timestamptz null | only on the creator's row; stamped by Postgres `now()` when Terms accepted on Profile "Next"; null on Skip |
+| role | text not null default `'member'` | Better Auth role string |
+| terms_accepted_at | timestamptz null | declared `input: false`; stamped by `onboarding.create` (Postgres `now()`); null on Skip |
 | created_at | timestamptz not null default now() | |
 
-Unique `(organization_id, user_id)`.
-A person may technically be in several orgs (DB allows it); the app always uses the **earliest joined**
-(`ORDER BY members.created_at ASC LIMIT 1`). The API forbids creating/joining a second one.
+Unique `(organization_id, user_id)`. A person may be in several organizations; the session says which one is active.
 
 ### 2.6 `invitations` (Better Auth `invitation` + our `email_sent`)
 
 | column | type | notes |
 | --- | --- | --- |
-| id | text PK | `randomUUID()` |
+| id | text PK | |
 | organization_id | uuid not null -> organizations.id ON DELETE CASCADE | index |
 | email | text not null | normalized (trim + lowercase); index |
-| role | text null | `admin` or `member` (read back: `'admin'` -> admin, anything else -> member) |
-| status | text not null default `'pending'` | `pending` -> `accepted` / `canceled` |
-| email_sent | boolean not null **default false** | ours; default required or Better Auth refuses requests |
-| expires_at | timestamptz not null | `now() + 7 days` on invite/re-invite/resend |
-| created_at | timestamptz not null default now() | list order |
+| role | text null | role string the invitee gets |
+| team_id | text null | plugin field (comma-separated team ids, no FK) |
+| status | text not null default `'pending'` | `pending` -> `accepted` / `canceled` / `rejected` |
+| email_sent | boolean not null default false | declared `input: false`; true once the invite email went out |
+| expires_at | timestamptz not null | `now() + 7 days` (`invitationExpiresIn`) |
+| created_at | timestamptz not null default now() | |
 | inviter_id | text not null -> users.id ON DELETE CASCADE | |
 
-Derived: `sentAt = expiresAt - 7 days` (not stored). "Live" = `status = 'pending' AND expires_at > now()`.
-One `pending` row per (organization, email): re-inviting updates it.
+"Live" = `status = 'pending' AND expires_at > now()`. Re-inviting a pending address cancels the old row
+(`cancelPendingInvitationsOnReInvite`) and stores a new one (new id).
 
-### 2.7 OAuth grant tables (from the MCP/OAuth provider spec)
+### 2.7 `teams`, `team_members`, `organization_roles` (Better Auth plugin)
+
+- `teams`: id text PK, name, organization_id -> organizations ON DELETE CASCADE (index), member_count int default 0,
+  created_at, updated_at null. No default team is made (`defaultTeam.enabled: false`); every team may be removed.
+- `team_members`: id text PK, team_id -> teams ON DELETE CASCADE (index), user_id -> users ON DELETE CASCADE (index),
+  membership_key text unique null, created_at null. A tenancy exception: reached through `teams.organization_id`.
+- `organization_roles`: id text PK, organization_id -> organizations ON DELETE CASCADE, role, permission (JSON of the
+  role's statements), created_at, updated_at null; unique `(organization_id, role)`.
+
+### 2.8 OAuth grant tables (from the MCP/OAuth provider spec)
 
 `oauth_access_tokens`, `oauth_refresh_tokens`, `oauth_consents` carry `reference_id` (= organization id, **no FK**)
-and `user_id`. They must be deleted explicitly (see org delete and member removal).
+and `user_id`. They are deleted explicitly (org delete, member removal, leaving).
 
-### 2.8 Cascades summary (delete organization)
+### 2.9 Cascades summary (delete organization)
 
-Every table with `organization_id` references `organizations.id ON DELETE CASCADE`: members, invitations, and every
-product table (usage ledger and levels, …).
-OAuth grants deleted manually in the same transaction. Users/accounts/sessions survive.
-Add a schema test: "every table with `organization_id` has an FK to organizations with ON DELETE CASCADE"
-(saas-base `schema.spec.ts`, `delete-organization.int.spec.ts` "walks the tables that carry organization_id").
+Every table with `organization_id` references `organizations.id ON DELETE CASCADE`: members, invitations, teams (and so
+their team members), custom roles, and every product table (usage ledger and levels, …). Sessions pointing at it get
+`active_organization_id = null`. OAuth grants are deleted by the after-delete hook. Users/accounts/sessions survive.
+Schema test: "every table with `organization_id` has an FK to organizations with ON DELETE CASCADE" (sessions'
+`active_organization_id` is the only SET NULL reference).
 
 ---
 
 ## 3. Tenancy layer (`forOrganization`)
 
-Port `libs/platform/data/src/tenancy/*` to arrakit's data package.
-
 - `toOrganizationId(value)`: must match UUID regex `/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i`;
   returns lowercased branded `OrganizationId`. Throws (before any query) on `''`, `not-a-uuid`, wildcards, slashes,
   padding, braces. Accepts v4 and v7. Uppercase input -> lowercase (one storage prefix per org).
 - `forOrganization(id)` validates the id synchronously and returns the organization's scope, composed from one file per
-  domain in `packages/db/src/organization/`: `organization()` (own row), `rename(name)`, `setPlan(...)`,
-  `setStripeCustomer(...)`, `files`, `members` (section 4), `usage`. Each scope function writes its own Drizzle queries
-  filtered by the scope's `organization_id`; callers never get raw SQL or a database handle (app code is typed against
-  `ScopedData`).
-- Tests: `organization-id.test.ts` (accept/reject cases), and per-scope integration tests on PGlite in-memory
-  (`members.test.ts`, `usage.test.ts`, `billing.test.ts`, `data/organizations.test.ts` for isolation and cascades).
+  domain in `packages/db/src/organization/`: `organization()` (own row), `setPlan(...)`, `setStripeCustomer(...)`,
+  `files`, `members` (section 4), `customRoles()`, `teamMembers(teamId)`, `usage`. Callers never get raw SQL or a
+  database handle (app code is typed against `ScopedData`).
+- Better Auth writes the organization tables through its adapter; the app reads them through `forOrganization`.
 
 ---
 
-## 4. Data operations (business rules)
+## 4. Data operations and rules
 
-Constant: `INVITE_DAYS = 7`.
+Organization, member, invitation, team and role changes are Better Auth endpoints (`/api/auth/organization/*`). Our
+rules live in its options and hooks (`packages/auth/src/organization.ts`, `hooks.ts`, `organization-policy.ts`); the
+data they need comes through `OrganizationDeps` (`apps/api/src/organizations/organization-deps.ts`).
 
-### 4.1 `createOrganization(name, admin?)`
+### 4.1 Data functions (`packages/db`)
 
-Input `admin = { userId, personName?, termsAccepted: boolean }`.
+- `memberOf(userId)`: earliest membership `{ organization, role }`, or null.
+- `membershipIn(userId, organizationId)`: that membership, or null (also for a non-UUID id).
+- `activeMembership(userId, sessionId)`: the membership in the session's `active_organization_id` read from the
+  database (the session cookie cache may be stale), else `memberOf`.
+- `revokeGrants(organizationId, userId?)`: deletes from `oauth_access_tokens`, `oauth_refresh_tokens`,
+  `oauth_consents` where `reference_id = orgId` (and `user_id` when given). OAuth clients stay registered.
+- `forOrganization(id).members`: `list()` (members joined to users, oldest first, `role` string),
+  `seatsTaken(exceptEmail)` (members + live invitations to other addresses), `markInvitationEmailSent(id, sent)`,
+  `acceptTerms(userId)`.
+- `forOrganization(id).customRoles()`, `forOrganization(id).teamMembers(teamId)` (empty for another org's team).
+- `invitationFor(invitationId, email)`: the live invitation addressed exactly to that normalized email, with
+  organization and inviter (the invite email reads it).
 
-1. `candidates = slugCandidates(name)`; empty -> throw `OrganizationNameUnusableError`.
-2. In one transaction:
-   - If admin: lock the user row `FOR UPDATE` (missing user -> generic error); if the user has any `members` row -> throw
-     `PersonHasOrganizationError`. (Two concurrent submits by the same person create exactly one org.)
-   - Claim slug: for each candidate, `INSERT ... ON CONFLICT (slug) DO NOTHING RETURNING`; first success wins. Concurrent
-     orgs named alike get `x`, `x-2`, `x-3`. All 50 taken -> generic error.
-   - Name stored = `name.trim()`.
-   - If admin: insert `members { role: 'owner', termsAcceptedAt: termsAccepted ? now() : null }`; if
-     `personName?.trim()` non-empty, update `users.name` to it (blank keeps current name).
-3. Without `admin` it creates a bare tenant root (used by tests/seeds).
+### 4.2 Rules by endpoint
 
-### 4.2 `memberOf(userId)` / `organizationOf(userId)`
+| rule | where |
+| --- | --- |
+| Create: name falls back like Profile (`organizationNameOr(name, email, user.name)`); the client's slug is ignored and the first free `slugCandidates(name)` is used (`x`, `x-2`, …) | `hooks.before /organization/create` |
+| Create makes the creator `owner` and the new organization active; no organization limit | plugin |
+| Rename: only `name` changes (`slug`, `logo`, `metadata` -> 400 "Only the name changes."); trimmed; blank -> 400 "Give the organization a name." | `beforeUpdateOrganization` |
+| Delete: owner only (`organization:delete`) | static roles |
+| Delete: end the Stripe subscription first; Stripe failure -> 502 "Couldn't reach Stripe. Try again in a minute.", not set up -> 503 "Payments are not set up yet."; nothing deleted | `beforeDeleteOrganization` -> `beforeDelete(orgId)` |
+| Delete: revoke all its OAuth grants, queue `storage-purge {organizationId, folder: ''}` (queue failure only logged) | `afterDeleteOrganization` -> `afterDelete(orgId)` |
+| Member changes (invite, role change, removal), see 4.3 | `hooks.before` on `/organization/invite-member`, `/organization/update-member-role`, `/organization/remove-member` |
+| Invite: address normalized; not a work email -> 400 `Enter a work email, like name@organization.com: "<raw>" is not one.`; already a member -> 400 | `hooks.before` + plugin |
+| Invite seats: members + live invitations to other addresses >= plan seats -> 403 `Your organization's <Plan> plan includes <n> seat(s), all taken. Upgrade to invite more people.` | `beforeCreateInvitation` |
+| Re-invite of a pending address: old invitation canceled, new id, no extra seat | `cancelPendingInvitationsOnReInvite` + seat rule |
+| Resend (`resend: true`, live invite): new expiry and email, no seat check. An expired invite is a new invite (seat check) | plugin |
+| Invite email: a magic link to `${WEB_ORIGIN}/join/<id>` (4.4); success -> `email_sent = true`; failure -> logged (`invite email not sent`, `organizationId`, `invitationId`), `email_sent = false`, the invitation is kept and the call answers 503 `The invite to <email> is saved, but its email did not go out. Press Resend to send it again.` | `sendInvitationEmail` + `hooks.after /organization/invite-member` |
+| Cancel: pending invitation of this org only (`invitation:cancel`) | plugin |
+| Accept: invitee email must match, email verified, invitation pending and unexpired (else 400/403); only members count against seats (`membershipLimit` = plan seats); already in that org -> 409 "You're already in <org>."; makes the org active | plugin + `beforeAcceptInvitation` |
+| Removal revokes the removed member's grants in that org | `afterRemoveMember` |
+| Leaving revokes the leaver's grants in that org; the only owner cannot leave | `hooks.after /organization/leave` + plugin |
+| Teams: `team:create/update/delete`, team members need `member:update` (add) / `member:delete` (remove) | plugin |
+| Custom roles: `ac:*` (owner, admin); the new permissions must be within the actor's (plugin, create/update), no static names, no unknown resources, a role still given cannot be deleted | plugin |
+| Changing or deleting a custom role that holds permissions the actor lacks -> 403 "You can't change a role with permissions you don't have." | `hooks.before /organization/update-role`, `/organization/delete-role` |
+| CSRF: every `/api/auth/*` POST from a foreign Origin -> 403 | Better Auth origin check |
 
-Earliest membership joined to its organization, role via `toOrganizationRole`. Null when none. Always read from DB
-(never cached in session): removal takes effect on the very next request.
+### 4.3 Member change policy (`memberChangeRefusal`, pure)
 
-### 4.3 `renameOrganization(orgId, rawName)`
+Input `{ actorRole, targetRole?, newRole?, self, custom }` (`targetRole` absent for an invite, `newRole` absent for a
+removal). Better Auth already checks `member:*` / `invitation:create`, unknown roles, and keeps the sole owner.
+Refusals (403, in order):
 
-`name = rawName.trim()`; blank -> `OrganizationNameUnusableError`, nothing changes. Slug never changes. Names without
-any slug-able char (`'&.!'`, `'北京基金'`) ARE accepted on rename. Returns undefined if org gone.
+1. `newRole` includes `owner` -> `No one is made owner: the organization has its creator.`
+2. Target is the owner: self -> `You are the organization's only owner.`, else `Only the owner changes the owner's role or seat.`
+3. Actor is the owner -> allowed.
+4. `newRole` includes `admin` -> `Only the owner names admins.`
+5. Target is another admin -> `Only the owner demotes or removes an admin.`
+6. `newRole` grants more than the actor's role (static or custom) -> `You can't give permissions you don't have.`
+7. Target (not self) holds more than the actor's role -> `Only the owner changes someone with more rights than yours.`
 
-### 4.4 `deleteOrganization(rawId)`
+### 4.4 Sending the invite email (Better Auth magic link)
 
-`toOrganizationId` (throws on non-UUID, deleting nothing; uppercase works). Transaction: `revokeGrants(orgId)` then
-`DELETE organizations WHERE id` returning; true if a row was removed, false if already gone.
+`sendInvitationEmail` calls `auth.api.signInMagicLink({ body: { email, callbackURL: join, errorCallbackURL: join },
+headers: { origin: WEB_ORIGIN } })` with `join = ${WEB_ORIGIN}/join/${encodeURIComponent(invitationId)}`.
 
-### 4.5 `revokeGrants(tx, orgId, userId?)`
+In the magic link plugin's `sendMagicLink({ email, url })`:
+- Parse the callback from `url`; if it is a trusted origin's `/join/<id>` (regex `^/join/([^/]+)$`) and
+  `invitationFor(id, email)` returns a live invitation addressed to that email -> send **MailMember**;
+  otherwise send the normal **MailSignin** (a stranger asking for a link with someone else's join callback gets a plain
+  sign-in email).
+- `expiresInDays = max(1, ceil((invitation.expiresAt - now) / 1 day))`.
 
-Delete from `oauth_access_tokens`, `oauth_refresh_tokens`, `oauth_consents` where `reference_id = orgId`
-(and `user_id = userId` when given). OAuth clients stay registered.
+Opening the link: Better Auth verifies, creates the session (cookie) and 302-redirects to `${WEB_ORIGIN}/join/<id>`.
 
-### 4.6 Role policy `checkMemberChange({ actor, change, owners, admins })` — pure function
-
-`change` is `{kind:'invite', organizationId, role}` | `{kind:'role', target, role}` | `{kind:'remove', target}`.
-`owners`/`admins` = current counts of owner rows / admin rows (owners excluded from admins).
-Rules in order, each refusal returning `{ ok:false, reason }` (reasons are user-facing English messages):
-
-1. Actor's org != change's org -> `That person is not in your organization.`
-2. Actor role not exactly owner/admin -> `Only an admin manages members.`
-3. For invite/role: role `owner` -> `No one is made owner: the organization has its creator.`; role not exactly
-   `admin`/`member` (e.g. `Admin`, `superadmin`) -> `There is no role "<role>".`
-4. Invite -> allowed (admins may invite admins).
-5. Target is owner: if not self -> `Only the owner changes the owner's role or seat.`; if self and `owners > 1` -> allowed,
-   else -> `You are the organization's only owner.`
-6. Target is admin: new role `admin` -> allowed (no-op). If not self and actor is not owner ->
-   `Only the owner demotes or removes an admin.` If self and `owners + admins - 1 < 1` ->
-   `You are the organization's last admin.` Else allowed.
-7. Target is member: new role `admin` and actor not owner -> `Only the owner names admins.` Else allowed.
-
-Port `member-policy.spec.ts` verbatim (11 allowed cases, 19 refused cases, plus `isAdminRole` table).
-
-### 4.7 `forOrganization(id).members`
-
-- `list()`: members joined to users -> `{ userId, name, email, image, role, joinedAt }`, ordered
-  `members.created_at ASC, members.id ASC`.
-- `invitations()`: live invitations (pending AND unexpired) ordered `created_at ASC, id ASC` ->
-  `{ id, email, role, sentAt, expiresAt, emailSent }`.
-- `invite({ email, role, inviterId })`:
-  1. `normalized = normalizeEmail(email)`; `!isWorkEmail` -> `InviteEmailUnusableError`
-     (message: `Enter a work email, like name@organization.com: "<raw>" is not one.`).
-  2. Transaction: lock the org row `FOR NO KEY UPDATE` (serializes seat checks), read plan.
-  3. Policy with actor = inviter's member row in this org (`FOR SHARE`; no row -> role `''` and org `''` -> refused).
-     -> `MemberChangeRefusedError(reason)`.
-  4. Already a member with that email -> `AlreadyMemberError` (`<email> is already in the organization.`).
-  5. Seat check (`requireSeat`): `count(members) + count(live invitations with email != normalized) >= seats(plan)` ->
-     `SeatLimitError` with message
-     `Your organization's <PlanLabel> plan includes <n> seat|seats, all taken. Upgrade to invite more people.`
-     (Free: `Your organization's Free plan includes 1 seat, all taken. Upgrade to invite more people.`).
-  6. If a `pending` row for (org, email) exists (expired or not): update `role, inviterId, expiresAt = now()+7d, emailSent=false`
-     and return it (same id). Else insert new row (`emailSent=false`).
-- `resend(id)`: transaction; lock org; find pending row (even expired) by id in this org, else `undefined`;
-  seat check with holding = its email (an expired invite had released its seat, renewing takes one again ->
-  `SeatLimitError`); set `expiresAt = now()+7d` (does NOT touch `emailSent`). Returns updated.
-- `markEmailSent(id)`: set `email_sent = true` on pending row in this org; undefined if not pending anymore.
-- `cancel(id)`: pending row in this org -> `status='canceled'`; false if none (another org's id, already canceled).
-- `changeRole(actorUserId, email, role)`: transaction; lock all owner/admin rows of the org `FOR UPDATE` ordered by id
-  (deadlock-free); find target by normalized email (`FOR UPDATE OF members`) -> `NoSuchMemberError`
-  (`No one in the organization is <email>.`); actor role read from the locked rows (absent -> `''`); run policy with
-  counts from locked rows; update role. Concurrency rule: of two last admins (ownerless org) stepping down at once,
-  exactly one succeeds.
-- `remove(actorUserId, email)`: same checks with `kind:'remove'`; delete member row; `revokeGrants(org, target.userId)`
-  in the same transaction (a refused removal keeps grants). (saas-base also deletes the removed member's personal
-  "only me" notes; implement when the notes feature exists.)
-
-### 4.8 `invitationFor(invitationId, email)` (not org-scoped)
-
-Live invitation with that id joined to organization and inviter; null when id not a non-empty string, not found,
-expired, canceled, accepted, or `invitation.email !== normalizeEmail(email)` (exact match: `jon+x@`, `jon@organization.com.`,
-`jo@`, `njon@`, other TLDs all refused). Returns pending view + `organization` + `inviter {name,email}`.
-
-### 4.9 `acceptInvitation({ invitationId, userId, email })`
-
-Transaction:
-1. invalid id -> `InvitationNotFoundError`.
-2. Lock user row `FOR UPDATE` (double click adds once); missing -> `InvitationNotFoundError`.
-3. Live invitation by id `FOR UPDATE OF invitations`, email must equal normalized email -> else `InvitationNotFoundError`.
-4. User already has any membership -> `PersonHasOrganizationError` (invitation stays pending).
-5. Lock org, `count(members) >= seats(plan)` -> `SeatLimitError` (invitation stays pending). Note: pending invitations
-   are NOT counted here, so invitations sent before a downgrade get in first-come-first-served while a seat is left.
-6. Insert member with invitation's role; set invitation `status='accepted'`. Return `{ organization, role }`.
-
-### 4.10 Account (`account`, `updateAccount`, `wantsEmail`, `languageOf`)
+### 4.5 Account (`account`, `updateAccount`, `wantsEmail`, `languageOf`)
 
 - `SIGN_IN_METHODS = ['email','google','microsoft']`.
 - `account(userId, currentSessionId)`: user `{name,email,language,timeZone,emails:{productNews}}`;
@@ -373,13 +354,12 @@ Transaction:
 - `wantsEmail(email, 'productNews')`: compares `lower(users.email)` to normalized; unknown person -> true.
 - `languageOf(userId)`: unknown -> `'en'`.
 
-### 4.11 `deleteAccount(userId)`
+### 4.6 `deleteAccount(userId)`
 
-Transaction: lock user `FOR UPDATE` (missing -> false). If the user has ANY `members` row with role `owner` (in any org,
-not only the first) -> `PersonOwnsOrganizationError`, nothing deleted. Else delete all invitations addressed to their
-normalized email (any status, any org), then delete the user row (cascades sessions on every device, accounts,
-memberships, invitations they sent). Returns true. (saas-base also deletes their personal notes and nulls authorship of
-org notes; apply when notes exist.) The org, its owner and other invites (e.g. `kim@...` invited by the owner) stay.
+Transaction: lock user `FOR UPDATE` (missing -> false). If the user has ANY `members` row with role `owner` (in any org)
+-> `PersonOwnsOrganizationError`, nothing deleted. Else delete all invitations addressed to their normalized email (any
+status, any org), then delete the user row (cascades sessions on every device, accounts, memberships, team memberships,
+invitations they sent). Returns true.
 
 ---
 
@@ -387,40 +367,35 @@ org notes; apply when notes exist.) The org, its owner and other invites (e.g. `
 
 General rules:
 
-- Every procedure below requires a live Better Auth session (`auth.api.getSession({ headers })`) -> else
-  `UNAUTHORIZED` (401).
-- **Org-scoped middleware** (port of `OrganizationRoleGuard`): reads `memberOf(user.id)` from DB on every request.
-  No membership -> `NOT_FOUND` "Not found in your organization." (404). Level `admin` and role member -> `FORBIDDEN`
-  "Only an admin of the organization can do this.". Level `owner` and role != owner -> `FORBIDDEN`
-  "Only the organization's owner can do this.". Puts `{ organization, role }` in context. The org is ALWAYS the
-  session's; any `organizationId`/`slug` in the body is ignored (Zod `strip`).
-- Error mapping: the data layer throws `DomainError` subclasses (`packages/db/src/errors.ts`) carrying their code and
-  message, and the `reportErrors` middleware maps every one to an `ORPCError` with the same code and message; routers
-  do not catch them. `MemberChangeRefusedError`, `SeatLimitError` -> FORBIDDEN; `AlreadyMemberError`,
-  `InviteEmailUnusableError` -> BAD_REQUEST; `NoSuchMemberError` -> NOT_FOUND; `InvitationNotFoundError` -> NOT_FOUND
-  "This invitation is not open for you."; `PersonHasOrganizationError` -> CONFLICT "You already belong to an
-  organization." (on accept) / "You already have an organization." (on create); `PersonOwnsOrganizationError` -> CONFLICT
-  "You own an organization. Delete the organization first, in Settings → Security and data.".
-- **CSRF**: every `/api/rpc/*` write (invite and resend included) from a missing, `null` or foreign `Origin` is refused
-  by the app-wide middleware with 403 "Use the app.", before the procedure runs, so nothing is stored or sent.
-- There is no Better Auth organization plugin: `/api/auth/organization/*` does not exist (404). Orgs are only created
-  via our procedures.
-- Procedures are served only over oRPC at `/api/rpc/*`; the saas-base REST path is given for reference only.
+- Every oRPC procedure below requires a live Better Auth session -> else `UNAUTHORIZED` (401).
+- **Org-scoped middleware** `member(wanted?: Permissions)` (`apps/api/src/orpc/context.ts`): reads
+  `activeMembership(user.id, session.id)` from the database on every request (the session's active organization while
+  the person is still in it, else their earliest one). No membership -> `NOT_FOUND` "Not found in your organization."
+  (404). The role's permissions (custom roles read from `organization_roles` only when the role is not static) lacking
+  `wanted` -> `FORBIDDEN` "You don't have permission to do this." (403). Puts `{ activeOrganization, role, permissions,
+  scope }` in context. Organization ids in the input are ignored.
+- Billing: `billing.get` needs `{ billing: ['read'] }`, every other billing procedure `{ billing: ['manage'] }`; usage
+  needs `{ usage: ['read'] }`.
+- Error mapping: `DomainError`s and Better Auth `APIError`s below 500 become `ORPCError`s with the same status and
+  message (`reportErrors`).
+- **CSRF**: `/api/rpc/*` writes from a missing, `null` or foreign `Origin` -> 403 "Use the app."; `/api/auth/*` POSTs
+  go through Better Auth's origin check.
 
-### 5.1 `me.get` (GET /api/me) — session only
+### 5.1 `me.get` — session only
 
 Output:
 ```ts
 { email: string; name: string; language: 'en'|'es';
-  organization: { id: uuid; name; slug; plan } | null;
-  role: 'owner'|'admin'|'member' | null;
+  organization: { id: uuid; name; slug; plan } | null;  // the active organization
+  role: string | null;                                   // Better Auth role string
+  permissions: Record<string, readonly string[]>;        // what the role grants there ({} without one)
   plan: Plan | null;
   seats: number | null /* PLAN_OFFERS[plan].seats */ }
 ```
-Before Profile: `{ email, name:'', language:'en', organization:null, role:null, plan:null, seats:null }`.
-After create: role `owner`, plan `free`, seats `1`. `name` comes from users.name (Profile personName).
+Before Profile: `{ email, name:'', language:'en', organization:null, role:null, permissions:{}, plan:null, seats:null }`.
+After create: role `owner`, plan `free`, seats `1`.
 
-### 5.2 `me.account.get` (GET /api/me/account)
+### 5.2 `me.account.get`
 
 Output `AccountView`:
 ```ts
@@ -431,13 +406,13 @@ Output `AccountView`:
 Fresh magic-link user: `{ name:'', email, signInWith:'email', devices:['browser'], language:'en', timeZone:null, emails:{productNews:false} }`.
 Two devices: laptop sees `['Mac','iPhone']`, phone sees `['iPhone','Mac']`. User vanished between auth and read -> 401.
 
-### 5.3 `me.account.update` (PATCH /api/me/account)
+### 5.3 `me.account.update`
 
 Input (all optional; empty object returns account unchanged):
 ```ts
 z.object({
   name: z.string().trim().min(1, 'Enter your name.').max(100, 'Keep your name to 100 characters.')
-        .regex(/^[^\p{Cc}  ]*$/u, 'Keep your name on one line.').optional(),
+        .regex(/^[^\p{Cc}\u2028\u2029]*$/u, 'Keep your name on one line.').optional(),
   language: z.enum(['en','es']).optional(),
   timeZone: z.string().refine(isTimeZone, 'Pick a time zone from the list.').optional(),
   emails: z.object({ productNews: z.boolean() }).partial().optional(),
@@ -446,127 +421,50 @@ z.object({
 Output: AccountView. 400 for: blank name, name with line break, >100 chars, language `fr`, `europe/madrid`, `+02:00`,
 `productNews: 'no'` — saving nothing. Name saved trimmed. Never touches another user. `me.get` reflects the new name.
 
-### 5.4 `me.delete` (DELETE /api/me) — session only
+### 5.4 `me.delete` — session only
 
-Deletes the account (4.11). Success: 204/void; every session (this and other devices) is invalid from the next request.
-Owner -> 409 with the message above; owner stays signed in. Invited admin who deletes their account leaves the org;
-owner still owner; members list = owner only.
+Deletes the account (4.6). Success: void; every session is invalid from the next request. Owner -> 409 "You own an
+organization. Delete the organization first, in Settings → Security and data."; owner stays signed in.
 
-### 5.5 `organizations.create` (POST /api/organizations) — session only (no org needed)
+### 5.5 `onboarding.create` — session only
 
 Input:
 ```ts
 z.object({
-  name: z.string().trim().max(200),            // blank allowed -> naming fallback
+  name: z.string().trim().max(200),                  // blank allowed -> naming fallback
   personName: z.string().trim().max(200).optional(), // blank keeps current name
   termsAccepted: z.literal(true, { error: 'Accept the Terms and the Privacy Policy.' }),
-}) // unknown keys stripped (a client-sent termsAcceptedAt is ignored)
+})
 ```
-Logic: `personName || session.user.name` for the fallback; name = `organizationNameOr(body.name, email, thatName)`;
-`createOrganization(name, { userId, personName: body.personName, termsAccepted: true })`.
-Output (201): `{ id, name, slug, plan }`.
-Errors: termsAccepted false/missing/`'true'` -> 400 (nothing created); already has org -> 409 "You already have an
-organization." (original org kept); unusable name -> 400 "Give the organization a name with letters or digits."
-(practically unreachable thanks to fallback); 401.
-A former owner who deleted their org can create again (becomes owner).
+Logic: a non-blank `personName` updates `users.name`; name = `organizationNameOr(body.name, email, personName ||
+user.name)`; `auth.api.createOrganization({ headers, body: { name, slug } })` (the hook fixes the slug); stamp
+`terms_accepted_at`. Output `{ id, name, slug, plan }`. Works for someone already in organizations: the new one becomes
+active. termsAccepted false/missing/`'true'` -> 400, nothing created.
 
-### 5.6 `organizations.skip` (POST /api/organizations/skip) — session only
+### 5.6 `onboarding.skip` — session only
 
-No input (body ignored entirely, e.g. `{name:'Postmaster', termsAccepted:true}` is ignored).
-Name = `organizationNameOnSkip(session.user.email, session.user.name)`, `termsAccepted: false` (terms_accepted_at null).
-Output 201 `{ id, name, slug, plan }`. 409 if already has an org (including after Next created one). 401.
+No input. Name = `organizationNameOnSkip(email, user.name)`; terms not stamped. Output `{ id, name, slug, plan }`.
 
-### 5.7 `organizations.update` (PATCH /api/organizations) — level admin
+### 5.7 `teams.members({ teamId })` — member of the active organization
 
-Input:
-```ts
-z.object({ name: z.string().trim().min(1, 'Give the organization a name.').max(200).optional() })
- .refine(b => Object.values(b).some(v => v !== undefined), { error: 'Send a name.' })
-```
-Output 200 `{ id, name, slug, plan }` (slug unchanged). Errors: `{}` -> 400; `''`/`'   '` -> 400 (unchanged);
-member -> 403; no org -> 404; 401; org deleted concurrently -> 404. Body `organizationId`/`slug` ignored.
+The people on one of the active organization's teams (`{ userId, name, email, image }`, oldest first; empty for another
+organization's team). Better Auth's `list-team-members` only answers members of that team.
 
-### 5.8 `organizations.delete` (DELETE /api/organizations) — level owner
+### 5.8 Better Auth organization endpoints (`/api/auth/organization/*`, client `authClient.organization.*`)
 
-1. If org has `stripe_subscription_id`: `stripe.endNow(id)` (cancel now). Stripe not configured -> 503
-   `Payments are not set up yet.`; Stripe failure -> 502 `Couldn't reach Stripe. Try again in a minute.` (logged by
-   `guardedStripe`, billing spec 2.2). Nothing deleted either way.
-2. `deleteOrganization(orgId)`; false -> 404.
-3. Queue job `storage-purge` with `{ organizationId, folder: '' }`. Queue failure is logged (message includes
-   `organization <id>`) and swallowed: still 204.
-Output 204. After: owner and all members get `organization:null, role:null` from `me.get`. Admin/member -> 403 (nothing
-deleted, nothing queued). No org -> 404, no session -> 401, nothing queued. Other orgs untouched.
+`create`, `update`, `delete`, `list`, `get-full-organization`, `set-active`, `leave`, `list-members`,
+`update-member-role`, `remove-member`, `invite-member` (also `resend: true`), `cancel-invitation`,
+`accept-invitation`, `reject-invitation`, `get-invitation`, `list-invitations`, `list-user-invitations`,
+`create-team`, `update-team`, `remove-team`, `list-teams`, `add-team-member`, `remove-team-member`,
+`create-role`, `update-role`, `delete-role`, `list-roles`, `get-role`, `has-permission`. Rules: section 4.2. The
+plugin writes `active_organization_id` without refreshing the session cookie cache, so the web calls `set-active`
+after create/accept/delete/leave.
 
-### 5.9 `members.list` (GET /api/members) — level admin
-
-Output `[{ name, email, role }]` oldest first (name `''` when none; web displays local part).
-
-### 5.10 `members.changeRole` (PATCH /api/members/:email) — level admin
-
-Input `{ email: string /* path param, case-insensitive, URL-encoded */, role: 'admin'|'member' }`.
-Output `{ name, email, role }`. Errors per policy (403 with reason), 404 no such member (also another org's member).
-
-### 5.11 `members.remove` (DELETE /api/members/:email) — level admin
-
-Output 204/void. The removed person's next request (same cookie) gets 404 on org routes and `organization:null` on me.
-
-### 5.12 `invitations.list` (GET /api/invitations) — level admin
-
-Output `[{ id, email, role, invitedOn: 'YYYY-MM-DD' (UTC, of sentAt), expiresAt: ISO, emailSent: boolean }]`, oldest first,
-live only.
-
-### 5.13 `invitations.invite` (POST /api/invitations) — level admin
-
-Input `{ email: z.string().max(320), role: z.enum(['admin','member']) }` (email normalized server side, e.g.
-`'  Jon@Birch.VC '` -> `jon@birch.vc`).
-Flow: `members.invite` -> send invite email (5.17) -> if sent, `markEmailSent` -> return view.
-Output InvitationView. Email failure: invitation kept, error logged (`invite email not sent`, with `organizationId`
-and `invitationId`), response with `emailSent:false`. If `markEmailSent` finds nothing (canceled meanwhile) or throws:
-log, still answer `emailSent:true`.
-Errors: 400 invalid address (`jon@organization`) or already in org (case-insensitive), nothing sent; 403 member,
-403 seat limit (Free: message in 4.7), 403 untrusted origin ("Use the app."); 404 no org; 401.
-
-### 5.14 `invitations.resend` (POST /api/invitations/:id/resend) — level admin
-
-`members.resend(id)`; undefined -> 404 "No such invitation in your organization." (canceled, other org). Send email;
-failure -> 503 `The invite to <email> is saved, but its email did not go out. Press Resend to send it again.` (emailSent stays
-as it was; expiry already extended). Success -> markEmailSent -> 200 InvitationView with `emailSent:true`.
-403 member / seat limit (expired invite whose seat was taken).
-
-### 5.15 `invitations.cancel` (DELETE /api/invitations/:id) — level admin
-
-204; 404 "No such invitation in your organization." when not pending in this org.
-
-### 5.16 `invitations.accept` (POST /api/invitations/:id/accept) — session only (no org needed)
-
-`acceptInvitation({ invitationId: id, userId, email: session.user.email })`.
-Output 200 `{ organization: { id, name, slug, plan }, role }`.
-Errors: 404 "This invitation is not open for you." (wrong email, unknown id like `nope`, expired, canceled, accepted);
-409 "You already belong to an organization." (invitation stays pending); 403 seat limit (stays pending); 401.
-
-### 5.17 Sending the invite email (Better Auth magic link)
-
-The invite email IS a Better Auth magic link: `auth.api.signInMagicLink({ body: { email, callbackURL: join, errorCallbackURL: join }, headers: <inviter's request headers> })`
-where `join = ${WEB_ORIGIN}/join/${encodeURIComponent(invitationId)}`. Passing the inviter's headers makes the
-trusted-origin check and the work-email rule apply.
-
-In the magic link plugin's `sendMagicLink({ email, url })`:
-- Parse the callback from `url`; if it is a trusted origin's `/join/<id>` (regex `^/join/([^/]+)$`) and
-  `invitationFor(id, email)` returns a live invitation addressed to that email -> send **MailMember**;
-  otherwise send the normal **MailSignin** (a stranger asking for a link with someone else's join callback gets a plain
-  sign-in email).
-- `expiresInDays = max(1, ceil((invitation.expiresAt - now) / 1 day))`.
-
-Opening the link: Better Auth verifies, creates the session (cookie) and 302-redirects to `${WEB_ORIGIN}/join/<id>`.
-Magic links work once, are stored hashed, and expire after MAGIC_LINK_MINUTES (auth spec).
-Also in Better Auth `before` hook: `/sign-in/social` and `/sign-in/magic-link` require trusted Origin
-(`Sign in from the app.`).
-
-### 5.18 Sign out everywhere
+### 5.9 Sign out everywhere
 
 Better Auth built-in `POST /api/auth/revoke-other-sessions` (client: `authClient.revokeOtherSessions()`): ends all
 other sessions of the person, keeps this one, other people unaffected; afterwards `me.account.get` devices length 1.
-401 without session. Port `sessions.spec.ts`.
+401 without session.
 
 ---
 
@@ -604,7 +502,7 @@ local-part fallback).
 
 ## 8. External integrations
 
-- **Better Auth**: magic link, Google, Microsoft (no organization plugin), user `additionalFields` (language, timeZone, emailProductNews as non-input fields), sessions with
+- **Better Auth**: magic link, Google, Microsoft, the organization plugin (teams, dynamic access control), user `additionalFields` (language, timeZone, emailProductNews as non-input fields), sessions with
   user agent, `revoke-other-sessions`.
 - **Stripe**: `endNow` (`subscriptions.cancel`) on org delete when `stripe_subscription_id` set.
 - **Resend** mailer (Mailpit in dev/e2e, recording mailer in tests).
@@ -811,60 +709,62 @@ Known es typo to fix while porting: `ownerDeleteFirst` es "Eres el propietario d
 
 ## 11. Permission matrix
 
+Static roles; a custom role gets exactly what the owner gave it. "plugin" rows are `/api/auth/organization/*`.
+
 | action | owner | admin | member | no org | no session |
 | --- | --- | --- | --- | --- | --- |
 | me.get / account get/update | yes | yes | yes | yes | 401 |
 | me.delete | 409 (owns) | yes | yes | yes | 401 |
-| organizations.create / skip | 409 | 409 | 409 | yes | 401 |
-| organizations.update (rename) | yes | yes | 403 | 404 | 401 |
-| organizations.delete | yes | 403 | 403 | 404 | 401 |
-| members.list, invitations.list | yes | yes | 403 | 404 | 401 |
-| invite member | yes | yes | 403 | 404 | 401 |
-| invite admin | yes | yes | 403 | 404 | 401 |
-| resend / cancel invite | yes | yes | 403 | 404 | 401 |
-| promote member -> admin | yes | 403 | 403 | 404 | 401 |
-| demote/remove another admin | yes | 403 | 403 | 404 | 401 |
-| remove member | yes | yes | 403 | 404 | 401 |
-| admin steps down / leaves self | – | yes if an owner or other admin remains | – | | |
-| change/remove the owner | only self and only if >1 owner (never in practice) | 403 | 403 | | |
-| accept invitation | 409 | 409 | 409 | yes | 401 |
-| Settings nav: Members, Billing | shown | shown | hidden | | |
+| onboarding.create / skip | yes (new org) | yes | yes | yes | 401 |
+| rename (plugin `update`) | yes | yes | 403 | 400 | 401 |
+| delete (plugin) | yes | 403 | 403 | 400 | 401 |
+| list members / invitations (plugin) | yes | yes | yes | 403 | 401 |
+| invite member or custom role within own rights | yes | yes | 403 | 400 | 401 |
+| invite admin | yes | 403 | 403 | 400 | 401 |
+| resend / cancel invite | yes | yes | 403 | 400 | 401 |
+| promote member -> admin | yes | 403 | 403 | | 401 |
+| demote/remove another admin | yes | 403 | 403 | | 401 |
+| remove member | yes | yes | 403 | | 401 |
+| admin steps down / leaves | – | yes | yes (leave) | | |
+| change/remove/leave as the owner | 403/400 (only owner) | 403 | 403 | | |
+| teams: create/rename/remove, add/remove people | yes | yes | 403 | | 401 |
+| teams: list, `teams.members` | yes | yes | yes | 404 | 401 |
+| custom roles: create/update/delete (within own permissions) | yes | yes | 403 | | 401 |
+| custom roles: list | yes | yes | yes | | 401 |
+| billing.get | yes | yes | 403 | 404 | 401 |
+| other billing procedures | yes | yes | 403 | 404 | 401 |
+| usage.get | yes | yes | yes | 404 | 401 |
+| accept invitation | yes (joins another org) | yes | yes | yes | 401 |
+| set-active | own orgs only (403 otherwise) | | | | 401 |
 
 ---
 
 ## 12. Edge cases and business rules (from tests)
 
-1. Org always the session's; body ids/slugs ignored in rename/delete.
-2. Membership read from DB every request; removed member loses access immediately with same cookie (org routes 404,
-   me shows no org).
-3. One org per person: create/skip/accept refuse with 409 when the person has any membership.
-4. Concurrent create by the same person -> one org; concurrent orgs with the same name -> distinct numbered slugs.
-5. Terms: only literal `true` accepted on create; timestamp from DB `now()`, never from client. Skip stores null.
-6. Rename keeps slug; allows non-sluggable names; refuses blank.
-7. Free plan: owner only; invite -> 403 seat message, nothing stored or emailed.
-8. Pending invitations hold seats; re-inviting the same address takes no extra seat (and updates role, resets expiry and
-   `emailSent=false`, same id); cancel frees the seat; expired invites release seats; resend of an expired one needs a free seat.
-9. Accept counts only members against seats (downgrade: first come first served).
-10. Internal plan allows > 10 members (100 seats).
-11. Invite email address normalized; invitee match on accept is exact normalized equality.
-12. Invite from missing/foreign Origin -> 403 "Use the app." (app-wide CSRF middleware), nothing stored or sent.
-13. Email send failure on invite -> 201 `emailSent:false`, row kept, ids logged; resend failure -> 503, `emailSent`
-    unchanged (stays true if it had been sent before); later successful resend -> `emailSent:true`.
-14. Invite canceled while its email was going out -> answer 201 `emailSent:true`; list is empty.
-15. Another org's invitation/member ids -> 404 (resend, cancel, remove).
-16. Org delete ends Stripe subscription first; Stripe failure -> 502 nothing deleted; no Stripe configured with a
-    subscription -> 503; purge queued with `{organizationId, folder:''}` after the delete; queue failure still succeeds.
-17. Org delete keeps users; their sessions survive with no org; former owner can create a new org.
-18. Org delete and member removal revoke OAuth grants (org-wide / that member only); other orgs' grants and the OAuth
-    client remain.
-19. Account delete: refused to an owner of ANY org (409, still signed in); otherwise ends all sessions on all devices,
-    removes memberships, invitations sent by them and invitations addressed to them (any org, any status).
-20. Account update: partial; empty update returns current; never affects other users; language only changeable via our
-    endpoint, not Better Auth `update-user`.
-21. Devices: only unexpired sessions; current first then newest.
-22. `/api/auth/organization/*` does not exist (404; no organization plugin).
-23. Two last admins of an ownerless org stepping down concurrently: exactly one succeeds (row locks).
-24. Invalid invitation ids (`''`, SQL-ish strings, random UUID, non-string) -> not found, never an error 500.
+1. The org-scoped oRPC middleware reads the active membership from the database every request: a removed member gets
+   404 on the next call with the same cookie; a stale or foreign `active_organization_id` falls back to the earliest
+   membership.
+2. A person may be in several organizations; create, skip and accept add one and make it active; `set-active` switches
+   (and only to an organization they are in). A new session starts in the earliest one.
+3. Concurrent orgs with the same name get distinct numbered slugs (a unique race answers 500 once; accepted).
+4. Terms: only literal `true` accepted on create; timestamp from DB `now()`, never from client. Skip stores null.
+5. Rename keeps the slug, refuses `slug`/`logo`/`metadata` and blank names; `plan` in the body is ignored.
+6. Free plan: owner only; invite -> 403 seat message, nothing stored or emailed.
+7. Live invitations hold seats; re-inviting the same address replaces its invitation without an extra seat; cancel and
+   expiry free the seat; re-inviting an expired address needs a free seat.
+8. Accept counts only members against seats (downgrade: first come first served). Internal allows > 10 members.
+9. Invite email address normalized; the invitee must match it and have a verified email to accept.
+10. Invite email failure -> 503 with the "is saved" message, row kept with `email_sent = false`; a later successful
+    resend sets it true.
+11. Org delete ends the Stripe subscription first (502/503 keep the org); afterwards grants are revoked and the purge
+    queued (queue failure only logged). Users and their other organizations stay.
+12. Member removal and leaving revoke that person's OAuth grants in that organization only.
+13. Account delete: refused to an owner of ANY org (409, still signed in); otherwise ends all sessions, removes
+    memberships, invitations sent by them and addressed to them.
+14. Account update: partial; never affects other users; language only changeable via our endpoint.
+15. Devices: only unexpired sessions; current first then newest.
+16. An MCP connector grant is bound to the organization active at consent; switching organizations later does not move
+    it; the token stops working once the person leaves or is removed from that organization.
 
 ---
 

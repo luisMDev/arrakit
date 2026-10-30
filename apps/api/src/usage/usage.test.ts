@@ -10,11 +10,7 @@ import { TEST_WEB_ORIGIN, type TestApp, createTestApp } from '../testing/app'
 import { joinAs, ownerOf } from '../testing/people'
 import { requiresUsage } from './requires-usage'
 
-const member = os
-  .$context<BaseContext>()
-  .use(reportErrors)
-  .use(requireSession)
-  .use(requireMember('member'))
+const member = os.$context<BaseContext>().use(reportErrors).use(requireSession).use(requireMember())
 
 /** Probe procedures standing in for real features that spend usage. */
 const probe = {
