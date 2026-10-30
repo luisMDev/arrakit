@@ -62,7 +62,6 @@ describe('SignupPage', () => {
     expect(emailInput()).toHaveAttribute('autocomplete', 'email')
     expect(emailInput()).toHaveAttribute('placeholder', 'Your work email')
     expect(screen.getByText("No password. We'll email you a link to sign in.")).toBeInTheDocument()
-    expect(screen.getByText('Never used for training.')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     await waitFor(() => expect(googleButton()).toBeInTheDocument())
   })

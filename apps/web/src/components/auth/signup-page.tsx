@@ -41,9 +41,6 @@ export function SignupPage({ mode, search }: { mode: 'new' | 'returning'; search
           </>
         )}
       </main>
-      <footer className="flex justify-center py-6">
-        <span className="text-sm text-muted-foreground">{t('signup.neverTraining')}</span>
-      </footer>
     </div>
   )
 }

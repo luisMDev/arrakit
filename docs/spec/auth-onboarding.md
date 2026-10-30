@@ -355,7 +355,6 @@ Purpose: "Where should we write to you?" Sign in with Google, Microsoft or a mag
     - Email form: one `type="email"` input, `autocomplete="email"`, visually hidden label `workEmail` ("Work email"), placeholder `yourWorkEmail`, submit button `continue` ("Continue").
     - Providers come from `authProviders.get`, asked **once per app load** (cache only successes; a failure is retried next time). Until it answers, and when it fails, assume `{ google: true, microsoft: false }`.
   - Under the options: `signup.noPassword` ("No password. We'll email you a link to sign in.").
-  - Footer: `signup.neverTraining` ("Never used for training.").
 - Actions:
   - **Continue (email)**: mark the field touched. If `!isWorkEmail(value)`, show the field error `auth.signInOptions.workEmailError` ("Enter your work email, like name@company.com."), set `aria-invalid="true"`, and send nothing. Otherwise `email = normalizeEmail(value)` and POST magic-link with `callbackURL = absolute(landing)` and `errorCallbackURL = absolute(refusedLanding(landing))`.
     - Success → State B with the normalized email.
@@ -425,7 +424,7 @@ app.homeLabel: Home / Inicio
 app.titles.{signIn,unavailable,whereToWrite,yourOrganization}: Sign in|Unavailable|Where to write|Your organization / Iniciar sesión|No disponible|Dónde escribir|Tu organización
 auth.checkYourEmail: titleStart "Check your"/"Revisa tu", titleEnd "email."/"email.", sentTo, useDifferentEmail, linkWorksOnce
 auth.signInOptions: linkRefused, providerRefused{{provider}}, continueWithGoogle, continueWithMicrosoft, or ("OR"/"O"), workEmail, yourWorkEmail, workEmailError, continue, linkNotSent, notSignedIn
-signup: titleStart, titleEnd, noPassword, neverTraining
+signup: titleStart, titleEnd, noPassword
 profile: titleStart, titleEnd, yourName, organization, agreeTo, terms, andThe, privacyPolicy, agreeEnd, next, skip, organizationNotSaved, notSkipped, termsBody, privacyBody
 unavailable: forbiddenTitle, forbiddenBody, home, unreachableTitle, unreachableBody, tryAgain
 onboarding: unreachable ("Couldn't reach SaaS. Check your connection and reload."), failed ("Something went wrong. Reload and try again.")
