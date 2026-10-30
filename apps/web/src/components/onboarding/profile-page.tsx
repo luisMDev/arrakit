@@ -5,15 +5,9 @@ import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
 import { Checkbox } from '#/components/ui/checkbox'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '#/components/ui/dialog'
 import { Field, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
+import { PRIVACY_URL, TERMS_URL } from '#/config'
 import { type CheckoutChoice, type ChoiceSearch, checkoutChoice } from '#/lib/checkout-choice'
 import { orpc } from '#/lib/orpc'
 
@@ -25,8 +19,6 @@ export function profileTarget(search: ChoiceSearch): ProfileTarget {
   const choice = checkoutChoice(search)
   return choice ? { to: '/app/checkout', search: choice } : { to: '/app' }
 }
-
-type LegalText = 'terms' | 'privacy'
 
 export function ProfilePage({
   search,
@@ -43,8 +35,6 @@ export function ProfilePage({
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [pending, setPending] = useState(false)
   const pendingRef = useRef(false)
-  const [legalOpen, setLegalOpen] = useState(false)
-  const [legal, setLegal] = useState<LegalText>('terms')
 
   async function settle(request: () => Promise<unknown>, failure: string) {
     if (pendingRef.current) return
@@ -76,11 +66,6 @@ export function ProfilePage({
       () => api.create({ name: organization.trim(), personName: personName.trim() }),
       'profile.organizationNotSaved',
     )
-  }
-
-  function openLegal(text: LegalText) {
-    setLegal(text)
-    setLegalOpen(true)
   }
 
   return (
@@ -118,22 +103,16 @@ export function ProfilePage({
           />
           <p className="text-sm leading-tight">
             <label htmlFor="profile-terms">{t('profile.agreeTo')}</label>{' '}
-            <Button
-              type="button"
-              variant="link"
-              className="h-auto p-0"
-              onClick={() => openLegal('terms')}
-            >
-              {t('profile.terms')}
+            <Button asChild variant="link" className="h-auto p-0">
+              <a href={TERMS_URL} target="_blank" rel="noopener">
+                {t('profile.terms')}
+              </a>
             </Button>{' '}
             {t('profile.andThe')}{' '}
-            <Button
-              type="button"
-              variant="link"
-              className="h-auto p-0"
-              onClick={() => openLegal('privacy')}
-            >
-              {t('profile.privacyPolicy')}
+            <Button asChild variant="link" className="h-auto p-0">
+              <a href={PRIVACY_URL} target="_blank" rel="noopener">
+                {t('profile.privacyPolicy')}
+              </a>
             </Button>
             {t('profile.agreeEnd')}
           </p>
@@ -152,18 +131,6 @@ export function ProfilePage({
           </Button>
         </div>
       </form>
-      <Dialog open={legalOpen} onOpenChange={setLegalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {t(legal === 'terms' ? 'profile.terms' : 'profile.privacyPolicy')}
-            </DialogTitle>
-            <DialogDescription>
-              {t(legal === 'terms' ? 'profile.termsBody' : 'profile.privacyBody')}
-            </DialogDescription>
-          </DialogHeader>
-        </DialogContent>
-      </Dialog>
     </main>
   )
 }

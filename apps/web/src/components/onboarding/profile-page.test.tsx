@@ -178,19 +178,13 @@ describe('ProfilePage', () => {
   })
 
   it.each([
-    ['Terms', 'The Terms will be published here before launch.'],
-    ['Privacy Policy', 'The Privacy Policy will be published here before launch.'],
-  ])('opens %s without ticking the box and keeps its text while closing', async (name, body) => {
+    ['Terms', 'https://example.com/terms'],
+    ['Privacy Policy', 'https://example.com/privacy'],
+  ])('links %s to the published page in a new tab', (name, href) => {
     renderPage(fakeApi())
-    await userEvent.click(screen.getByRole('button', { name }))
-    const dialog = await screen.findByRole('dialog')
-    expect(dialog).toHaveTextContent(name)
-    expect(dialog).toHaveTextContent(body)
-    expect(terms(true)).not.toBeChecked()
-    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
-    const closing = screen.queryByRole('dialog', { hidden: true })
-    if (closing) expect(closing).toHaveTextContent(body)
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    const link = screen.getByRole('link', { name })
+    expect(link).toHaveAttribute('href', href)
+    expect(link).toHaveAttribute('target', '_blank')
     expect(terms()).not.toBeChecked()
   })
 })

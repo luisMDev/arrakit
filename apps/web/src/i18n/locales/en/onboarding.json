@@ -16,8 +16,6 @@
     "next": "Next",
     "skip": "Skip",
     "organizationNotSaved": "Couldn't save your organization. Check its name and try again.",
-    "notSkipped": "Couldn't skip this step. Try again.",
-    "termsBody": "The Terms will be published here before launch.",
-    "privacyBody": "The Privacy Policy will be published here before launch."
+    "notSkipped": "Couldn't skip this step. Try again."
   }
 }

@@ -7,7 +7,7 @@ import { RouteError } from '#/components/shell/route-error'
 import { ThemeProvider } from '#/components/shell/theme-provider'
 import { Toaster } from '#/components/ui/sonner'
 import { TooltipProvider } from '#/components/ui/tooltip'
-import { APP_NAME } from '#/config'
+import { ANALYTICS, APP_NAME } from '#/config'
 import { languageSettled } from '#/i18n'
 import appCss from '../styles.css?url'
 
@@ -27,6 +27,9 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
       { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
     ],
+    scripts: ANALYTICS
+      ? [{ src: ANALYTICS.src, defer: true, 'data-domain': ANALYTICS.domain }]
+      : [],
   }),
   // The initial language (remembered or the browser's) is settled before any screen renders.
   beforeLoad: () => languageSettled(),
