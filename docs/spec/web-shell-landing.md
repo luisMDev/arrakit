@@ -352,13 +352,13 @@ components), passing the navigation's target href.
 - `organization`/billing endpoints for `/app/plans`, `/app/billing`.
 
 Error toast rule for **all** screens (`useApiMutation` hook, shared): on a failed call, report the error (logger), show
-an error toast, then run the screen's own `onError` rollback. The toast says the API's own message when the error is a refusal
-(`BAD_REQUEST` 400 or `FORBIDDEN` 403) whose message is a non-blank string, otherwise the screen's fallback text.
-5xx, network failures (status 0) and 400 without a message use the fallback. A screen may pass its own `refusal`
-reader (any 4xx, payment statuses, 409 only, or none). `run()` ignores a second call while the first is in flight. The same toast (same message+variant)
+an error toast, then run the screen's own `onError` rollback. The toast says the API's own message when the API answered
+with a status of 400 or more other than 500 and a non-blank message of its own (not oRPC's fallback text for the code nor
+`Input validation failed`), otherwise the screen's fallback text. A failed load (`useFailureToast`) follows the same
+rule. 500, network failures (status 0) and errors without a message use the fallback. `run()` ignores a second call while the first is in flight. The same toast (same message+variant)
 never stacks: showing it again restarts its timer (Sonner: pass a stable `id` = message). Durations: info 3 s, error 6 s.
 `saveOnChange` helper (settings autosave, no Save button): saves each valid change **sequentially in order**; on failure
-it reports, toasts the fallback, calls `failed()` to restore server values, and **drops the queued changes** made
+it reports, toasts as above, calls `failed()` to restore server values, and **drops the queued changes** made
 before the failure; a change made after the failure is saved normally. (Implement with a promise queue + generation counter.)
 
 ---
@@ -488,7 +488,7 @@ Static site, the product's **front page**. Port content and links; styling with 
 | `signed-in.flow.spec.ts` | Playwright e2e (PGlite + seeded user via Better Auth test utils) | one header; menu reaches Settings/Members/Billing with right h2; plan switch flow (billing area) |
 | `shared/i18n.spec.ts` | Vitest | switch + remember + `<html lang>`; browser language; fallback en |
 | `shared/stale-chunk.spec.ts` | Vitest | all 6 cases verbatim (pure function with fake `win`) |
-| `shared/api-call.spec.ts` | Vitest/RTL | refusal message for 400/403; fallback for 5xx/0/no message; saveOnChange ordering, drop-after-failure, save-after-failure |
+| `shared/api-call.spec.ts` | Vitest/RTL | API message for any answered status but 500; fallback for 500/0/no message; saveOnChange ordering, drop-after-failure, save-after-failure |
 | `signed-in/no-recovery-copy.spec.ts` | Vitest | scan `apps/web/src` + locale files |
 | `edge/api-proxy.spec.ts` | Vitest | only if the production proxy is ported |
 | new | Vitest | `en`/`es` locale key parity |

@@ -518,8 +518,9 @@ Stripe Dashboard webhook events to subscribe: `checkout.session.completed`,
 Money formatting on screens: `money({ amount, currency }, { whole? })` with
 `Intl.NumberFormat` for the active locale (`en-US` / `es-ES`), currency style,
 0 decimals when `whole` or amount is a whole unit, else 2 (`$1,430`,
-`$1,430.50`, whole: `$119`). Dates: `fullDay('YYYY-MM-DD', lang)` → `Oct 4, 2027`
-/ `4 oct 2027` (parse the three numbers; never `new Date('YYYY-MM-DD')`).
+`$1,430.50`, whole: `$119`). Dates: `fullDay('YYYY-MM-DD')` → `Oct 4, 2027`
+/ `4 oct 2027` (both in `#/lib/format`, Intl in the active language; the day is read
+and written in UTC so it never moves).
 Shared copy helpers (`plan-copy.ts`): `planLabel(plan)` = `t('pricing.plan.<plan>')`;
 `seatsLine(seats)` = `pricing.oneSeat` when 1 else `pricing.seatsUpTo {upTo, seats}`;
 `planPrice(offer, cycle)`:

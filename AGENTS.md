@@ -56,7 +56,7 @@ apps/
     src/lib/orpc.ts               typed oRPC client + TanStack Query utils (`orpc.x.y.queryOptions()`)
     src/lib/auth-client.ts        Better Auth React client (`@arrakit/auth/client`)
     src/lib/guards/               route guards: require-user, require-account, skip-when-signed-in
-    src/lib/                      session(), statusOf()/reportError()/apiMessage(), notify, useCurrentUser(), titled(), checkoutChoice(),
+    src/lib/                      statusOf()/reportError()/apiMessage(), format, notify, useCurrentUser(), titled(), checkoutChoice(),
                                   useClearingForm()/registerClearing() (form errors hide while a field is edited)
     src/i18n/                     i18next setup, `tr()`, `loadLanguage()`;
                                   locales/{en,es}/<module>.json deep-merged into one namespace
@@ -101,13 +101,13 @@ packages/
     src/jobs/, src/storage/       Jobs (pg-boss / in-process / memory), Storage (S3 / local / memory)
     src/testing.ts                `@arrakit/db/testing`: openTestData() (in-memory PGlite, migrated)
   auth/         @arrakit/auth     createAuth(deps) (Better Auth + plugins; one file per concern: hooks,
-                                  magic-link, social, oauth), loadAuthConfig(); `./roles` (pure),
-                                  `./client` (React client). The DB adapter is injected.
+                                  magic-link, social, oauth), loadAuthConfig(); `./client` (React
+                                  client). The DB adapter is injected.
   contract/     @arrakit/contract oRPC contract, one file per module + common.ts; index.ts composes them
   plans/        @arrakit/plans    Pure plans catalog (catalog.ts) and usage arithmetic (usage.ts)
-  address/      @arrakit/address  Pure email/slug/org-name/time-zone/device-name rules, one file each
+  address/      @arrakit/address  Pure email/slug/org-name/time-zone/device-name/role rules, one file each
   emails/       @arrakit/emails   Mail/Mailer types, composeEmail layout, copy helpers, one file per
-                                  template in templates/, registry.ts, APP_NAME brand
+                                  template in templates/, APP_NAME brand
   tsconfig/     @arrakit/tsconfig Shared tsconfig presets: base.json, node.json, react.json
   eslint-config/@arrakit/eslint-config  Flat config: base(), react(), data-import guard
 docs/spec/      Feature specs (read the one for your area before coding)
@@ -157,7 +157,7 @@ Highlights per workspace:
 - db: drizzle-orm, drizzle-kit, pg, @types/pg, @electric-sql/pglite, pg-boss, @aws-sdk/client-s3,
   @aws-sdk/s3-request-presigner, better-auth (drizzle adapter), croner, zod.
 - auth: better-auth, @better-auth/oauth-provider, zod, @arrakit/emails (dev: @arrakit/db for tests).
-- contract: @orpc/contract, zod, @arrakit/plans, @arrakit/auth (roles only), @arrakit/address.
+- contract: @orpc/contract, zod, @arrakit/plans, @arrakit/auth, @arrakit/address.
 - web: @tanstack/react-start, @tanstack/react-router, @tanstack/react-query, @orpc/client,
   @orpc/tanstack-query, better-auth, i18next, react-i18next, sonner, @stripe/stripe-js,
   @stripe/react-stripe-js, react-hook-form, @hookform/resolvers, zod, lucide-react, radix-ui;
@@ -206,11 +206,11 @@ Run from the repo root.
   it in apps/web via `orpc.<ns>.<proc>.queryOptions()` / `.mutationOptions()`.
 - **Toasts**: only through `notify.success/info/warning/error` from `#/lib/notify` (same text never
   stacks; errors and warnings stay 6 s). Importing `sonner` anywhere else in the web is a lint error.
-  The API's own error text comes from `apiMessage()` / `refusalMessage()` / `paymentRefusal()` in `#/lib/api-errors`.
-  A screen calls the API through `useApiMutation(options, { context, failure, refusal })` from
+  A failed call toasts the API's own message (`apiMessage()` in `#/lib/api-errors`) or the screen's
+  `failure` text. A screen calls the API through `useApiMutation(options, { context, failure })` from
   `#/lib/use-api-mutation` (`orpc.<ns>.<proc>.mutationOptions()` or a `mutationFn`; `run()` guards
   against a double submit); a failed load goes through `useFailureToast(error, context, failure)`
-  from `#/lib/use-failure-toast`.
+  from `#/lib/use-failure-toast`. Money and days are written with `#/lib/format` (active language).
 - Errors from procedures use oRPC errors (`ORPCError`) with HTTP-meaningful codes (400/401/403/404/409/402).
 - **Logging (api)**: never `console.*`. Procedures log through `context.log`, Hono routes through
   `c.get('log')` (both carry the request id), the rest through `deps.log` or an injected `Logger`;
@@ -266,6 +266,8 @@ Run from the repo root.
   Microsoft provider is configured, Better Auth's `validateUserInfo` makes `testUtils.saveUser()`
   require an endpoint context, so create such users through the API.
 - **Web components**: React Testing Library + user-event; mock the API with msw or by injecting a client.
+  `#/test/rpc` holds the shared kit: `api` (msw server), `answer(path, ...replies)`, `rpcError()`,
+  `meAs()`, `renderAt(ui, { me, url })` (router + query client + toaster), `withQueries()`, `quiet()`.
 - **E2E**: Playwright in `apps/web/e2e`; `playwright.config.ts` boots the API on port 5100 with a
   throwaway PGlite dir (`.data/e2e-pglite-<api port>`, reset at boot), `STRIPE_FAKE=1`,
   `NODE_ENV=test`, mail sent to a Mailpit on 5125, and the web dev server on 5200 with `E2E=1` (turns off Vite's error overlay: a
