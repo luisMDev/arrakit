@@ -19,11 +19,8 @@ export const priceLookupKey = (plan: PaidPlan, cycle: BillingCycle): string =>
 
 const LIVE_STATUSES = new Set(['active', 'trialing', 'past_due'])
 
-export function planOfSubscription(status: string, lookupKey: string | null): Plan {
-  if (!LIVE_STATUSES.has(status)) return 'free'
-  const plan = lookupKey?.split('_')[0]
-  return isPaidPlan(plan) ? plan : 'free'
-}
+export const planOfSubscription = (status: string, lookupKey: string | null): Plan =>
+  (LIVE_STATUSES.has(status) && subscriptionOfLookupKey(lookupKey)?.plan) || 'free'
 
 export function subscriptionOfLookupKey(lookupKey: string | null): PaidSubscription | null {
   const [plan, cycle, ...rest] = lookupKey?.split('_') ?? []

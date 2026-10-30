@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 
 import { joinAs, ownerOf } from '../testing/people'
 import { type TestApp, createTestApp } from '../testing/app'
-import { type FakeStripe, fakeStripe } from '../testing/fake-stripe'
+import { type FakeStripe, fakeStripe } from '../billing/fake-stripe'
 
 const WEB = 'https://app.example.test'
 
@@ -267,7 +267,7 @@ describe('POST /api/webhooks/stripe: emails', () => {
 
     it('emails the owner once when the owner is the billing email', async () => {
       const organization = await organizationWithTeam('maple.vc')
-      const billing = await stripe.billing(organization.customerId, organization.subscriptionId)
+      const billing = await stripe.billing(organization.customerId)
       stripe.bill(organization.customerId, {
         ...billing,
         customer: billing.customer && { ...billing.customer, email: 'Owner@Maple.vc' },

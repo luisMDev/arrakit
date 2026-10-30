@@ -6,8 +6,8 @@ import { type TestData, openTestData } from '@arrakit/db/testing'
 import type { Plan } from '@arrakit/plans'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { fakeStripe } from '../testing/fake-stripe'
-import { applyBillingEvent } from './apply-billing-event'
+import { fakeStripe } from './fake-stripe'
+import { applyBillingEvent } from './settle-event'
 import type { SubscriptionState } from './stripe-gateway'
 
 let data: TestData

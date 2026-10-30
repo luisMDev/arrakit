@@ -1,19 +1,59 @@
 import type { BillingView } from '@arrakit/contract'
 import type { OrganizationRow } from '@arrakit/db'
 import { canceledEmail } from '@arrakit/emails'
-import { PLAN_LABELS } from '@arrakit/plans'
+import { PLAN_LABELS, PLAN_OFFERS } from '@arrakit/plans'
 import { ORPCError } from '@orpc/server'
 
 import { dayOf } from '../day'
 import type { MemberContext } from '../orpc/context'
-import { adminsOf, billingLink, mailsOf, recipients, sendMails } from './billing-mail'
-import { billingView } from './billing-view'
+import { adminsOf, billingLink, recipients, sendMails } from './billing-mail'
 import { type BillingSnapshot, STRIPE_UNREACHABLE, type SubscriptionState } from './stripe-gateway'
 import {
   type PaidSubscription,
   subscriptionOfLookupKey,
   whenChangeApplies,
 } from './subscription-plan'
+
+const INVOICE_STATUS = { paid: 'paid', open: 'open', uncollectible: 'failed' } as const
+
+type BillingOrganization = Pick<OrganizationRow, 'plan' | 'name'>
+
+export function billingView(
+  organization: BillingOrganization,
+  snapshot: BillingSnapshot | null,
+): BillingView {
+  const { seats } = PLAN_OFFERS[organization.plan]
+  const unbilled = organization.plan === 'free' || organization.plan === 'internal'
+  const subscription = unbilled ? null : (snapshot?.subscription ?? null)
+  const customer = snapshot?.customer ?? null
+  const cancelled = subscription?.cancelAtPeriodEnd ?? false
+  const scheduled = subscription?.scheduled ?? null
+  const scheduledChoice = scheduled ? subscriptionOfLookupKey(scheduled.lookupKey) : null
+  const periodEnd = subscription ? dayOf(subscription.periodEnd) : null
+  return {
+    plan: organization.plan,
+    cycle: subscriptionOfLookupKey(subscription?.lookupKey ?? null)?.cycle ?? null,
+    renewsOn: cancelled ? null : periodEnd,
+    endsOn: cancelled ? periodEnd : null,
+    nextInvoice: cancelled ? null : ((scheduled ? scheduled.amount : subscription?.amount) ?? null),
+    scheduledChange:
+      scheduled && scheduledChoice && !cancelled
+        ? { ...scheduledChoice, on: dayOf(scheduled.at) }
+        : null,
+    seats,
+    card: customer?.card ?? null,
+    billingEmail: customer?.email || null,
+    invoiceTo: customer?.name || organization.name,
+    taxId: customer?.taxId || null,
+    invoices: (snapshot?.invoices ?? []).map((invoice) => ({
+      id: invoice.id,
+      issuedOn: dayOf(invoice.created),
+      total: invoice.total,
+      status: INVOICE_STATUS[invoice.status],
+      pdfUrl: invoice.pdfUrl || null,
+    })),
+  }
+}
 
 export function refuseInternal(organization: OrganizationRow): void {
   if (organization.plan === 'internal') {
@@ -82,11 +122,7 @@ export function billingService(context: MemberContext) {
         endsOn: dayOf(paid.subscription.periodEnd),
         links: { billing: billingLink(env.webUrl) },
       })
-      await sendMails(
-        mailer,
-        mailsOf(email, recipients(cancelledBy, ...adminsOf(members))),
-        notSent,
-      )
+      await sendMails(mailer, email, recipients(cancelledBy, ...adminsOf(members)), notSent)
     } catch (err) {
       notSent(err)
     }

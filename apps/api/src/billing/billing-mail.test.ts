@@ -5,9 +5,7 @@ import {
   adminsOf,
   billingLink,
   chargeOf,
-  daysUntil,
   downgradeDue,
-  mailsOf,
   recipients,
   sendMails,
 } from './billing-mail'
@@ -41,20 +39,6 @@ describe('chargeOf', () => {
   })
 })
 
-describe('daysUntil', () => {
-  const now = Date.UTC(2026, 9, 19, 12)
-  const at = (ms: number) => Math.floor(ms / 1000)
-
-  it.each([
-    ['3 days ahead', at(now + 3 * 86_400_000), 3],
-    ['1 hour ahead', at(now + 3_600_000), 1],
-    ['already past', at(now - 3_600_000), 1],
-    ['2.1 days ahead', at(now + 2.1 * 86_400_000), 3],
-  ])('%s gives %i', (_, nextAttempt, days) => {
-    expect(daysUntil(nextAttempt, now)).toBe(days)
-  })
-})
-
 describe('adminsOf', () => {
   it("keeps the owner's and the admins' emails, never a member's", () => {
     const members = [
@@ -82,8 +66,13 @@ describe('downgradeDue', () => {
   })
 })
 
-describe('mailsOf', () => {
-  it('addresses one copy of the email to each recipient', () => {
+describe('sendMails', () => {
+  it('sends one copy to each address and reports each failure without stopping the others', async () => {
+    const down = new Error('mail down')
+    const send = vi.fn(async (mail: { to: string | string[] }) => {
+      if (mail.to === 'b@cierzo.vc') throw down
+    })
+    const onFailure = vi.fn()
     const email = receiptEmail({
       plan: 'Pro',
       billing: 'yearly',
@@ -94,29 +83,16 @@ describe('mailsOf', () => {
         billing: billingLink('https://app.example.com'),
       },
     })
-    const mails = mailsOf(email, ['ana@cierzo.vc', 'bill@cierzo.vc'])
-    expect(mails.map((mail) => mail.to)).toEqual(['ana@cierzo.vc', 'bill@cierzo.vc'])
-    for (const mail of mails) {
+    await sendMails({ send }, email, ['a@cierzo.vc', 'b@cierzo.vc', 'c@cierzo.vc'], onFailure)
+    expect(send.mock.calls.map(([mail]) => mail.to)).toEqual([
+      'a@cierzo.vc',
+      'b@cierzo.vc',
+      'c@cierzo.vc',
+    ])
+    for (const [mail] of send.mock.calls) {
       expect(mail).toMatchObject({ subject: email.subject, html: email.html, text: email.text })
     }
     expect(email.text).toContain('https://app.example.com/app/billing')
-  })
-})
-
-describe('sendMails', () => {
-  it('sends every mail and reports each failure without stopping the others', async () => {
-    const down = new Error('mail down')
-    const send = vi.fn(async (mail: { to: string | string[] }) => {
-      if (mail.to === 'b@cierzo.vc') throw down
-    })
-    const onFailure = vi.fn()
-    const mail = { subject: 's', html: 'h', text: 't' }
-    await sendMails(
-      { send },
-      ['a@cierzo.vc', 'b@cierzo.vc', 'c@cierzo.vc'].map((to) => ({ ...mail, to })),
-      onFailure,
-    )
-    expect(send).toHaveBeenCalledTimes(3)
     expect(onFailure).toHaveBeenCalledExactlyOnceWith(down)
   })
 })

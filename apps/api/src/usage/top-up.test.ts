@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { type TestApp, TEST_WEB_ORIGIN, createTestApp } from '../testing/app'
-import { type FakeStripe, fakeStripe } from '../testing/fake-stripe'
+import { type FakeStripe, fakeStripe } from '../billing/fake-stripe'
 import { joinAs, ownerOf } from '../testing/people'
 
 describe('top-ups', () => {

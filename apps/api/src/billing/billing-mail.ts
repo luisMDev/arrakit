@@ -1,13 +1,6 @@
 import { normalizeEmail } from '@arrakit/address'
 import { allows, permissionsOf } from '@arrakit/auth/permissions'
-import {
-  type Charge,
-  type Mail,
-  type Mailer,
-  type RenderedEmail,
-  daysUntil as daysUntilDate,
-  toMail,
-} from '@arrakit/emails'
+import { type Charge, type Mailer, type RenderedEmail, toMail } from '@arrakit/emails'
 import type { Plan } from '@arrakit/plans'
 
 import type { Card, Money } from './stripe-gateway'
@@ -39,25 +32,20 @@ export function chargeOf(money: Money, card: Card | null): Charge {
   return { amount, card: card ? `${brand} ending ${card.last4}` : 'your card' }
 }
 
-export const mailsOf = (email: RenderedEmail, to: string[]): Mail[] =>
-  to.map((address) => toMail(email, address))
-
 export const billingLink = (webOrigin: string) => `${webOrigin}/app/billing`
 
-/** Sends every mail; each one that fails goes to `onFailure` and never stops the others. */
+/** Sends `email` to each address; each one that fails goes to `onFailure` and never stops the others. */
 export async function sendMails(
   mailer: Mailer,
-  mails: Mail[],
+  email: RenderedEmail,
+  to: string[],
   onFailure: (err: unknown) => void,
 ): Promise<void> {
-  const sent = await Promise.allSettled(mails.map((mail) => mailer.send(mail)))
+  const sent = await Promise.allSettled(to.map((address) => mailer.send(toMail(email, address))))
   for (const result of sent) {
     if (result.status === 'rejected') onFailure(result.reason)
   }
 }
-
-export const daysUntil = (unixSeconds: number, nowMs: number): number =>
-  daysUntilDate(new Date(unixSeconds * 1000), new Date(nowMs))
 
 /** The members whose static role manages billing (owners and admins). */
 export const adminsOf = (members: readonly { email: string; role: string }[]): string[] =>

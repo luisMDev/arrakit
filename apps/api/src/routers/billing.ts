@@ -1,9 +1,8 @@
 import { PLAN_LABELS } from '@arrakit/plans'
 import { ORPCError } from '@orpc/server'
 
-import { stripeRefs } from '../billing/apply-billing-event'
-import { billingService, refuseInternal } from '../billing/billing-service'
-import { billingView } from '../billing/billing-view'
+import { stripeRefs } from '../billing/settle-event'
+import { billingService, billingView, refuseInternal } from '../billing/billing-service'
 import { planOfSubscription } from '../billing/subscription-plan'
 import { dayOf } from '../day'
 import { member } from '../orpc/base'
@@ -16,8 +15,10 @@ async function setCancelled(context: MemberContext, cancelledBy: string | null) 
   const service = billingService(context)
   const paid = await service.paidOrganization(context.activeOrganization)
   await context.deps.stripe.cancelAtPeriodEnd(paid.subscription, cancelledBy !== null)
-  const snapshot = await service.snapshot(paid.organization)
-  if (cancelledBy) await service.sendCancellation(paid, cancelledBy)
+  const [snapshot] = await Promise.all([
+    service.snapshot(paid.organization),
+    cancelledBy && service.sendCancellation(paid, cancelledBy),
+  ])
   return billingView(paid.organization, snapshot)
 }
 

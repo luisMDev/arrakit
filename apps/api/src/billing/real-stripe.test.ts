@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { loadApiEnv } from '../env'
 import { recordingLogger } from '../observability/logger'
-import { fakeStripe } from '../testing/fake-stripe'
+import { fakeStripe } from './fake-stripe'
 import { mapStripeEvent, planKeyOf, realStripeGateway } from './real-stripe'
 import {
   type SubscriptionState,

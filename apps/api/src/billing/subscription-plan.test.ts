@@ -29,6 +29,7 @@ describe('planOfSubscription', () => {
     expect(planOfSubscription('active', null)).toBe('free')
     expect(planOfSubscription('active', 'enterprise_yearly')).toBe('free')
     expect(planOfSubscription('active', 'internal_monthly')).toBe('free')
+    expect(planOfSubscription('active', 'pro_weekly')).toBe('free')
   })
 })
 

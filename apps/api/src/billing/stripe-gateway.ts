@@ -3,7 +3,7 @@ import { ORPCError } from '@orpc/server'
 import type { ApiEnv } from '../env'
 import type { Logger } from '../observability/logger'
 import { PAYMENT_REQUIRED_STATUS } from '../orpc/context'
-import { fakeStripe } from '../testing/fake-stripe'
+import { fakeStripe } from './fake-stripe'
 import { realStripeGateway } from './real-stripe'
 import type { PaidSubscription } from './subscription-plan'
 
@@ -40,7 +40,7 @@ export interface SubscriptionState {
   anchor: Date
   /** Unix seconds. */
   periodEnd: number
-  itemId: string | null
+  itemId: string
   scheduleId: string | null
 }
 
@@ -150,55 +150,34 @@ export function unconfiguredStripe(): StripeGateway {
 
 const isCardError = (err: unknown) => (err as { type?: string } | null)?.type === 'StripeCardError'
 
-type StripeCall = Exclude<keyof StripeGateway, 'publishableKey' | 'event'>
-
-const STRIPE_CALLS: Record<StripeCall, true> = {
-  checkout: true,
-  topUpCheckout: true,
-  topUpPayment: true,
-  subscription: true,
-  customer: true,
-  billing: true,
-  price: true,
-  previewNow: true,
-  changeNow: true,
-  changeAtRenewal: true,
-  cancelAtPeriodEnd: true,
-  endNow: true,
-  portal: true,
-}
-
 /**
  * Every call that reaches Stripe, logged when it fails and answered as one oRPC error: 402 for a
  * declined card, 502 for anything else. `event` is left as is (the webhook answers 401).
  */
 export function guardedStripe(gateway: StripeGateway, log: Logger): StripeGateway {
-  const guard = async (operation: StripeCall, args: unknown[]) => {
-    try {
-      return await (gateway[operation] as (...args: unknown[]) => Promise<unknown>)(...args)
-    } catch (err) {
-      if (err instanceof ORPCError) throw err
-      log.error({ err, operation }, 'Stripe call failed')
-      if (isCardError(err)) {
-        throw new ORPCError('PAYMENT_REQUIRED', {
-          status: PAYMENT_REQUIRED_STATUS,
-          message: CARD_DECLINED,
-        })
+  const guard =
+    (operation: string, call: (...args: unknown[]) => Promise<unknown>) =>
+    async (...args: unknown[]) => {
+      try {
+        return await call(...args)
+      } catch (err) {
+        if (err instanceof ORPCError) throw err
+        log.error({ err, operation }, 'Stripe call failed')
+        if (isCardError(err)) {
+          throw new ORPCError('PAYMENT_REQUIRED', {
+            status: PAYMENT_REQUIRED_STATUS,
+            message: CARD_DECLINED,
+          })
+        }
+        throw new ORPCError('BAD_GATEWAY', { message: STRIPE_UNREACHABLE })
       }
-      throw new ORPCError('BAD_GATEWAY', { message: STRIPE_UNREACHABLE })
     }
-  }
-  const calls = Object.fromEntries(
-    (Object.keys(STRIPE_CALLS) as StripeCall[]).map((operation) => [
+  return Object.fromEntries(
+    Object.entries(gateway).map(([operation, value]) => [
       operation,
-      (...args: unknown[]) => guard(operation, args),
+      typeof value === 'function' && operation !== 'event' ? guard(operation, value) : value,
     ]),
-  )
-  return {
-    ...calls,
-    publishableKey: gateway.publishableKey,
-    event: (rawBody, signature) => gateway.event(rawBody, signature),
-  } as StripeGateway
+  ) as StripeGateway
 }
 
 export function createStripeGateway(env: ApiEnv): StripeGateway {
