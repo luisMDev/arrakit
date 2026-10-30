@@ -744,7 +744,7 @@ List (one card, members then invites):
 
 Actions (all except role change are single-flight via a shared `busy` flag disabling buttons; double click sends once):
 - Invite: success -> upsert invite by id into list (no list refetch), reset form; if `emailSent` toast `inviteSent`
-  {email}; else error toast titled `emailNotSent` with body `inviteSavedNotSent` {email}. Failure: 4xx with API message ->
+  {email}; else warning toast titled `emailNotSent` with body `inviteSavedNotSent` {email}. Failure: 4xx with API message ->
   toast that message (e.g. "ana.lopez@acme.com is already in the organization."); other (503, 500) -> toast `notInvited`
   {email}; form keeps the typed email.
 - Role change (owner): success -> replace member, toast `nowAdmin`/`nowMember` {name}; failure -> toast `roleNotChanged`
