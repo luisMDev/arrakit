@@ -7,8 +7,8 @@ const uniqueEmail = () => `proxy-${Date.now()}-${Math.floor(Math.random() * 1e6)
 // The API runs with NODE_ENV=test here, where Better Auth falls back to 127.0.0.1 when no
 // forwarded IP header reaches it, so x-forwarded-for cannot be told apart from that fallback.
 // This checks the end-to-end path with the platform edge's x-real-ip instead (spec
-// auth-onboarding section 10); the route rule's xfwd and its single-IP x-forwarded-for are
-// covered against h3's rule runtime in src/lib/api-proxy.test.ts.
+// auth-onboarding section 10); the proxy's xfwd and its single-IP x-forwarded-for are
+// covered by src/server/api-proxy-handler.test.ts.
 test('a session created through the web proxy records the client IP', async ({ page }) => {
   const email = uniqueEmail()
   const asked = await page.request.post('/api/auth/sign-in/magic-link', {

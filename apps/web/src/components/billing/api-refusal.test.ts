@@ -1,34 +1,16 @@
 import { ORPCError } from '@orpc/client'
 import { describe, expect, it } from 'vitest'
 
-import { billingRefusal, paymentRefusal } from './api-refusal'
+import { paymentRefusal } from './api-refusal'
 
 const refused = (code: string, status: number, message?: string) =>
   new ORPCError(code, { status, message })
 
-describe('billingRefusal', () => {
+describe('paymentRefusal', () => {
   it.each([
     ['BAD_REQUEST', 400],
     ['PAYMENT_REQUIRED', 402],
     ['FORBIDDEN', 403],
-    ['CONFLICT', 409],
-  ])('passes through a %s refusal', (code, status) => {
-    expect(billingRefusal(refused(code, status, 'Your card was declined.'))).toBe(
-      'Your card was declined.',
-    )
-  })
-
-  it.each([
-    ['BAD_GATEWAY', 502],
-    ['SERVICE_UNAVAILABLE', 503],
-    ['INTERNAL_SERVER_ERROR', 500],
-  ])('keeps its own text for a %s', (code, status) => {
-    expect(billingRefusal(refused(code, status, 'Payments are not set up yet.'))).toBeNull()
-  })
-})
-
-describe('paymentRefusal', () => {
-  it.each([
     ['CONFLICT', 409],
     ['BAD_GATEWAY', 502],
     ['SERVICE_UNAVAILABLE', 503],

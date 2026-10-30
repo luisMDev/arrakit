@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from '#/components/ui/dialog'
 import { Skeleton } from '#/components/ui/skeleton'
-import { reportError, toastError } from '#/lib/api-errors'
+import { refusalMessage, reportError, toastError } from '#/lib/api-errors'
 import { useCurrentUser } from '#/lib/current-user'
 import { orpc } from '#/lib/orpc'
 
@@ -67,15 +67,17 @@ export function PlansPage() {
     if (offers.isError) toastError(t('plans.loadFailed'))
   }, [offers.isError, t])
   useEffect(() => {
-    if (billing.isError) toastError(t('plans.billingLoadFailed'))
-  }, [billing.isError, t])
+    if (!billing.error) return
+    reportError('[plans] billing.get failed', billing.error)
+    toastError(refusalMessage(billing.error) ?? t('plans.billingLoadFailed'))
+  }, [billing.error, t])
 
   const preview = useMutation({
     ...orpc.billing.previewChange.mutationOptions(),
     onSuccess: (result, choice) => setPending({ choice, preview: result }),
     onError: (err) => {
       reportError('[plans] preview failed', err)
-      toastError(t('plans.priceFailed'))
+      toastError(refusalMessage(err) ?? t('plans.priceFailed'))
     },
   })
   const change = useMutation({

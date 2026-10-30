@@ -30,7 +30,7 @@ import { Skeleton } from '#/components/ui/skeleton'
 import type { SectionProps } from '#/components/settings/settings-page'
 import { BillingUsage, TopUpsList } from '#/components/usage/billing-usage'
 import { useUsage } from '#/components/usage/use-usage'
-import { reportError, toastError } from '#/lib/api-errors'
+import { refusalMessage, reportError, toastError } from '#/lib/api-errors'
 import { client, orpc } from '#/lib/orpc'
 
 const KEY = 'settings.billingSettings'
@@ -73,7 +73,7 @@ export function BillingSection({
   useEffect(() => {
     if (!error) return
     reportError('[billing] billing.get failed', error)
-    toastError(t(`${KEY}.notLoaded`))
+    toastError(refusalMessage(error) ?? t(`${KEY}.notLoaded`))
   }, [error, t])
 
   const replace = (next: BillingView) => queryClient.setQueryData(billingQuery.queryKey, next)
@@ -86,7 +86,7 @@ export function BillingSection({
     },
     onError: (err) => {
       reportError('[billing] cancel failed', err)
-      toastError(t(`${KEY}.notCancelled`))
+      toastError(refusalMessage(err) ?? t(`${KEY}.notCancelled`))
     },
   })
   const resume = useMutation({
@@ -94,7 +94,7 @@ export function BillingSection({
     onSuccess: replace,
     onError: (err) => {
       reportError('[billing] resume failed', err)
-      toastError(t(`${KEY}.notKept`))
+      toastError(refusalMessage(err) ?? t(`${KEY}.notKept`))
     },
   })
 
@@ -105,7 +105,7 @@ export function BillingSection({
       redirect(url)
     } catch (err) {
       reportError('[billing] portal failed', err)
-      toastError(t(`${KEY}.portalNotOpened`))
+      toastError(refusalMessage(err) ?? t(`${KEY}.portalNotOpened`))
       setPortalBusy(false)
     }
   }
@@ -176,7 +176,7 @@ export function BillingSection({
         !error && <Skeleton className="h-48" />
       )}
 
-      <BillingUsage usage={usage.data} />
+      <BillingUsage usage={usage.data} redirect={redirect} />
 
       {billing && (
         <Card className="py-2">

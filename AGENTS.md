@@ -207,11 +207,12 @@ Run from the repo root.
 - API (Hono): `GET /health`, `GET /api/openapi.json`, `/api/auth/*` (Better Auth), `/api/rpc/*`
   (oRPC), `POST /api/webhooks/stripe`, `/api/mcp`, `/.well-known/oauth-*`. Unknown → 404.
 - Web and API must be **one site** so the Better Auth cookie is first-party (`BETTER_AUTH_URL` =
-  web origin). The web server (Nitro route rules in `apps/web/vite.config.ts`) proxies `/api/**`
-  and `/.well-known/oauth-*/**` to `API_ORIGIN` in dev and in the production build. Vite's
-  `server.proxy` is NOT used (the TanStack Start/Nitro middleware answers first). The rules come
-  from `apps/web/src/lib/api-proxy.ts`: they set `xfwd` and drop the incoming `x-forwarded-for`,
-  so the API sees exactly one client IP; `x-real-ip` from a platform edge passes through.
+  web origin). The web server proxies `/api/**` and `/.well-known/oauth-*/**` to `API_ORIGIN`
+  in dev and in the production build. Vite's `server.proxy` is NOT used (the TanStack
+  Start/Nitro middleware answers first). A Nitro handler (`apps/web/src/server/api-proxy-handler.ts`,
+  registered in `apps/web/vite.config.ts` for `apiProxiedPaths`) reads `API_ORIGIN` per request,
+  sets `xfwd`, drops the incoming `x-forwarded-for` and sends one client IP (`cf-connecting-ip`
+  when present, else the TCP peer); `x-real-ip` passes through.
 - The contract procedures are also served REST-style under `/api` (the paths in
   `/api/openapi.json`; health only at `/health`).
 - The fallback storages' presigned URLs are served at `/api/files/local/*`, with a sandbox CSP
@@ -244,7 +245,9 @@ Run from the repo root.
 - **Web components**: React Testing Library + user-event; mock the API with msw or by injecting a client.
 - **E2E**: Playwright in `apps/web/e2e`; `playwright.config.ts` boots the API on port 3100 with a
   throwaway PGlite dir (`.data/e2e-pglite-<api port>`, reset at boot), `STRIPE_FAKE=1`,
-  `NODE_ENV=test`, and the web dev server on 4200. Specs import `WEB_ORIGIN` from `e2e/origins.ts`;
+  `NODE_ENV=test`, and the web dev server on 4200 with `E2E=1` (turns off Vite's error overlay: a
+  client that aborts mid-upload makes Nitro's dev middleware report `aborted`, and the overlay
+  would cover the page). Specs import `WEB_ORIGIN` from `e2e/origins.ts`;
   set `E2E_API_PORT` / `E2E_WEB_PORT` to run a second suite side by side (running servers on the
   same ports are reused outside CI). Embedded Checkout cannot load with the fake gateway's client
   secret, so e2e asserts reaching `/app/checkout` and drives payments through the fake webhook.

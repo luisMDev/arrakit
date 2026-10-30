@@ -1,6 +1,7 @@
 import type { Me } from '@arrakit/contract'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { orpc } from '#/lib/orpc'
@@ -10,6 +11,8 @@ import { OFFERS, answer, api, billingOf, meOn, renderAt } from './testing'
 
 beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
 afterEach(() => {
+  // sonner keeps its toasts across mounts; a new Toaster would replay the previous test's.
+  toast.dismiss()
   api.resetHandlers()
   vi.restoreAllMocks()
 })
@@ -110,6 +113,22 @@ describe('PlansPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows the API refusal when the switch cannot be priced', async () => {
+    quiet()
+    answer('billing/get', billingOf({ plan: 'pro', cycle: 'yearly' }))
+    answer('billing/previewChange', [400, 'Your organization is already on this plan.'])
+    await setup(meOn('pro'))
+    await userEvent.click(
+      await within(card('Team')).findByRole('button', { name: 'Switch to Team' }),
+    )
+    expect(
+      await screen.findByText('Your organization is already on this plan.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText("Couldn't price the switch. Try again in a minute."),
+    ).not.toBeInTheDocument()
+  })
+
   it('shows the API refusal when the switch fails', async () => {
     quiet()
     answer('billing/get', billingOf({ plan: 'pro', cycle: 'yearly' }))
@@ -183,6 +202,17 @@ describe('PlansPage', () => {
     ).toBeInTheDocument()
     expect(within(card('Team')).queryByRole('button')).not.toBeInTheDocument()
     expect(within(card('Free')).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('shows the API refusal when its billing cannot load', async () => {
+    quiet()
+    answer('billing/get', [403, 'Only admins can see billing.'])
+    await setup(meOn('pro'))
+    expect(await screen.findByText('Only admins can see billing.')).toBeInTheDocument()
+    expect(
+      screen.queryByText("Couldn't load your billing. Reload the page."),
+    ).not.toBeInTheDocument()
+    expect(within(card('Team')).queryByRole('button')).not.toBeInTheDocument()
   })
 
   it('sends a yearly Select straight to Checkout', async () => {

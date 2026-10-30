@@ -22,12 +22,7 @@ function ownMessage(err: unknown, statuses: ReadonlySet<number>): string | null 
   return message
 }
 
-/** The API's refusal message (4xx), or null when it has none worth showing. */
-export function billingRefusal(err: unknown): string | null {
-  return ownMessage(err, REFUSALS)
-}
-
-/** Like billingRefusal, but also passes through 502/503 messages (Checkout, plan switch). */
+/** The API's refusal message (4xx, 502, 503), or null when it has none worth showing. */
 export function paymentRefusal(err: unknown): string | null {
   return ownMessage(err, PAYMENT_REFUSALS)
 }

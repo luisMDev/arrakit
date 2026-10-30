@@ -142,6 +142,59 @@ describe('skipWhenSignedIn (/signup, /signin)', () => {
     expect(toastError).toHaveBeenCalledWith('Something went wrong. Reload and try again.')
   })
 
+  it('renders with the unreachable toast when the me call gets no answer', async () => {
+    api({ session: signedIn, rpc: 'network' })
+    expect(await skip()).toBe('render')
+    expect(toastError).toHaveBeenCalledWith(
+      "Couldn't reach Arrakit. Check your connection and reload.",
+    )
+  })
+
+  it('renders with the unreachable toast when a proxy answers the me call with a 502 page', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = input instanceof Request ? input.url : String(input)
+        if (url.includes('/api/auth/get-session')) return Response.json(signedIn.body)
+        return new Response('<html>Bad gateway</html>', {
+          status: 502,
+          headers: { 'content-type': 'text/html' },
+        })
+      }),
+    )
+    expect(await skip()).toBe('render')
+    expect(toastError).toHaveBeenCalledWith(
+      "Couldn't reach Arrakit. Check your connection and reload.",
+    )
+  })
+
+  it.each([
+    ['a plain Error from the session call', () => Promise.reject(new Error('bug'))],
+    [
+      'a session body that is not JSON',
+      async () => new Response('<html>', { status: 200, headers: { 'content-type': 'text/html' } }),
+    ],
+    [
+      'a TypeError from a bug',
+      () => Promise.reject(new TypeError("Cannot read properties of undefined (reading 'x')")),
+    ],
+    [
+      'a TypeError that only mentions fetch',
+      () => Promise.reject(new TypeError('fetchQuery is not a function')),
+    ],
+  ])('does not blame the connection on %s, logs it and renders', async (_, answer) => {
+    vi.stubGlobal('fetch', vi.fn(answer))
+    expect(await skip()).toBe('render')
+    expect(toastError).toHaveBeenCalledWith('Something went wrong. Reload and try again.')
+    expect(toastError).not.toHaveBeenCalledWith(
+      "Couldn't reach Arrakit. Check your connection and reload.",
+    )
+    expect(consoleError).toHaveBeenCalledWith(
+      '[skipWhenSignedIn] the guard failed',
+      expect.anything(),
+    )
+  })
+
   it('shows no toast while a link to the page is only preloaded', async () => {
     api({ session: 'network' })
     const result = await outcome(() =>

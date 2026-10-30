@@ -1,6 +1,8 @@
 import type { BillingView } from '@arrakit/contract'
+import { ORPCError } from '@orpc/client'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { answer, api, billingOf, meOn, renderAt } from '#/components/billing/testing'
@@ -10,10 +12,14 @@ import { BillingSection, type BillingSectionProps } from './billing-section'
 
 beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
 afterEach(() => {
+  // sonner keeps its toasts across mounts; a new Toaster would replay the previous test's.
+  toast.dismiss()
   api.resetHandlers()
   vi.restoreAllMocks()
 })
 afterAll(() => api.close())
+
+const KEPT_FAILED = "Couldn't keep the plan. Try again."
 
 const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
@@ -22,14 +28,18 @@ function row(label: string) {
   return term.parentElement as HTMLElement
 }
 
-async function setup(billing: BillingView | number, props: BillingSectionProps = {}) {
+async function setup(
+  billing: BillingView | number | [number, string],
+  props: BillingSectionProps = {},
+) {
+  const loaded = typeof billing === 'object' && !Array.isArray(billing) ? billing : null
   answer('billing/get', billing)
   answer('usage/get', usageFixture())
   const view = renderAt(<BillingSection {...props} />, {
-    me: meOn(typeof billing === 'number' ? 'pro' : billing.plan),
+    me: meOn(loaded?.plan ?? 'pro'),
     url: '/app/billing',
   })
-  if (typeof billing !== 'number') await screen.findByText('Plan', { selector: 'dt' })
+  if (loaded) await screen.findByText('Plan', { selector: 'dt' })
   return view
 }
 
@@ -192,6 +202,59 @@ describe('Settings > Billing', () => {
     quiet()
     await setup(502)
     expect(await screen.findByText("Couldn't load billing. Reload the page.")).toBeInTheDocument()
+  })
+
+  it('shows the API refusal when billing cannot load', async () => {
+    quiet()
+    await setup([403, 'Change billing from the app.'])
+    expect(await screen.findByText('Change billing from the app.')).toBeInTheDocument()
+    expect(screen.queryByText("Couldn't load billing. Reload the page.")).not.toBeInTheDocument()
+  })
+
+  it('shows the API refusal when the plan cannot be cancelled', async () => {
+    quiet()
+    answer('billing/cancel', [403, 'Only admins can change billing.'])
+    await setup(billingOf())
+    await userEvent.click(within(row('Plan')).getByRole('button', { name: 'Cancel' }))
+    const dialog = await screen.findByRole('alertdialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel plan' }))
+    expect(await screen.findByText('Only admins can change billing.')).toBeInTheDocument()
+    expect(screen.queryByText("Couldn't cancel the plan. Try again.")).not.toBeInTheDocument()
+  })
+
+  it('shows the API refusal when the plan cannot be kept', async () => {
+    quiet()
+    answer('billing/resume', [400, 'The plan has already ended.'])
+    await setup(billingOf({ renewsOn: null, endsOn: '2027-10-04', nextInvoice: null }))
+    await userEvent.click(within(row('Plan')).getByRole('button', { name: 'Keep my plan' }))
+    expect(await screen.findByText('The plan has already ended.')).toBeInTheDocument()
+    expect(screen.queryByText(KEPT_FAILED)).not.toBeInTheDocument()
+  })
+
+  it('says so when the plan cannot be kept', async () => {
+    quiet()
+    answer('billing/resume', 502)
+    await setup(billingOf({ renewsOn: null, endsOn: '2027-10-04', nextInvoice: null }))
+    await userEvent.click(within(row('Plan')).getByRole('button', { name: 'Keep my plan' }))
+    expect(await screen.findByText(KEPT_FAILED)).toBeInTheDocument()
+  })
+
+  it('shows the API refusal when the portal cannot open', async () => {
+    quiet()
+    const openPortal = vi.fn(async () =>
+      Promise.reject(
+        new ORPCError('FORBIDDEN', {
+          status: 403,
+          message: 'Billing is managed by your reseller.',
+        }),
+      ),
+    )
+    await setup(billingOf(), { openPortal, redirect: vi.fn() })
+    await userEvent.click(within(row('Payment')).getByRole('button', { name: 'Edit' }))
+    expect(await screen.findByText('Billing is managed by your reseller.')).toBeInTheDocument()
+    expect(
+      screen.queryByText("Couldn't open Stripe. Try again in a minute."),
+    ).not.toBeInTheDocument()
   })
 
   it('embeds the usage cards with Add credits', async () => {

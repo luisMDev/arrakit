@@ -33,6 +33,14 @@ describe('members and invitations', () => {
     ])
   })
 
+  it('names an inviter with no name by the local part of their email', async () => {
+    const owner = await ownerOf(t, 'jane@oak.vc', 'team', ' ')
+    await t.client(owner.headers).invitations.invite({ email: 'jon@oak.vc', role: 'member' })
+    const mail = t.sent.at(-1)
+    expect([mail?.to, mail?.subject]).toEqual(['jon@oak.vc', 'jane invited you to Oak on Arrakit'])
+    expect(mail?.text).toContain('jane')
+  })
+
   it('refuses an invite on Free with the seat message, storing and sending nothing', async () => {
     const owner = await ownerOf(t, 'owner@quince.vc', 'free')
     const sent = t.sent.length

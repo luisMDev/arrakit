@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 import { API_ORIGIN, WEB_ORIGIN } from './origins'
 
-// The web server (Nitro route rules in vite.config.ts) proxies /api/** and the OAuth metadata
+// The web server (the Nitro handler in src/server/api-proxy-handler.ts) proxies /api/** and the OAuth metadata
 // under /.well-known/oauth-* to the API, so web and API are one site. Every request here goes to
 // the WEB origin.
 
