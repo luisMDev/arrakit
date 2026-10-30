@@ -1,6 +1,9 @@
 import { CURRENCY, METRIC_KEYS, TOP_UP, isTopUpAmount, metricAmounts } from '@arrakit/plans'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useState } from 'react'
+import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
+import { z } from 'zod'
 
 import { Button } from '#/components/ui/button'
 import {
@@ -27,6 +30,9 @@ export function toCents(value: string): number | null {
   return value.trim() === '' ? null : Math.round(Number(value) * 100)
 }
 
+const topUpCents = z.string().transform(toCents).refine(isTopUpAmount)
+const topUpForm = z.object({ amount: topUpCents })
+
 export interface AddCreditsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -43,18 +49,19 @@ export function AddCreditsDialog({
   redirect = (url) => window.location.assign(url),
 }: AddCreditsDialogProps) {
   const { t } = useTranslation()
-  const [value, setValue] = useState(DEFAULT_DOLLARS)
+  const form = useForm({
+    resolver: zodResolver(topUpForm),
+    defaultValues: { amount: DEFAULT_DOLLARS },
+  })
   const [busy, setBusy] = useState(false)
-  const cents = toCents(value)
-  const valid = isTopUpAmount(cents)
-  const amounts = metricAmounts(valid ? cents : 0)
+  const cents = topUpCents.safeParse(useWatch({ control: form.control, name: 'amount' }))
+  const valid = cents.success
+  const amounts = metricAmounts(cents.data ?? 0)
   const preview = amountsLine(METRIC_KEYS.map((metric) => ({ metric, amount: amounts[metric] })))
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault()
-    if (!isTopUpAmount(cents)) return
+  async function submit({ amount }: z.output<typeof topUpForm>) {
     setBusy(true)
-    const result = await apiCall(() => startTopUp(cents), tr(`${KEY}.topUpNotOpened`), {
+    const result = await apiCall(() => startTopUp(amount), tr(`${KEY}.topUpNotOpened`), {
       failed: () => setBusy(false),
     })
     if (result) redirect(result.url)
@@ -63,7 +70,7 @@ export function AddCreditsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <form onSubmit={submit} className="flex flex-col gap-4">
+        <form onSubmit={(e) => void form.handleSubmit(submit)(e)} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>{t(`${KEY}.topUpTitle`)}</DialogTitle>
             <DialogDescription>{t(`${KEY}.topUpNote`)}</DialogDescription>
@@ -74,16 +81,14 @@ export function AddCreditsDialog({
             </Label>
             <Input
               id="top-up-amount"
-              name="amount"
               type="number"
               inputMode="decimal"
               min={TOP_UP.minCents / 100}
               max={TOP_UP.maxCents / 100}
               step={1}
-              value={value}
               aria-invalid={!valid}
               aria-describedby="top-up-bounds"
-              onChange={(e) => setValue(e.target.value)}
+              {...form.register('amount')}
             />
             <p
               id="top-up-bounds"

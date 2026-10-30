@@ -1,7 +1,10 @@
 import { isWorkEmail } from '@arrakit/address'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
+import { z } from 'zod'
 
 import { AuthRequestError, EmailRefusedError, useAuthApi } from '#/components/auth/auth-api'
 import { apiMessage } from '#/components/settings/api-message'
@@ -11,7 +14,11 @@ import { Field, FieldError, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { Spinner } from '#/components/ui/spinner'
 import { reportError, statusOf } from '#/lib/api-errors'
+import { registerClearing } from '#/lib/form'
 import { client } from '#/lib/orpc'
+
+const joinForm = (workEmailError: string) =>
+  z.object({ email: z.string().trim().refine(isWorkEmail, workEmailError) })
 
 export type JoinState = 'joining' | 'signed-out' | 'sent' | 'taken' | 'closed' | 'failed'
 
@@ -36,8 +43,12 @@ export function JoinPage({ invitationId }: { invitationId: string }) {
   const navigate = useNavigate()
   const auth = useAuthApi()
   const [state, setState] = useState<JoinState>('joining')
-  const [email, setEmail] = useState('')
-  const [emailError, setEmailError] = useState<string | null>(null)
+  const form = useForm({
+    resolver: zodResolver(joinForm(t('join.workEmail'))),
+    defaultValues: { email: '' },
+    reValidateMode: 'onSubmit',
+  })
+  const emailError = form.formState.errors.email?.message
   const [pending, setPending] = useState(false)
   const pendingRef = useRef(false)
   const started = useRef(false)
@@ -65,23 +76,15 @@ export function JoinPage({ invitationId }: { invitationId: string }) {
     return t('join.linkNotSent')
   }
 
-  async function sendLink(event: FormEvent) {
-    event.preventDefault()
-    const address = email.trim()
-    setEmail(address)
-    if (!address || !isWorkEmail(address)) {
-      setEmailError(t('join.workEmail'))
-      return
-    }
+  async function sendLink({ email }: z.output<ReturnType<typeof joinForm>>) {
     if (pendingRef.current) return
     pendingRef.current = true
     setPending(true)
-    setEmailError(null)
     try {
-      await auth.sendMagicLink(address, `/join/${encodeURIComponent(invitationId)}`)
+      await auth.sendMagicLink(email, `/join/${encodeURIComponent(invitationId)}`)
       setState('sent')
     } catch (err) {
-      setEmailError(sendFailure(err))
+      form.setError('email', { type: 'send', message: sendFailure(err) })
     } finally {
       pendingRef.current = false
       setPending(false)
@@ -113,7 +116,7 @@ export function JoinPage({ invitationId }: { invitationId: string }) {
             <CardContent>
               <form
                 noValidate
-                onSubmit={(event) => void sendLink(event)}
+                onSubmit={(event) => void form.handleSubmit(sendLink)(event)}
                 className="flex flex-col gap-4"
               >
                 <Field data-invalid={emailError ? true : undefined}>
@@ -123,12 +126,8 @@ export function JoinPage({ invitationId }: { invitationId: string }) {
                     type="email"
                     autoComplete="email"
                     placeholder="name@organization.com"
-                    value={email}
                     aria-invalid={emailError ? true : undefined}
-                    onChange={(event) => {
-                      setEmail(event.target.value)
-                      setEmailError(null)
-                    }}
+                    {...registerClearing(form, 'email')}
                   />
                   {emailError ? <FieldError>{emailError}</FieldError> : null}
                 </Field>

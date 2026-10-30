@@ -1,9 +1,14 @@
 import { isWorkEmail } from '@arrakit/address'
-import type { InvitationView } from '@arrakit/contract'
+import type { AssignableRole } from '@arrakit/auth/roles'
+import { type InvitationView, assignableRoleSchema } from '@arrakit/contract'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Controller, useForm } from 'react-hook-form'
+import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { z } from 'zod'
 
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
 import { Button } from '#/components/ui/button'
@@ -20,6 +25,7 @@ import {
 import { Separator } from '#/components/ui/separator'
 import { reportError, toastError, toastInfo } from '#/lib/api-errors'
 import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
+import { registerClearing } from '#/lib/form'
 import { client, orpc } from '#/lib/orpc'
 import { cn } from '#/lib/utils'
 
@@ -30,7 +36,6 @@ import { SettingsSectionLayout } from './settings-ui'
 const K = 'settings.membersSettings'
 
 type Member = { name: string; email: string; role: 'owner' | 'admin' | 'member' }
-type AssignableRole = 'admin' | 'member'
 
 const ROLE_LABEL = { owner: 'roleOwner', admin: 'roleAdmin', member: 'roleMember' } as const
 
@@ -46,6 +51,29 @@ export function daysSince(invitedOn: string, today = new Date()): number {
 
 const emailDomain = (email: string) => email.split('@').at(-1) ?? 'organization.com'
 
+function inviteForm(
+  t: TFunction,
+  placeholder: string,
+  members: readonly { email: string }[],
+  invites: readonly { email: string }[],
+) {
+  const listed = (list: readonly { email: string }[], lower: string) =>
+    list.some((entry) => entry.email.toLowerCase() === lower)
+  return z.object({
+    email: z
+      .string()
+      .trim()
+      .superRefine((address, ctx) => {
+        const lower = address.toLowerCase()
+        const fail = (message: string) => ctx.addIssue({ code: 'custom', message })
+        if (!isWorkEmail(address)) return fail(t(`${K}.enterWorkEmail`, { example: placeholder }))
+        if (listed(members, lower)) return fail(t(`${K}.alreadyInOrganization`, { email: lower }))
+        if (listed(invites, lower)) return fail(t(`${K}.alreadyInvited`, { email: lower }))
+      }),
+    role: assignableRoleSchema,
+  })
+}
+
 export function MembersSection({ open }: SectionProps) {
   const { t } = useTranslation()
   const me = useCurrentUser()
@@ -55,9 +83,15 @@ export function MembersSection({ open }: SectionProps) {
   const members = useQuery({ ...membersQuery, enabled: me.isAdmin })
   const invites = useQuery({ ...invitesQuery, enabled: me.isAdmin })
 
-  const [email, setEmail] = useState('')
-  const [role, setRole] = useState<AssignableRole>('member')
-  const [emailError, setEmailError] = useState<string | null>(null)
+  const placeholder = `name@${emailDomain(me.user?.email ?? '')}`
+  const memberList = members.data ?? []
+  const inviteList = invites.data ?? []
+  const form = useForm({
+    resolver: zodResolver(inviteForm(t, placeholder, memberList, inviteList)),
+    defaultValues: { email: '', role: 'member' as const },
+    reValidateMode: 'onSubmit',
+  })
+  const emailError = form.formState.errors.email?.message
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
 
@@ -71,9 +105,6 @@ export function MembersSection({ open }: SectionProps) {
 
   if (!me.isAdmin || !me.user) return <></>
   const myEmail = me.user.email
-  const placeholder = `name@${emailDomain(myEmail)}`
-  const memberList = members.data ?? []
-  const inviteList = invites.data ?? []
 
   const setMembers = (fn: (list: Member[]) => Member[]) =>
     queryClient.setQueryData<Member[]>(membersQuery.queryKey, (list) => fn(list ?? []))
@@ -104,23 +135,8 @@ export function MembersSection({ open }: SectionProps) {
     member.role !== 'owner' &&
     (member.role !== 'admin' || me.isOwner)
 
-  function invite(event: FormEvent) {
-    event.preventDefault()
-    const address = email.trim()
-    const lower = address.toLowerCase()
-    if (!address || !isWorkEmail(address)) {
-      setEmailError(t(`${K}.enterWorkEmail`, { example: placeholder }))
-      return
-    }
-    if (memberList.some((m) => m.email.toLowerCase() === lower)) {
-      setEmailError(t(`${K}.alreadyInOrganization`, { email: lower }))
-      return
-    }
-    if (inviteList.some((i) => i.email.toLowerCase() === lower)) {
-      setEmailError(t(`${K}.alreadyInvited`, { email: lower }))
-      return
-    }
-    void once(async () => {
+  const invite = ({ email: address, role }: z.output<ReturnType<typeof inviteForm>>) =>
+    once(async () => {
       try {
         const sent = await client.invitations.invite({ email: address, role })
         setInvites((list) =>
@@ -128,8 +144,7 @@ export function MembersSection({ open }: SectionProps) {
             ? list.map((i) => (i.id === sent.id ? sent : i))
             : [...list, sent],
         )
-        setEmail('')
-        setRole('member')
+        form.reset()
         if (sent.emailSent) toastInfo(t(`${K}.inviteSent`, { email: sent.email }))
         else
           toast.error(t(`${K}.emailNotSent`), {
@@ -139,7 +154,6 @@ export function MembersSection({ open }: SectionProps) {
         failed('inviting failed', err, t(`${K}.notInvited`, { email: address }))
       }
     })
-  }
 
   async function changeRole(member: Member, next: AssignableRole) {
     const name = displayName(member)
@@ -219,7 +233,11 @@ export function MembersSection({ open }: SectionProps) {
     >
       <Card>
         <CardContent>
-          <form noValidate onSubmit={invite} className="flex flex-col gap-2">
+          <form
+            noValidate
+            onSubmit={(event) => void form.handleSubmit(invite)(event)}
+            className="flex flex-col gap-2"
+          >
             <Field data-invalid={emailError ? true : undefined}>
               <FieldLabel htmlFor="invite-email">{t(`${K}.inviteLabel`)}</FieldLabel>
               <div className="flex flex-wrap gap-2">
@@ -229,22 +247,28 @@ export function MembersSection({ open }: SectionProps) {
                   autoComplete="off"
                   placeholder={placeholder}
                   className="min-w-56 flex-1"
-                  value={email}
                   aria-invalid={emailError ? true : undefined}
-                  onChange={(event) => {
-                    setEmail(event.target.value)
-                    setEmailError(null)
-                  }}
+                  {...registerClearing(form, 'email')}
                 />
-                <Select value={role} onValueChange={(value) => setRole(value as AssignableRole)}>
-                  <SelectTrigger aria-label={t(`${K}.role`)} className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="member">{t(`${K}.roleMember`)}</SelectItem>
-                    <SelectItem value="admin">{t(`${K}.roleAdmin`)}</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Controller
+                  control={form.control}
+                  name="role"
+                  render={({ field }) => (
+                    <Select
+                      name={field.name}
+                      value={field.value}
+                      onValueChange={(value) => field.onChange(value as AssignableRole)}
+                    >
+                      <SelectTrigger ref={field.ref} aria-label={t(`${K}.role`)} className="w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="member">{t(`${K}.roleMember`)}</SelectItem>
+                        <SelectItem value="admin">{t(`${K}.roleAdmin`)}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
                 <Button type="submit" disabled={busy}>
                   {t(`${K}.invite`)}
                 </Button>

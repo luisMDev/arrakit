@@ -1,8 +1,11 @@
-import type { AccountView } from '@arrakit/contract'
+import { type AccountView, accountUpdateSchema } from '@arrakit/contract'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
+import { z } from 'zod'
 
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
 import { Button } from '#/components/ui/button'
@@ -28,6 +31,7 @@ import {
 } from '#/lib/api-errors'
 import { authClient } from '#/lib/auth-client'
 import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
+import { registerClearing } from '#/lib/form'
 import { client, orpc } from '#/lib/orpc'
 
 import { apiMessage } from './api-message'
@@ -47,6 +51,8 @@ export const TIME_ZONES: { zone: string; key: string }[] = [
 ]
 
 const K = 'settings.accountSettings'
+
+const nameSchema = z.object({ name: accountUpdateSchema.shape.name.unwrap() })
 
 type AccountUpdate = Parameters<typeof client.me.account.update>[0]
 
@@ -102,8 +108,12 @@ export function AccountSection({ open }: SectionProps) {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
-  const [draftName, setDraftName] = useState<string | null>(null)
-  const [nameError, setNameError] = useState(false)
+  const form = useForm({
+    resolver: zodResolver(nameSchema),
+    values: { name: account ? displayName(account) : '' },
+    reValidateMode: 'onSubmit',
+  })
+  const nameError = form.formState.errors.name !== undefined
   const [signingOut, setSigningOut] = useState(false)
   const signingOutRef = useRef(false)
   const [confirming, setConfirming] = useState(false)
@@ -185,17 +195,13 @@ export function AccountSection({ open }: SectionProps) {
     if (zone) void fillZoneRef.current(zone)
   }, [needsZone])
 
-  function saveName() {
-    if (!account || draftName === null) return
-    const trimmed = draftName.trim()
-    if (trimmed === '') {
-      setNameError(true)
-      return
-    }
-    setNameError(false)
+  function saveName({ name: trimmed }: z.output<typeof nameSchema>) {
+    if (!account) return
     if (trimmed !== account.name) save({ name: trimmed })
-    setDraftName(null)
+    form.reset({ name: trimmed })
   }
+
+  const nameField = registerClearing(form, 'name')
 
   async function signOutEverywhere() {
     if (signingOutRef.current) return
@@ -255,13 +261,12 @@ export function AccountSection({ open }: SectionProps) {
                 <Input
                   id="account-name"
                   autoComplete="name"
-                  value={draftName ?? displayName(account)}
                   aria-invalid={nameError || undefined}
-                  onChange={(event) => {
-                    setDraftName(event.target.value)
-                    setNameError(false)
+                  {...nameField}
+                  onBlur={(event) => {
+                    void nameField.onBlur(event)
+                    if (form.getFieldState('name').isDirty) void form.handleSubmit(saveName)()
                   }}
-                  onBlur={saveName}
                 />
                 {nameError ? <FieldError>{t(`${K}.enterName`)}</FieldError> : null}
               </Field>

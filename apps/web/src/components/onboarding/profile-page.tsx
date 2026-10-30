@@ -1,7 +1,11 @@
+import { createOrganizationSchema } from '@arrakit/contract'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
-import { type FormEvent, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
+import { Controller, useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { z } from 'zod'
 
 import { Button } from '#/components/ui/button'
 import { Checkbox } from '#/components/ui/checkbox'
@@ -12,6 +16,12 @@ import { type CheckoutChoice, type ChoiceSearch, checkoutChoice } from '#/lib/ch
 import { orpc } from '#/lib/orpc'
 
 import { useOnboardingApi } from './onboarding-api'
+
+const profileForm = z.object({
+  personName: createOrganizationSchema.shape.personName.unwrap(),
+  organization: createOrganizationSchema.shape.name,
+  termsAccepted: z.boolean().refine((accepted) => accepted),
+})
 
 export type ProfileTarget = { to: '/app' } | { to: '/app/checkout'; search: CheckoutChoice }
 
@@ -30,9 +40,11 @@ export function ProfilePage({
   const { t } = useTranslation()
   const api = useOnboardingApi()
   const queryClient = useQueryClient()
-  const [personName, setPersonName] = useState('')
-  const [organization, setOrganization] = useState('')
-  const [termsAccepted, setTermsAccepted] = useState(false)
+  const form = useForm({
+    resolver: zodResolver(profileForm),
+    defaultValues: { personName: '', organization: '', termsAccepted: false },
+  })
+  const termsAccepted = useWatch({ control: form.control, name: 'termsAccepted' })
   const [pending, setPending] = useState(false)
   const pendingRef = useRef(false)
 
@@ -59,11 +71,9 @@ export function ProfilePage({
     toast.error(t(failure))
   }
 
-  function next(event: FormEvent) {
-    event.preventDefault()
-    if (!termsAccepted) return
-    void settle(
-      () => api.create({ name: organization.trim(), personName: personName.trim() }),
+  function next({ personName, organization }: z.output<typeof profileForm>) {
+    return settle(
+      () => api.create({ name: organization, personName }),
       'profile.organizationNotSaved',
     )
   }
@@ -74,32 +84,39 @@ export function ProfilePage({
         {t('profile.titleStart')}{' '}
         <span className="text-muted-foreground">{t('profile.titleEnd')}</span>
       </h1>
-      <form noValidate className="flex flex-col gap-6" onSubmit={next}>
+      <form
+        noValidate
+        className="flex flex-col gap-6"
+        onSubmit={(e) => void form.handleSubmit(next)(e)}
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor="profile-name">{t('profile.yourName')}</FieldLabel>
-            <Input
-              id="profile-name"
-              autoComplete="name"
-              value={personName}
-              onChange={(e) => setPersonName(e.target.value)}
-            />
+            <Input id="profile-name" autoComplete="name" {...form.register('personName')} />
           </Field>
           <Field>
             <FieldLabel htmlFor="profile-organization">{t('profile.organization')}</FieldLabel>
             <Input
               id="profile-organization"
               autoComplete="organization"
-              value={organization}
-              onChange={(e) => setOrganization(e.target.value)}
+              {...form.register('organization')}
             />
           </Field>
         </div>
         <div className="flex items-start gap-3">
-          <Checkbox
-            id="profile-terms"
-            checked={termsAccepted}
-            onCheckedChange={(checked) => setTermsAccepted(checked === true)}
+          <Controller
+            control={form.control}
+            name="termsAccepted"
+            render={({ field }) => (
+              <Checkbox
+                id="profile-terms"
+                ref={field.ref}
+                name={field.name}
+                checked={field.value}
+                onCheckedChange={(checked) => field.onChange(checked === true)}
+                onBlur={field.onBlur}
+              />
+            )}
           />
           <p className="text-sm leading-tight">
             <label htmlFor="profile-terms">{t('profile.agreeTo')}</label>{' '}

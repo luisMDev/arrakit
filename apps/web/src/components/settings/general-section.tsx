@@ -1,24 +1,35 @@
+import { updateOrganizationSchema } from '@arrakit/contract'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
+import { z } from 'zod'
 
 import { Card, CardContent } from '#/components/ui/card'
 import { Field, FieldDescription, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { reportError, toastError } from '#/lib/api-errors'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
+import { registerClearing } from '#/lib/form'
 import { client, orpc } from '#/lib/orpc'
 
 import { SettingsSectionLayout } from './settings-ui'
 
 const K = 'settings.generalSettings'
 
+const nameSchema = z.object({ name: updateOrganizationSchema.shape.name.unwrap() })
+
 export function GeneralSection() {
   const { t } = useTranslation()
   const me = useCurrentUser()
   const organization = me.user?.organization ?? null
-  const [draft, setDraft] = useState<string | null>(null)
-  const [invalid, setInvalid] = useState(false)
+  const form = useForm({
+    resolver: zodResolver(nameSchema),
+    values: { name: organization?.name ?? '' },
+    reValidateMode: 'onSubmit',
+  })
+  const invalid = form.formState.errors.name !== undefined
   const queryClient = useQueryClient()
 
   /** The organization as the API holds it now; a failure says `failure` and keeps what shows. */
@@ -36,15 +47,10 @@ export function GeneralSection() {
     void loadOnOpen.current()
   }, [])
 
-  async function saveName() {
-    if (!organization || !me.isAdmin || draft === null) return
-    const trimmed = draft.trim()
-    if (trimmed === '') {
-      setInvalid(true)
-      return
-    }
+  async function saveName({ name: trimmed }: z.output<typeof nameSchema>) {
+    if (!organization || !me.isAdmin) return
     if (trimmed === organization.name) {
-      setDraft(null)
+      form.reset()
       return
     }
     try {
@@ -54,14 +60,16 @@ export function GeneralSection() {
           ? { ...current, organization: { ...current.organization, name: saved.name } }
           : current,
       )
-      setDraft(null)
+      form.reset({ name: saved.name })
     } catch (err) {
       reportError('[general] renaming the organization failed', err)
       toastError(t(`${K}.notSaved`))
-      setDraft(null)
+      form.reset()
       await load(t(`${K}.notSaved`))
     }
   }
+
+  const nameField = registerClearing(form, 'name')
 
   return (
     <SettingsSectionLayout id="general" title={t(`${K}.title`)}>
@@ -79,14 +87,13 @@ export function GeneralSection() {
               <Input
                 id="organization-name"
                 autoComplete="organization"
-                value={draft ?? organization.name}
                 disabled={!me.isAdmin}
                 aria-invalid={invalid || undefined}
-                onChange={(event) => {
-                  setDraft(event.target.value)
-                  setInvalid(false)
+                {...nameField}
+                onBlur={(event) => {
+                  void nameField.onBlur(event)
+                  if (form.getFieldState('name').isDirty) void form.handleSubmit(saveName)()
                 }}
-                onBlur={() => void saveName()}
               />
               <FieldDescription>{t(`${K}.slug`, { slug: organization.slug })}</FieldDescription>
             </Field>
