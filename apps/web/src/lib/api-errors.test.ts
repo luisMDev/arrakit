@@ -2,7 +2,7 @@ import { ORPCError } from '@orpc/client'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { apiCall, apiMessage, paymentRefusal, refusalMessage, saveOnChange } from './api-errors'
+import { apiMessage, paymentRefusal, refusalMessage, saveOnChange } from './api-errors'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 
@@ -89,39 +89,6 @@ describe('apiMessage', () => {
 
   it('ignores the generic text oRPC sends when there is no message', () => {
     expect(apiMessage(refused('NOT_FOUND', 404))).toBeNull()
-  })
-})
-
-describe('apiCall', () => {
-  it('passes the value on', async () => {
-    const next = vi.fn()
-    expect(await apiCall(Promise.resolve(3), 'Failed', { next })).toBe(3)
-    expect(next).toHaveBeenCalledWith(3)
-    expect(toast.error).not.toHaveBeenCalled()
-  })
-
-  it("toasts the API's refusal, after putting the control back", async () => {
-    const failed = vi.fn()
-    const err = new ORPCError('BAD_REQUEST', { message: 'Pick another name.' })
-    expect(await apiCall(Promise.reject(err), 'Failed', { failed })).toBeUndefined()
-    expect(failed).toHaveBeenCalledWith(err)
-    expect(console.error).toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalledWith(
-      'Pick another name.',
-      expect.objectContaining({ id: 'error:Pick another name.', duration: 6000 }),
-    )
-  })
-
-  it('toasts the fallback for a 5xx or no answer', async () => {
-    await apiCall(() => Promise.reject(new ORPCError('INTERNAL_SERVER_ERROR')), 'Failed')
-    await apiCall(
-      () => Promise.reject(new TypeError('offline')),
-      (e) => `Failed: ${String(e)}`,
-    )
-    expect(vi.mocked(toast.error).mock.calls.map(([m]) => m)).toEqual([
-      'Failed',
-      'Failed: TypeError: offline',
-    ])
   })
 })
 

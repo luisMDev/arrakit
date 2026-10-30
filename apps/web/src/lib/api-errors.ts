@@ -66,32 +66,6 @@ export function apiFailed(
   notify.error(refusal(err) ?? failureText(failure, err))
 }
 
-export interface ApiCallOptions<T> {
-  next?: (value: T) => void
-  failed?: (err: unknown) => void
-}
-
-/**
- * Runs an API call for a screen. A failure is reported, `failed` runs (to put a control back),
- * and an error toast says the API's refusal message or `failure` otherwise.
- * Resolves to the value, or `undefined` when the call failed.
- */
-export async function apiCall<T>(
-  call: Promise<T> | (() => Promise<T>),
-  failure: ApiFailure,
-  { next, failed }: ApiCallOptions<T> = {},
-): Promise<T | undefined> {
-  try {
-    const value = await (typeof call === 'function' ? call() : call)
-    next?.(value)
-    return value
-  } catch (err) {
-    failed?.(err)
-    apiFailed('[apiCall] a call failed', err, failure)
-    return undefined
-  }
-}
-
 export interface SaveOnChange<T> {
   (value: T): void
   /** Resolves once every queued save has settled. */

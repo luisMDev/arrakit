@@ -5,10 +5,9 @@ import { useTranslation } from 'react-i18next'
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
 import { Button } from '#/components/ui/button'
 import { Separator } from '#/components/ui/separator'
-import { tr } from '#/i18n'
-import { apiCall } from '#/lib/api-errors'
 import { authClient } from '#/lib/auth-client'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
+import { useApiMutation } from '#/lib/use-api-mutation'
 
 import { ThemeSwitcher } from './theme-switcher'
 
@@ -28,6 +27,16 @@ export function AppMenu() {
   const [open, setOpen] = useState(false)
   const host = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
+  const signOutMutation = useApiMutation(
+    {
+      mutationFn: signOutOrThrow,
+      onSuccess: () => {
+        signedOut()
+        void navigate({ to: '/signin' })
+      },
+    },
+    { context: '[appMenu] signing out failed', failure: t('appMenu.notSignedOut') },
+  )
 
   useEffect(() => {
     if (!open) return
@@ -52,12 +61,7 @@ export function AppMenu() {
 
   const signOut = () => {
     close()
-    void apiCall(signOutOrThrow, tr('appMenu.notSignedOut'), {
-      next: () => {
-        signedOut()
-        void navigate({ to: '/signin' })
-      },
-    })
+    void signOutMutation.run()
   }
 
   const links = [

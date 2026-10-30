@@ -26,6 +26,7 @@ import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import { client, orpc } from '#/lib/orpc'
+import { useApiMutation } from '#/lib/use-api-mutation'
 import { useFailureToast } from '#/lib/use-failure-toast'
 
 import { ConfirmDeleteDialog } from './confirm-delete-dialog'
@@ -109,8 +110,6 @@ export function AccountSection({ open }: SectionProps) {
   const [signingOut, setSigningOut] = useState(false)
   const signingOutRef = useRef(false)
   const [confirming, setConfirming] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const deletingRef = useRef(false)
   const zoneFilled = useRef(false)
 
   useFailureToast(
@@ -212,26 +211,23 @@ export function AccountSection({ open }: SectionProps) {
     }
   }
 
-  async function deleteAccount() {
-    if (deletingRef.current) return
-    deletingRef.current = true
-    setDeleting(true)
-    try {
-      await client.me.delete()
-    } catch (err) {
-      deletingRef.current = false
-      setDeleting(false)
-      const message = apiMessage(err, (status) => status === 409)
-      if (!message) reportError('[account] deleting the account failed', err)
-      notify.error(message ?? t(`${K}.notDeleted`))
-      return
-    }
-    await authClient.signOut().catch(() => undefined)
-    setConfirming(false)
-    notify.success(t(`${K}.deleted`))
-    me.signedOut()
-    void navigate({ to: '/signin' })
-  }
+  const deleteAccount = useApiMutation(
+    {
+      ...orpc.me.delete.mutationOptions(),
+      onSuccess: async () => {
+        await authClient.signOut().catch(() => undefined)
+        setConfirming(false)
+        notify.success(t(`${K}.deleted`))
+        me.signedOut()
+        void navigate({ to: '/signin' })
+      },
+    },
+    {
+      context: '[account] deleting the account failed',
+      failure: t(`${K}.notDeleted`),
+      refusal: (err) => apiMessage(err, (status) => status === 409),
+    },
+  )
 
   const zones =
     account?.timeZone && !TIME_ZONES.some((z) => z.zone === account.timeZone)
@@ -386,8 +382,8 @@ export function AccountSection({ open }: SectionProps) {
             onOpenChange={setConfirming}
             title={t(`${K}.confirmTitle`)}
             confirmLabel={t(`${K}.deleteAccount`)}
-            pending={deleting}
-            onConfirm={() => void deleteAccount()}
+            pending={deleteAccount.isPending}
+            onConfirm={() => void deleteAccount.run()}
           />
         </>
       ) : null}

@@ -1,13 +1,14 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/components/ui/card'
-import { apiMessage, reportError } from '#/lib/api-errors'
+import { apiMessage } from '#/lib/api-errors'
 import { useCurrentUser } from '#/lib/current-user'
 import { notify } from '#/lib/notify'
-import { client } from '#/lib/orpc'
+import { orpc } from '#/lib/orpc'
+import { useApiMutation } from '#/lib/use-api-mutation'
 
 import { ConfirmDeleteDialog } from './confirm-delete-dialog'
 import { SettingsSectionLayout } from './settings-ui'
@@ -19,27 +20,22 @@ export function SecuritySection() {
   const navigate = useNavigate()
   const me = useCurrentUser()
   const [confirming, setConfirming] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const deletingRef = useRef(false)
-
-  async function deleteOrganization() {
-    if (deletingRef.current) return
-    deletingRef.current = true
-    setDeleting(true)
-    try {
-      await client.organizations.delete()
-    } catch (err) {
-      reportError('[security] deleting the organization failed', err)
-      notify.error(apiMessage(err, (status) => status >= 400) ?? t(`${K}.notDeleted`))
-      deletingRef.current = false
-      setDeleting(false)
-      return
-    }
-    setConfirming(false)
-    notify.success(t(`${K}.deleted`))
-    me.signedOut()
-    void navigate({ to: '/profile' })
-  }
+  const deleteOrganization = useApiMutation(
+    {
+      ...orpc.organizations.delete.mutationOptions(),
+      onSuccess: () => {
+        setConfirming(false)
+        notify.success(t(`${K}.deleted`))
+        me.signedOut()
+        void navigate({ to: '/profile' })
+      },
+    },
+    {
+      context: '[security] deleting the organization failed',
+      failure: t(`${K}.notDeleted`),
+      refusal: (err) => apiMessage(err, (status) => status >= 400),
+    },
+  )
 
   return (
     <SettingsSectionLayout id="security" title={t(`${K}.title`)}>
@@ -61,8 +57,8 @@ export function SecuritySection() {
             onOpenChange={setConfirming}
             title={t(`${K}.confirmTitle`)}
             confirmLabel={t(`${K}.deleteOrganization`)}
-            pending={deleting}
-            onConfirm={() => void deleteOrganization()}
+            pending={deleteOrganization.isPending}
+            onConfirm={() => void deleteOrganization.run()}
           />
         </>
       ) : (

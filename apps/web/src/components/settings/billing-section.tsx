@@ -34,6 +34,7 @@ import { BillingUsage, TopUpsList } from '#/components/usage/billing-usage'
 import { useUsage } from '#/components/usage/use-usage'
 import { apiFailed, refusalMessage } from '#/lib/api-errors'
 import { client, orpc } from '#/lib/orpc'
+import { useApiMutation } from '#/lib/use-api-mutation'
 import { useFailureToast } from '#/lib/use-failure-toast'
 
 const KEY = 'settings.billingSettings'
@@ -71,7 +72,6 @@ export function BillingSection({
   const { data: billing, error } = useQuery({ ...billingQuery, retry: false })
   const usage = useUsage()
   const [cancelling, setCancelling] = useState(false)
-  const [portalBusy, setPortalBusy] = useState(false)
 
   useFailureToast(error, '[billing] billing.get failed', t(`${KEY}.notLoaded`), refusalMessage)
 
@@ -91,16 +91,14 @@ export function BillingSection({
     onError: (err) => apiFailed('[billing] resume failed', err, t(`${KEY}.notKept`)),
   })
 
-  async function portal(to: 'payment' | 'details') {
-    setPortalBusy(true)
-    try {
-      const { url } = await openPortal(to)
-      redirect(url)
-    } catch (err) {
-      apiFailed('[billing] portal failed', err, t(`${KEY}.portalNotOpened`))
-      setPortalBusy(false)
-    }
-  }
+  const portal = useApiMutation(
+    {
+      mutationFn: (to: 'payment' | 'details') => openPortal(to),
+      onSuccess: ({ url }) => redirect(url),
+    },
+    { context: '[billing] portal failed', failure: t(`${KEY}.portalNotOpened`) },
+  )
+  const portalBusy = portal.isPending || portal.isSuccess
 
   const billed =
     !!billing &&
@@ -111,7 +109,7 @@ export function BillingSection({
 
   const edit = (to: 'payment' | 'details') =>
     billed ? (
-      <Button size="sm" variant="outline" disabled={portalBusy} onClick={() => void portal(to)}>
+      <Button size="sm" variant="outline" disabled={portalBusy} onClick={() => void portal.run(to)}>
         {t(`${KEY}.edit`)}
       </Button>
     ) : undefined
