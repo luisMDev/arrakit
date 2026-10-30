@@ -1,4 +1,5 @@
 import type { Me } from '@arrakit/contract'
+import { isPaidPlan } from '@arrakit/plans'
 import type { QueryClient } from '@tanstack/react-query'
 import { redirect } from '@tanstack/react-router'
 
@@ -8,7 +9,10 @@ import { orpc } from '#/lib/orpc'
 export const PAID_WAIT_TRIES = 15
 const PAID_WAIT_INTERVAL_MS = 1000
 
-const isPaid = (me: Me | undefined) => !!me?.plan && me.plan !== 'free'
+const isPaid = (me: Me | undefined) => isPaidPlan(me?.plan)
+
+export const welcomeSearch = (search: Record<string, unknown>): { session_id?: string } =>
+  typeof search.session_id === 'string' ? { session_id: search.session_id } : {}
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 

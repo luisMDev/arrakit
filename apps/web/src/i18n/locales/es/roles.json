@@ -1,0 +1,54 @@
+{
+  "settings": {
+    "rolesSettings": {
+      "title": "Roles",
+      "hint": "Un rol personalizado da los permisos que elijas. Solo puedes dar permisos que tienes.",
+      "builtIn": "Roles de serie",
+      "builtInHint": "Propietario, Administrador y Miembro vienen con Arrakit y no se pueden cambiar.",
+      "custom": "Roles personalizados",
+      "empty": "Todavía no hay roles personalizados.",
+      "newRole": "Nuevo rol",
+      "editRole": "Editar {{role}}",
+      "roleName": "Nombre del rol",
+      "enterName": "Escribe el nombre del rol.",
+      "noComma": "No pongas comas en el nombre del rol.",
+      "pickPermission": "Elige al menos un permiso.",
+      "permissions": "Permisos",
+      "permissionCountOne": "{{count}} permiso",
+      "permissionCountMany": "{{count}} permisos",
+      "permission": "{{resource}}: {{action}}",
+      "create": "Crear rol",
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "edit": "Editar",
+      "editOf": "Editar {{role}}",
+      "deleteOf": "Eliminar {{role}}",
+      "confirmDeleteTitle": "¿Eliminar el rol {{role}}?",
+      "created": "Rol {{role}} creado.",
+      "notCreated": "No se ha podido crear el rol. Inténtalo de nuevo.",
+      "saved": "Rol {{role}} guardado.",
+      "notSaved": "No se ha podido guardar el rol. Inténtalo de nuevo.",
+      "deleted": "Rol {{role}} eliminado.",
+      "notDeleted": "No se ha podido eliminar el rol. Inténtalo de nuevo.",
+      "notLoaded": "No se han podido cargar los roles de la organización. Recarga la página.",
+      "resources": {
+        "organization": "Organización",
+        "member": "Miembros",
+        "invitation": "Invitaciones",
+        "team": "Equipos",
+        "ac": "Roles",
+        "billing": "Facturación",
+        "usage": "Uso"
+      },
+      "actions": {
+        "create": "Crear",
+        "read": "Ver",
+        "update": "Cambiar",
+        "delete": "Eliminar",
+        "cancel": "Cancelar",
+        "manage": "Gestionar"
+      },
+      "delete": "Eliminar"
+    }
+  }
+}

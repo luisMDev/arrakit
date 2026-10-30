@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { Plan } from '@arrakit/plans'
 import { sql } from 'drizzle-orm'
-import { boolean, check, index, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core'
+import { boolean, check, index, integer, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core'
 
 import { users } from './auth'
 import { at, createdAt } from './columns'
@@ -58,6 +58,7 @@ export const invitations = pgTable(
     email: text('email').notNull(),
     role: text('role'),
     status: text('status').notNull().default('pending'),
+    teamId: text('team_id'),
     emailSent: boolean('email_sent').notNull().default(false),
     expiresAt: at('expires_at').notNull(),
     createdAt: createdAt(),
@@ -69,4 +70,61 @@ export const invitations = pgTable(
     index('invitations_organization_id_idx').on(t.organizationId),
     index('invitations_email_idx').on(t.email),
   ],
+)
+
+export const teams = pgTable(
+  'teams',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    name: text('name').notNull(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    memberCount: integer('member_count').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: at('updated_at'),
+  },
+  (t) => [index('teams_organization_id_idx').on(t.organizationId)],
+)
+
+/** Reached through teams.organization_id (a tenancy exception). */
+export const teamMembers = pgTable(
+  'team_members',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    membershipKey: text('membership_key').unique('team_members_membership_key_unique'),
+    createdAt: at('created_at'),
+  },
+  (t) => [
+    index('team_members_team_id_idx').on(t.teamId),
+    index('team_members_user_id_idx').on(t.userId),
+  ],
+)
+
+/** Custom roles: `permission` is the JSON of the role's statements. */
+export const organizationRoles = pgTable(
+  'organization_roles',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    permission: text('permission').notNull(),
+    createdAt: createdAt(),
+    updatedAt: at('updated_at'),
+  },
+  (t) => [unique('organization_roles_organization_id_role_unique').on(t.organizationId, t.role)],
 )

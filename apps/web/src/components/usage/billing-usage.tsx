@@ -1,4 +1,5 @@
 import type { UsageView } from '@arrakit/contract'
+import { useSearch } from '@tanstack/react-router'
 import { Coins } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -6,39 +7,31 @@ import { useTranslation } from 'react-i18next'
 import { EmptyState } from '#/components/shell/empty-state'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent } from '#/components/ui/card'
+import { useCurrentUser } from '#/lib/current-user'
 import { fullDay } from '#/lib/format'
 
-import { AddCreditsDialog, type AddCreditsDialogProps } from './add-credits-dialog'
+import { AddCreditsDialog } from './add-credits-dialog'
 import { UsageCards } from './usage-cards'
 import { topUpLine } from './usage-copy'
 
 const KEY = 'settings.billingSettings.usage'
 
-function paidFromUrl(): boolean {
-  if (typeof window === 'undefined') return false
-  return new URLSearchParams(window.location.search).get('top_up') === 'paid'
-}
-
-interface BillingUsageProps extends Pick<AddCreditsDialogProps, 'startTopUp' | 'redirect'> {
-  usage: UsageView | undefined
-  /** Checkout came back paid (`?top_up=paid`); read from the URL when omitted. */
-  topUpPaid?: boolean
-}
-
-/** Settings > Billing "Usage": what is left, and Add credits (admins only). */
-export function BillingUsage({ usage, topUpPaid, startTopUp, redirect }: BillingUsageProps) {
+/** Settings > Billing "Usage": what is left, and Add credits; `?top_up=paid` is Checkout back paid. */
+export function BillingUsage({ usage }: { usage: UsageView | undefined }) {
   const { t } = useTranslation()
+  const { managesBilling } = useCurrentUser()
   const [adding, setAdding] = useState(false)
-  const [paidInUrl] = useState(paidFromUrl)
-  const paid = topUpPaid ?? paidInUrl
+  const paid = useSearch({ strict: false }).top_up === 'paid'
 
   return (
     <section aria-label={t(`${KEY}.title`)} className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <h3 className="text-muted-foreground text-base font-medium">{t(`${KEY}.title`)}</h3>
-        <Button type="button" size="sm" onClick={() => setAdding(true)}>
-          {t(`${KEY}.addCredits`)}
-        </Button>
+        {managesBilling && (
+          <Button type="button" size="sm" onClick={() => setAdding(true)}>
+            {t(`${KEY}.addCredits`)}
+          </Button>
+        )}
       </div>
       {paid && (
         <p role="status" className="text-sm text-green-600 dark:text-green-400">
@@ -46,12 +39,7 @@ export function BillingUsage({ usage, topUpPaid, startTopUp, redirect }: Billing
         </p>
       )}
       {usage && <UsageCards metrics={usage.metrics} />}
-      <AddCreditsDialog
-        open={adding}
-        onOpenChange={setAdding}
-        startTopUp={startTopUp}
-        redirect={redirect}
-      />
+      <AddCreditsDialog open={adding} onOpenChange={setAdding} />
     </section>
   )
 }

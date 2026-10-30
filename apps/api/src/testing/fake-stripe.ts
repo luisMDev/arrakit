@@ -21,9 +21,11 @@ interface FakeChange {
   when: 'now' | 'renewal'
 }
 
-type OptionalState = 'requestedBy' | 'receiptFor' | 'cancellationReason' | 'anchor'
+type OptionalState = 'cancellationReason' | 'periodEnd' | 'itemId' | 'scheduleId'
 type FakeSubscription = Omit<SubscriptionState, OptionalState | 'anchor'> &
   Partial<Pick<SubscriptionState, OptionalState>> & { anchor?: Date | string }
+
+const MONTH_SECONDS = 30 * 24 * 60 * 60
 
 /**
  * A webhook body for the fake: a BillingEvent as JSON (kind `subscription` when left out).
@@ -69,14 +71,6 @@ export function fakeStripe(): FakeStripe {
     if (queued && queued.length > 0) throw queued.shift()
   }
 
-  const record = (
-    subscriptionId: string,
-    metadata: Partial<Pick<SubscriptionState, 'requestedBy' | 'receiptFor'>>,
-  ) => {
-    const held = subscriptions.get(subscriptionId)
-    if (held) subscriptions.set(subscriptionId, { ...held, ...metadata })
-  }
-
   const updateSnapshot = (
     subscriptionId: string,
     change: (subscription: NonNullable<BillingSnapshot['subscription']>) => void,
@@ -93,9 +87,10 @@ export function fakeStripe(): FakeStripe {
 
   const subscribe = (state: FakeSubscription) => {
     subscriptions.set(state.id, {
-      requestedBy: null,
-      receiptFor: null,
       cancellationReason: null,
+      periodEnd: Math.floor(Date.now() / 1000) + MONTH_SECONDS,
+      itemId: `si_${state.id}`,
+      scheduleId: null,
       ...state,
       anchor: state.anchor ? new Date(state.anchor) : new Date(),
     })
@@ -149,7 +144,6 @@ export function fakeStripe(): FakeStripe {
         kind: 'subscription',
         subscriptionId: subscription.subscriptionId,
         organizationId: subscription.organizationId ?? null,
-        previousLookupKey: subscription.previousLookupKey ?? null,
       }
     },
     async subscription(id) {
@@ -157,6 +151,12 @@ export function fakeStripe(): FakeStripe {
       const subscription = subscriptions.get(id)
       if (!subscription) throw new Error(`No such subscription: '${id}'`)
       return { ...subscription }
+    },
+    async customer(id) {
+      failIfAsked('customer')
+      const snapshot = customers.get(id)
+      if (!snapshot) throw new Error(`No such customer: '${id}'`)
+      return { email: snapshot.customer?.email ?? null, card: snapshot.customer?.card ?? null }
     },
     async billing(customerId) {
       failIfAsked('billing')
@@ -172,43 +172,39 @@ export function fakeStripe(): FakeStripe {
       failIfAsked('previewNow')
       return { ...FAKE_PRORATION }
     },
-    async changeNow(subscriptionId, choice, requestedBy) {
+    async changeNow(subscription, choice) {
       failIfAsked('changeNow')
-      changes.push({ subscriptionId, choice, when: 'now' })
-      record(subscriptionId, { requestedBy })
-      const key = `${choice.plan}_${choice.cycle}`
-      const held = subscriptions.get(subscriptionId)
-      if (held) subscriptions.set(subscriptionId, { ...held, lookupKey: key })
-      updateSnapshot(subscriptionId, (subscription) => {
-        subscription.lookupKey = key
-        subscription.amount = priceOf(choice)
-        subscription.scheduled = null
-        subscription.cancelAtPeriodEnd = false
+      changes.push({ subscriptionId: subscription.id, choice, when: 'now' })
+      const lookupKey = `${choice.plan}_${choice.cycle}`
+      const changed = { ...(subscriptions.get(subscription.id) ?? subscription), lookupKey }
+      subscriptions.set(subscription.id, changed)
+      updateSnapshot(subscription.id, (snapshot) => {
+        snapshot.lookupKey = lookupKey
+        snapshot.amount = priceOf(choice)
+        snapshot.scheduled = null
+        snapshot.cancelAtPeriodEnd = false
       })
+      return { ...changed }
     },
-    async changeAtRenewal(subscriptionId, choice, requestedBy) {
+    async changeAtRenewal(subscription, choice) {
       failIfAsked('changeAtRenewal')
-      changes.push({ subscriptionId, choice, when: 'renewal' })
-      record(subscriptionId, { requestedBy })
-      updateSnapshot(subscriptionId, (subscription) => {
-        subscription.scheduled = {
+      changes.push({ subscriptionId: subscription.id, choice, when: 'renewal' })
+      updateSnapshot(subscription.id, (snapshot) => {
+        snapshot.scheduled = {
           lookupKey: `${choice.plan}_${choice.cycle}`,
-          at: subscription.periodEnd,
+          at: snapshot.periodEnd,
           amount: priceOf(choice),
         }
-        subscription.cancelAtPeriodEnd = false
+        snapshot.cancelAtPeriodEnd = false
       })
+      return { ...(subscriptions.get(subscription.id) ?? subscription) }
     },
-    async markReceipted(subscriptionId, key) {
-      failIfAsked('markReceipted')
-      record(subscriptionId, { receiptFor: key })
-    },
-    async cancelAtPeriodEnd(subscriptionId, cancel) {
+    async cancelAtPeriodEnd(subscription, cancel) {
       failIfAsked('cancelAtPeriodEnd')
-      cancellations.push({ subscriptionId, cancel })
-      updateSnapshot(subscriptionId, (subscription) => {
-        subscription.cancelAtPeriodEnd = cancel
-        if (cancel) subscription.scheduled = null
+      cancellations.push({ subscriptionId: subscription.id, cancel })
+      updateSnapshot(subscription.id, (snapshot) => {
+        snapshot.cancelAtPeriodEnd = cancel
+        if (cancel) snapshot.scheduled = null
       })
     },
     async endNow(subscriptionId) {

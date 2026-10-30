@@ -1,0 +1,33 @@
+{
+  "settings": {
+    "teamsSettings": {
+      "title": "Teams",
+      "hint": "Teams group people in the organization.",
+      "empty": "No teams yet.",
+      "teamName": "Team name",
+      "create": "Create team",
+      "enterName": "Enter the team's name.",
+      "nameOf": "Name of {{team}}",
+      "save": "Save",
+      "deleteTeam": "Delete {{team}}",
+      "confirmDeleteTitle": "Delete {{team}}?",
+      "membersOf": "Members of {{team}}",
+      "noMembers": "No one in this team yet.",
+      "addTo": "Add someone to {{team}}",
+      "add": "Add",
+      "removeFrom": "Take {{name}} out of {{team}}",
+      "created": "{{team}} created.",
+      "notCreated": "Couldn't create the team. Try again.",
+      "renamed": "Team renamed to {{team}}.",
+      "notRenamed": "Couldn't rename the team. Try again.",
+      "deleted": "{{team}} deleted.",
+      "notDeleted": "Couldn't delete the team. Try again.",
+      "added": "{{name}} added to {{team}}.",
+      "notAdded": "Couldn't add {{name}} to the team. Try again.",
+      "removed": "{{name}} taken out of {{team}}.",
+      "notRemoved": "Couldn't take {{name}} out of the team. Try again.",
+      "notLoaded": "Couldn't load the organization's teams. Reload the page.",
+      "remove": "Remove"
+    }
+  }
+}

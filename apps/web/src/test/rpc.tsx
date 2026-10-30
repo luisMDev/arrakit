@@ -1,6 +1,7 @@
+import { permissionsOf } from '@arrakit/auth/permissions'
 import type { Me } from '@arrakit/contract'
 import { fallbackORPCErrorMessage } from '@orpc/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import {
   RouterProvider,
   createMemoryHistory,
@@ -12,13 +13,28 @@ import { render } from '@testing-library/react'
 import { HttpResponse, http } from 'msw'
 import { setupServer } from 'msw/node'
 import type { ReactNode } from 'react'
-import { vi } from 'vitest'
+import { toast } from 'sonner'
+import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 
 import { Toaster } from '#/components/ui/sonner'
 import '#/i18n'
+import { createQueryClient } from '#/integrations/tanstack-query/root-provider'
 import { orpc } from '#/lib/orpc'
 
-export const api = setupServer()
+const api = setupServer()
+
+/** Starts the msw server for the file; after each test: no handlers, no spies, no toasts. */
+export function setupTestApi({
+  onUnhandledFrame = 'bypass',
+}: { onUnhandledFrame?: 'bypass' | 'error' } = {}) {
+  beforeAll(() => api.listen({ onUnhandledFrame }))
+  afterEach(() => {
+    api.resetHandlers()
+    vi.restoreAllMocks()
+    toast.dismiss()
+  })
+  afterAll(() => api.close())
+}
 
 export const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
@@ -67,8 +83,50 @@ export function answer(path: string, ...answers: Reply[]) {
   return calls
 }
 
+type AuthReply =
+  | unknown
+  | number
+  | [number, string]
+  | [number, string, string]
+  | ((input: Record<string, unknown>) => unknown)
+
+/** A Better Auth error answer: `{ code, message }` with the status. */
+function authError(status: number, message = '', code?: string) {
+  return HttpResponse.json({ message, ...(code ? { code } : {}) }, { status })
+}
+
+/**
+ * Answers Better Auth's `/api/auth/<path>` (e.g. `organization/list-members`) like `answer`
+ * does; `[status, message, code]` is a refusal with the plugin's code. The input is the JSON
+ * body, or the query for a GET.
+ */
+export function answerAuth(path: string, ...answers: AuthReply[]) {
+  const calls: { input: Record<string, unknown> }[] = []
+  api.use(
+    http.all(`*/api/auth/${path}`, async ({ request }) => {
+      const input =
+        request.method === 'GET'
+          ? Object.fromEntries(new URL(request.url).searchParams)
+          : ((await request.json().catch(() => ({}))) as Record<string, unknown>)
+      const reply = answers[Math.min(calls.length, answers.length - 1)]
+      calls.push({ input })
+      const value =
+        typeof reply === 'function'
+          ? await (reply as (i: Record<string, unknown>) => unknown)(input)
+          : reply
+      if (value instanceof Response) return value
+      if (typeof value === 'number') return authError(value)
+      if (Array.isArray(value) && typeof value[0] === 'number')
+        return authError(value[0], value[1] as string, value[2] as string | undefined)
+      return HttpResponse.json(value ?? null)
+    }),
+  )
+  return calls
+}
+
 export function meAs(overrides: Partial<Me> = {}): Me {
   const plan = overrides.plan === undefined ? 'team' : overrides.plan
+  const role = overrides.role === undefined ? 'owner' : overrides.role
   return {
     email: 'lucia@acme.com',
     name: 'Lucía Gómez',
@@ -79,15 +137,16 @@ export function meAs(overrides: Partial<Me> = {}): Me {
       slug: 'acme',
       plan: plan ?? 'team',
     },
-    role: 'owner',
     seats: 10,
     ...overrides,
+    role,
+    permissions: overrides.permissions ?? (role ? permissionsOf(role) : {}),
     plan,
   }
 }
 
 export const testQueryClient = () =>
-  new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  createQueryClient({ queries: { retry: false }, mutations: { retry: false } })
 
 export function withQueries(client = testQueryClient()) {
   return function QueriesWrapper({ children }: { children: ReactNode }) {
@@ -98,7 +157,7 @@ export function withQueries(client = testQueryClient()) {
 const STUBS: [string, string][] = [
   ['/app', 'Home'],
   ['/app/plans', 'Plans'],
-  ['/app/billing', 'Billing'],
+  ['/app/settings', 'Settings'],
   ['/app/checkout', 'Checkout'],
   ['/pricing', 'Pricing'],
   ['/profile', 'Profile'],

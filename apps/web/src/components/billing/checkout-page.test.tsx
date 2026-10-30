@@ -1,36 +1,33 @@
-import { QueryClient } from '@tanstack/react-query'
 import { isRedirect } from '@tanstack/react-router'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { orpc } from '#/lib/orpc'
-import { answer, api, quiet, renderAt } from '#/test/rpc'
+import { answer, quiet, renderAt, setupTestApi, testQueryClient } from '#/test/rpc'
 
 import { canCheckout } from './can-checkout'
 import { CheckoutPage } from './checkout-page'
-import { OFFERS, meOn } from './testing'
+import { meOn } from './testing'
 
 const stripe = vi.hoisted(() => {
   const mount = vi.fn()
+  const unmount = vi.fn()
   const destroy = vi.fn()
-  const createEmbeddedCheckoutPage = vi.fn(async () => ({ mount, destroy }))
-  return { mount, destroy, createEmbeddedCheckoutPage, loadStripe: vi.fn() }
+  const createEmbeddedCheckoutPage = vi.fn(async () => ({ mount, unmount, destroy }))
+  return { mount, unmount, destroy, createEmbeddedCheckoutPage, loadStripe: vi.fn() }
 })
 vi.mock('@stripe/stripe-js', () => ({ loadStripe: stripe.loadStripe }))
 
-beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
+setupTestApi()
 afterEach(() => {
-  api.resetHandlers()
   vi.clearAllMocks()
 })
-afterAll(() => api.close())
 
 function setup(cycle: 'monthly' | 'yearly' = 'yearly') {
   stripe.loadStripe.mockResolvedValue({
     createEmbeddedCheckoutPage: stripe.createEmbeddedCheckoutPage,
   })
-  answer('plans/list', OFFERS)
   const sessions = answer('billing/checkout', {
     clientSecret: 'cs_secret',
     publishableKey: 'pk_test',
@@ -67,7 +64,7 @@ describe('CheckoutPage', () => {
     await waitFor(() => expect(view.location()).toBe('/app/plans'))
   })
 
-  it('mounts Stripe Embedded Checkout with the session, and destroys it on leaving', async () => {
+  it('mounts Stripe Embedded Checkout with the session, unmounts it on leaving and destroys it before the next', async () => {
     const view = setup()
     await waitFor(() => expect(stripe.mount).toHaveBeenCalled())
     expect(view.sessions[0]?.input).toEqual({ plan: 'team', cycle: 'yearly' })
@@ -76,12 +73,15 @@ describe('CheckoutPage', () => {
     expect(stripe.mount.mock.calls[0]?.[0]).toHaveAttribute('data-stripe-checkout')
     expect(screen.queryByText('Opening the payment form…')).not.toBeInTheDocument()
     view.unmount()
-    expect(stripe.destroy).toHaveBeenCalled()
+    expect(stripe.unmount).toHaveBeenCalled()
+    stripe.destroy.mockClear()
+    setup('monthly')
+    await waitFor(() => expect(stripe.mount).toHaveBeenCalledTimes(2))
+    expect(stripe.destroy).toHaveBeenCalledOnce()
   })
 
   it("shows the API's refusal instead of the form", async () => {
     quiet()
-    answer('plans/list', OFFERS)
     answer('billing/checkout', [
       409,
       'Your organization is on Pro. Switch plans in Settings → Billing.',
@@ -101,7 +101,6 @@ describe('CheckoutPage', () => {
     [502, 'Stripe refused the session: the price is archived.'],
   ])("shows the API's own words for a %i", async (status, message) => {
     quiet()
-    answer('plans/list', OFFERS)
     answer('billing/checkout', [status, message])
     renderAt(<CheckoutPage choice={{ plan: 'team', cycle: 'yearly' }} />, {
       me: meOn('free'),
@@ -113,7 +112,6 @@ describe('CheckoutPage', () => {
 
   it('says it could not open the form when Stripe fails', async () => {
     quiet()
-    answer('plans/list', OFFERS)
     answer('billing/checkout', 502)
     renderAt(<CheckoutPage choice={{ plan: 'team', cycle: 'yearly' }} />, {
       me: meOn('free'),
@@ -127,20 +125,25 @@ describe('CheckoutPage', () => {
 
 describe('canCheckout', () => {
   const contextFor = (role: 'owner' | 'admin' | 'member') => {
-    const queryClient = new QueryClient()
+    const queryClient = testQueryClient()
     queryClient.setQueryData(orpc.me.get.queryOptions().queryKey, meOn('free', role))
     return { queryClient }
   }
 
   it.each(['owner', 'admin'] as const)('lets an %s check out a paid plan', async (role) => {
     await expect(
-      canCheckout({ context: contextFor(role), search: { plan: 'pro', cycle: 'monthly' } }),
+      canCheckout({
+        context: contextFor(role),
+        location: { href: '/app/checkout' },
+        search: { plan: 'pro', cycle: 'monthly' },
+      }),
     ).resolves.toEqual({ choice: { plan: 'pro', cycle: 'monthly' } })
   })
 
   it('sends a member to Plans', async () => {
     const outcome = await canCheckout({
       context: contextFor('member'),
+      location: { href: '/app/checkout' },
       search: { plan: 'pro', cycle: 'yearly' },
     }).catch((err: unknown) => err)
     expect(isRedirect(outcome)).toBe(true)
@@ -155,9 +158,11 @@ describe('canCheckout', () => {
     { plan: 'pro', cycle: 'weekly' },
     { plan: 'pro' },
   ])('sends %o to Plans', async (search) => {
-    const outcome = await canCheckout({ context: contextFor('owner'), search }).catch(
-      (err: unknown) => err,
-    )
+    const outcome = await canCheckout({
+      context: contextFor('owner'),
+      location: { href: '/app/checkout' },
+      search,
+    }).catch((err: unknown) => err)
     expect(isRedirect(outcome)).toBe(true)
     expect((outcome as { options: { to: string } }).options.to).toBe('/app/plans')
   })

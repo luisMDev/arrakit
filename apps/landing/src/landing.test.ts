@@ -14,7 +14,7 @@ describe('front page', () => {
     const html = await render(Index)
     expect(html).toContain('href="https://app.example.com/pricing"')
     expect(html).toContain('href="https://app.example.com/signin"')
-    expect(html).toContain('href="https://app.example.com/start"')
+    expect(html).toContain('href="https://app.example.com/signup"')
     expect(html).toContain('Get started')
   })
 

@@ -1,7 +1,7 @@
 import { createOrganizationSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useQueryClient } from '@tanstack/react-query'
-import { Controller, useForm, useWatch } from 'react-hook-form'
+import { type QueryClient, useQueryClient } from '@tanstack/react-query'
+import { Controller, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -10,9 +10,11 @@ import { Checkbox } from '#/components/ui/checkbox'
 import { Field, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { PRIVACY_URL, TERMS_URL } from '#/config'
-import { type CheckoutChoice, type ChoiceSearch, checkoutChoice } from '#/lib/checkout-choice'
+import { type ChoiceSearch, appLanding, checkoutChoice } from '#/lib/checkout-choice'
+import { useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
-import { client, orpc } from '#/lib/orpc'
+import { client } from '#/lib/orpc'
+import { switchOrganization } from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
 const profileForm = z.object({
@@ -21,22 +23,30 @@ const profileForm = z.object({
   termsAccepted: z.boolean(),
 })
 
-type ProfileTarget = { to: '/app' } | { to: '/app/checkout'; search: CheckoutChoice }
+type ProfileTarget = ReturnType<typeof appLanding>
 
 type ProfileStep = { name: string; personName: string } | 'skip'
 
-/** A step whose answer was lost still counts once the person has an organization. */
-async function save(step: ProfileStep): Promise<void> {
+/** The organization made; a step whose answer was lost still counts once the person has one. */
+async function created(step: ProfileStep): Promise<string> {
   try {
-    if (step === 'skip') await client.organizations.skip()
-    else await client.organizations.create({ ...step, termsAccepted: true })
+    const organization =
+      step === 'skip'
+        ? await client.onboarding.skip()
+        : await client.onboarding.create({ ...step, termsAccepted: true })
+    return organization.id
   } catch (err) {
     const saved = await client.me.get().then(
-      (me) => me.organization !== null,
-      () => false,
+      (me) => me.organization?.id,
+      () => undefined,
     )
     if (!saved) throw err
+    return saved
   }
+}
+
+async function save(queryClient: QueryClient, step: ProfileStep): Promise<void> {
+  await switchOrganization(queryClient, await created(step))
 }
 
 export function ProfilePage({
@@ -48,27 +58,20 @@ export function ProfilePage({
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const form = useForm({
+  const form = useClearingForm({
     resolver: zodResolver(profileForm),
     defaultValues: { personName: '', organization: '', termsAccepted: false },
   })
   const termsAccepted = useWatch({ control: form.control, name: 'termsAccepted' })
-  const step = useApiMutation(
-    {
-      mutationFn: save,
-      onSuccess: () => {
-        queryClient.removeQueries({ queryKey: orpc.me.get.queryOptions().queryKey })
-        const choice = checkoutChoice(search)
-        onDone(choice ? { to: '/app/checkout', search: choice } : { to: '/app' })
-      },
-    },
-    {
-      context: '[profile] saving failed',
-      failure: (variables) =>
+  const step = useApiMutation({
+    mutationKey: ['profile'],
+    mutationFn: (variables: ProfileStep) => save(queryClient, variables),
+    onSuccess: () => onDone(appLanding(checkoutChoice(search))),
+    meta: {
+      failure: (variables: ProfileStep) =>
         t(variables === 'skip' ? 'profile.notSkipped' : 'profile.organizationNotSaved'),
     },
-  )
-  const pending = step.isPending || step.isSuccess
+  })
 
   function next({ personName, organization }: z.output<typeof profileForm>) {
     return step.run({ name: organization, personName })
@@ -133,13 +136,13 @@ export function ProfilePage({
           </p>
         </div>
         <div className="flex gap-3">
-          <Button type="submit" disabled={!termsAccepted || pending}>
+          <Button type="submit" disabled={!termsAccepted || step.busy}>
             {t('profile.next')}
           </Button>
           <Button
             type="button"
             variant="ghost"
-            disabled={pending}
+            disabled={step.busy}
             onClick={() => void step.run('skip')}
           >
             {t('profile.skip')}

@@ -4,30 +4,19 @@ import { APP_NAME } from './brand'
 import { actions, composeEmail, note, paragraph, rows } from './compose'
 
 describe('composeEmail', () => {
-  it('carries the subject and heading in both parts, and no Reply-To unless given', () => {
+  it('carries the subject and heading in both parts', () => {
     const email = composeEmail({
       subject: 'Your link to sign in',
       heading: { lead: 'Sign in', tail: 'to the app.' },
       blocks: [paragraph('The link works once, for 15 minutes.')],
     })
 
-    expect(email.replyTo).toBeNull()
     expect(email.subject).toBe('Your link to sign in')
     expect(email.html).toContain('<html lang="en">')
     expect(email.html).toContain('<h1')
     expect(email.html).toContain('The link works once, for 15 minutes.')
     expect(email.text).toContain('Sign in to the app.')
     expect(email.text).toContain('The link works once, for 15 minutes.')
-  })
-
-  it('keeps a Reply-To when given', () => {
-    const email = composeEmail({
-      subject: 's',
-      heading: { lead: 'a', tail: 'b' },
-      blocks: [],
-      replyTo: 'billing@example.com',
-    })
-    expect(email.replyTo).toBe('billing@example.com')
   })
 
   it('puts the product name in the masthead and the footer last in the text', () => {

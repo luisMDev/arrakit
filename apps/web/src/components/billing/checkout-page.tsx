@@ -1,9 +1,10 @@
 import type { PaidChoice } from '@arrakit/contract'
-import { loadStripe } from '@stripe/stripe-js'
+import { soldOffers } from '@arrakit/plans'
+import { type StripeEmbeddedCheckout, loadStripe } from '@stripe/stripe-js'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Alert, AlertDescription } from '#/components/ui/alert'
@@ -12,62 +13,51 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '#/componen
 import { Separator } from '#/components/ui/separator'
 import { Spinner } from '#/components/ui/spinner'
 import { APP_NAME } from '#/config'
-import { apiMessage, reportError } from '#/lib/api-errors'
+import { apiMessage } from '#/lib/api-errors'
 import { money } from '#/lib/format'
-import { client, orpc } from '#/lib/orpc'
-import { useFailureToast } from '#/lib/use-failure-toast'
+import { client } from '#/lib/orpc'
 
 import { planLabel } from './plan-copy'
 
-type Mounted = { destroy(): void }
+const OFFERS = soldOffers()
 
-function useEmbeddedCheckout({ plan, cycle }: PaidChoice) {
+let opened: StripeEmbeddedCheckout | null = null
+
+/** Stripe allows one Embedded Checkout at a time: the one opened before is destroyed first. */
+async function openCheckout(choice: PaidChoice): Promise<StripeEmbeddedCheckout> {
+  const { clientSecret, publishableKey } = await client.billing.checkout(choice)
+  const stripe = await loadStripe(publishableKey)
+  if (!stripe) throw new Error('Stripe.js did not load')
+  opened?.destroy()
+  opened = await stripe.createEmbeddedCheckoutPage({ clientSecret })
+  return opened
+}
+
+function useEmbeddedCheckout(choice: PaidChoice) {
   const mountRef = useRef<HTMLDivElement>(null)
-  const [state, setState] = useState<{ opening: boolean; failed: boolean; message: string | null }>(
-    { opening: true, failed: false, message: null },
-  )
-
+  const checkout = useQuery({
+    queryKey: ['checkout', choice.plan, choice.cycle],
+    queryFn: () => openCheckout(choice),
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: 0,
+    retry: false,
+  })
+  const embedded = checkout.data
   useEffect(() => {
-    let cancelled = false
-    let checkout: Mounted | null = null
-    void (async () => {
-      try {
-        const { clientSecret, publishableKey } = await client.billing.checkout({ plan, cycle })
-        const stripe = await loadStripe(publishableKey)
-        if (!stripe) throw new Error('Stripe.js did not load')
-        const embedded = await stripe.createEmbeddedCheckoutPage({ clientSecret })
-        if (cancelled) {
-          embedded.destroy()
-          return
-        }
-        checkout = embedded
-        if (mountRef.current) embedded.mount(mountRef.current)
-        setState({ opening: false, failed: false, message: null })
-      } catch (err) {
-        if (cancelled) return
-        reportError('[checkout] could not open Embedded Checkout', err)
-        setState({ opening: false, failed: true, message: apiMessage(err) })
-      }
-    })()
-    return () => {
-      cancelled = true
-      checkout?.destroy()
-    }
-  }, [plan, cycle])
-
-  return { mountRef, ...state }
+    if (!embedded || !mountRef.current) return
+    embedded.mount(mountRef.current)
+    return () => embedded.unmount()
+  }, [embedded])
+  return { mountRef, ...checkout }
 }
 
 export function CheckoutPage({ choice }: { choice: PaidChoice }) {
   const { t } = useTranslation()
-  const offers = useQuery(orpc.plans.list.queryOptions({ staleTime: Infinity }))
-  const { mountRef, opening, failed, message } = useEmbeddedCheckout(choice)
-  const error = failed ? (message ?? t('checkout.openFailed')) : null
-  const offer = offers.data?.find((o) => o.plan === choice.plan)
+  const { mountRef, isPending, error } = useEmbeddedCheckout(choice)
+  const failure = error ? (apiMessage(error) ?? t('checkout.openFailed')) : null
+  const offer = OFFERS.find((o) => o.plan === choice.plan)
   const total = offer ? money(choice.cycle === 'yearly' ? offer.yearly : offer.monthly) : null
   const product = `${APP_NAME} ${planLabel(choice.plan)}`
-
-  useFailureToast(offers.error, '[checkout] plans.list failed', t('checkout.loadFailed'))
 
   return (
     <main className="mx-auto grid w-full max-w-5xl gap-8 px-6 py-10 md:grid-cols-2">
@@ -118,15 +108,15 @@ export function CheckoutPage({ choice }: { choice: PaidChoice }) {
           <CardTitle>{t('checkout.payment')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {opening && (
+          {isPending && (
             <p className="text-muted-foreground flex items-center gap-2 text-sm">
               <Spinner />
               {t('checkout.opening')}
             </p>
           )}
-          {error && (
+          {failure && (
             <Alert variant="destructive" role="alert">
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>{failure}</AlertDescription>
             </Alert>
           )}
           <div ref={mountRef} data-stripe-checkout />

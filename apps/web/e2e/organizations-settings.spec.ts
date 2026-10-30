@@ -1,12 +1,13 @@
 import { expect, test } from '@playwright/test'
 
 import { WEB_ORIGIN } from './origins'
-import { createOrganization, signIn, uniqueEmail } from './session'
+import { signedInOwner } from './session'
 
 test('an owner manages the organization from Settings and deletes it', async ({ page }) => {
-  const email = uniqueEmail('owner')
-  await signIn(page, email)
-  await createOrganization(page, 'Halden Capital', 'Lucía Gómez')
+  const { email } = await signedInOwner(page, {
+    organization: 'Halden Capital',
+    personName: 'Lucía Gómez',
+  })
 
   await page.goto('/app/settings')
   await expect(page).toHaveTitle('Arrakit · Settings')
@@ -17,7 +18,7 @@ test('an owner manages the organization from Settings and deletes it', async ({ 
   await expect(page.getByText(/You own this organization/)).toBeVisible()
 
   const nav = page.getByRole('navigation', { name: 'Settings' })
-  await nav.getByRole('button', { name: 'General' }).click()
+  await nav.getByRole('link', { name: 'General' }).click()
   const name = page.getByRole('textbox', { name: 'Organization name' })
   await expect(name).toHaveValue('Halden Capital')
   await expect(page.getByText('Slug: halden-capital')).toBeVisible()
@@ -34,7 +35,7 @@ test('an owner manages the organization from Settings and deletes it', async ({ 
     })
     .toBe('Halden Partners')
 
-  await nav.getByRole('button', { name: 'Members' }).click()
+  await nav.getByRole('link', { name: 'Members' }).click()
   await expect(page.getByText('1 member · Pro has up to 3')).toBeVisible()
   await page
     .getByRole('textbox', { name: 'Invite someone from your organization' })
@@ -47,7 +48,7 @@ test('an owner manages the organization from Settings and deletes it', async ({ 
   await page.getByRole('button', { name: 'Invite' }).click()
   await expect(page.getByText(/Free plan includes 1 seat, all taken/)).toBeVisible()
 
-  await nav.getByRole('button', { name: 'Security and data' }).click()
+  await nav.getByRole('link', { name: 'Security and data' }).click()
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
   const dialog = page.getByRole('alertdialog', { name: 'Delete the organization?' })
   await dialog.getByRole('button', { name: 'Delete the organization' }).click()

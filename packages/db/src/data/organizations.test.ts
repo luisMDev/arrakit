@@ -4,22 +4,29 @@ import { eq, getTableColumns, getTableName, isTable } from 'drizzle-orm'
 import type { PgTable } from 'drizzle-orm/pg-core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { OrganizationNameUnusableError } from '../errors'
 import * as schema from '../schema/index'
 import {
   creditLedger,
   invitations,
-  members,
   oauthAccessTokens,
   oauthClients,
   oauthConsents,
   oauthRefreshTokens,
+  organizationRoles,
   organizations,
   sessions,
+  teamMembers,
+  teams,
   usageLevels,
   users,
 } from '../schema/index'
-import { type TestData, openTestData } from '../testing'
+import {
+  type TestData,
+  insertMember,
+  insertOrganization,
+  insertUser,
+  openTestData,
+} from '../testing'
 
 describe('organizations', () => {
   let data: TestData
@@ -30,11 +37,10 @@ describe('organizations', () => {
   afterAll(() => data.close())
 
   const organizationWithOwner = async (slug: string) => {
-    const owner = randomUUID()
-    await data.db.insert(users).values({ id: owner, name: '', email: `owner@${slug}.vc` })
-    const [row] = await data.db.insert(organizations).values({ name: slug, slug }).returning()
-    await data.db.insert(members).values({ organizationId: row!.id, userId: owner, role: 'owner' })
-    return { id: row!.id, owner }
+    const owner = await insertUser(data, `owner@${slug}.vc`)
+    const { id } = await insertOrganization(data, { slug })
+    await insertMember(data, id, owner, 'owner')
+    return { id, owner }
   }
 
   const grant = async (userId: string, organizationId: string) => {
@@ -62,49 +68,26 @@ describe('organizations', () => {
     return clientId
   }
 
-  it('renames trimmed, keeps the slug, accepts names without slug characters, refuses blanks', async () => {
-    const { id } = await organizationWithOwner('alder')
-    const scope = data.forOrganization(id)
-    expect(await scope.rename('  Alder Capital ')).toMatchObject({
-      name: 'Alder Capital',
-      slug: 'alder',
-    })
-    expect((await scope.rename('北京基金'))?.name).toBe('北京基金')
-    expect((await scope.rename('&.!'))?.name).toBe('&.!')
-    await expect(scope.rename('   ')).rejects.toBeInstanceOf(OrganizationNameUnusableError)
-    expect((await scope.organization())?.name).toBe('&.!')
-    expect(await data.forOrganization(randomUUID()).rename('Ghost')).toBeUndefined()
-  })
+  const deleteOrganization = (id: string) =>
+    data.db.delete(organizations).where(eq(organizations.id, id))
 
-  it('deletes an organization with its members, invitations and grants, keeping its people', async () => {
+  it("revokes an organization's grants, or one person's, keeping other organizations' and the clients", async () => {
     const doomed = await organizationWithOwner('birch')
     const kept = await organizationWithOwner('cedar')
-    await data.db.insert(invitations).values({
-      organizationId: doomed.id,
-      email: 'x@birch.vc',
-      inviterId: doomed.owner,
-      expiresAt: new Date(Date.now() + 86_400_000),
-    })
-    await data.db.insert(sessions).values({
-      id: randomUUID(),
-      token: randomUUID(),
-      userId: doomed.owner,
-      expiresAt: new Date(Date.now() + 86_400_000),
-      activeOrganizationId: doomed.id,
-    })
+    const other = await insertUser(data, 'other@birch.vc')
+    await insertMember(data, doomed.id, other, 'member')
     const client = await grant(doomed.owner, doomed.id)
+    await grant(other, doomed.id)
     await grant(kept.owner, kept.id)
 
-    expect(await data.deleteOrganization(doomed.id.toUpperCase())).toBe(true)
-    expect(await data.deleteOrganization(doomed.id)).toBe(false)
-    expect(await data.memberOf(doomed.owner)).toBeNull()
-    expect(await data.memberOf(kept.owner)).not.toBeNull()
-    expect(
-      await data.db.select().from(invitations).where(eq(invitations.organizationId, doomed.id)),
-    ).toEqual([])
-    expect(await data.db.select().from(users).where(eq(users.id, doomed.owner))).toHaveLength(1)
-    const [owned] = await data.db.select().from(sessions).where(eq(sessions.userId, doomed.owner))
-    expect(owned?.activeOrganizationId).toBeNull()
+    await data.revokeGrants(doomed.id, other)
+    const grantsOf = (table: typeof oauthAccessTokens, organizationId: string) =>
+      data.db.select().from(table).where(eq(table.referenceId, organizationId))
+    expect((await grantsOf(oauthAccessTokens, doomed.id)).map((row) => row.userId)).toEqual([
+      doomed.owner,
+    ])
+
+    await data.revokeGrants(doomed.id.toUpperCase())
     for (const table of [oauthAccessTokens, oauthRefreshTokens, oauthConsents]) {
       expect(await data.db.select().from(table).where(eq(table.referenceId, doomed.id))).toEqual([])
       expect(await data.db.select().from(table).where(eq(table.referenceId, kept.id))).toHaveLength(
@@ -114,11 +97,34 @@ describe('organizations', () => {
     expect(
       await data.db.select().from(oauthClients).where(eq(oauthClients.clientId, client)),
     ).toHaveLength(1)
+    await expect(data.revokeGrants('not-a-uuid')).rejects.toThrow(/not an organization id/)
   })
 
-  it('refuses an id that is not a UUID before deleting anything', async () => {
-    await expect(data.deleteOrganization('not-a-uuid')).rejects.toThrow(/not an organization id/)
-    await expect(data.deleteOrganization('')).rejects.toThrow()
+  it('deleting an organization clears it from sessions and empties its teams, keeping its people', async () => {
+    const doomed = await organizationWithOwner('alder')
+    const sessionId = randomUUID()
+    const [team] = await data.db
+      .insert(teams)
+      .values({ name: 'Ops', organizationId: doomed.id })
+      .returning()
+    await data.db.insert(teamMembers).values({ teamId: team!.id, userId: doomed.owner })
+    await data.db.insert(sessions).values({
+      id: sessionId,
+      token: randomUUID(),
+      userId: doomed.owner,
+      expiresAt: new Date(Date.now() + 86_400_000),
+      activeOrganizationId: doomed.id,
+      activeTeamId: team!.id,
+    })
+
+    await deleteOrganization(doomed.id)
+    const [session] = await data.db.select().from(sessions).where(eq(sessions.id, sessionId))
+    expect(session).toMatchObject({ activeOrganizationId: null, activeTeamId: null })
+    expect(
+      await data.db.select().from(teamMembers).where(eq(teamMembers.teamId, team!.id)),
+    ).toEqual([])
+    expect(await data.memberOf(doomed.owner)).toBeNull()
+    expect(await data.db.select().from(users).where(eq(users.id, doomed.owner))).toHaveLength(1)
   })
 
   describe('cascade through every table that carries organization_id', () => {
@@ -155,7 +161,7 @@ describe('organizations', () => {
          where c.contype = 'f' and c.confrelid = 'organizations'::regclass`,
       )
       const references = rows.map((row) => `${row.table}.${row.column}:${row.onDelete}`).sort()
-      // 'c' = CASCADE; the only other reference is the session's active organization ('n' = SET NULL).
+      // 'c' = CASCADE, 'n' = SET NULL (a session only points at its active organization).
       expect(references).toEqual(
         [
           ...tables.map((table) => `${table}.organization_id:c`),
@@ -190,6 +196,10 @@ describe('organizations', () => {
         await data.db
           .insert(usageLevels)
           .values({ organizationId: id, metric: 'requests', value: 1 })
+        await data.db.insert(teams).values({ name: 'Ops', organizationId: id })
+        await data.db
+          .insert(organizationRoles)
+          .values({ organizationId: id, role: 'finance', permission: '{"billing":["read"]}' })
         return id
       }
       const doomed = await seed('walnut')
@@ -208,7 +218,7 @@ describe('organizations', () => {
       for (const table of tables) if ((await countIn(table, doomed)) === 0) unseeded.push(table)
       expect(unseeded).toEqual([])
 
-      expect(await data.deleteOrganization(doomed)).toBe(true)
+      await deleteOrganization(doomed)
       for (const table of tables) {
         expect({ table, rows: await countIn(table, doomed) }).toEqual({ table, rows: 0 })
         expect(await countIn(table, kept)).toBeGreaterThan(0)

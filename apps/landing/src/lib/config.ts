@@ -1,7 +1,7 @@
 export const APP_NAME = 'Arrakit'
 export const MOTTO = 'Nothing in excess.'
-export const APP_URL: string = import.meta.env.PUBLIC_APP_URL ?? 'https://app.example.com'
-export const SITE_URL: string = (import.meta.env.SITE ?? 'https://example.com').replace(/\/$/, '')
+const APP_URL: string = import.meta.env.PUBLIC_APP_URL ?? 'https://app.example.com'
+const SITE_URL: string = (import.meta.env.SITE ?? 'https://example.com').replace(/\/$/, '')
 
 /** A link into the app (Pricing, Sign in, Get started). */
 export function appLink(path: string, appUrl: string = APP_URL): string {

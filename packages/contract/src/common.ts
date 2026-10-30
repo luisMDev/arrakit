@@ -1,4 +1,4 @@
-import { ACCOUNT_LANGUAGES, ASSIGNABLE_ROLES, ORGANIZATION_ROLES } from '@arrakit/address'
+import { ACCOUNT_LANGUAGES } from '@arrakit/address'
 import { BILLING_CYCLES, METRIC_KEYS, PAID_PLANS, PLANS } from '@arrakit/plans'
 import { oc } from '@orpc/contract'
 import { z } from 'zod'
@@ -6,8 +6,6 @@ import { z } from 'zod'
 export const planSchema = z.enum(PLANS)
 export const paidPlanSchema = z.enum(PAID_PLANS)
 export const billingCycleSchema = z.enum(BILLING_CYCLES)
-export const roleSchema = z.enum(ORGANIZATION_ROLES)
-export const assignableRoleSchema = z.enum(ASSIGNABLE_ROLES)
 export const languageSchema = z.enum(ACCOUNT_LANGUAGES)
 export const metricSchema = z.enum(METRIC_KEYS as [string, ...string[]])
 

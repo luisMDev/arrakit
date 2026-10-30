@@ -5,22 +5,20 @@ import { contract } from './index'
 describe('contract', () => {
   it('composes every module', () => {
     expect(Object.keys(contract)).toEqual([
-      'health',
       'authProviders',
       'me',
-      'organizations',
-      'members',
-      'invitations',
+      'onboarding',
+      'teams',
       'plans',
       'billing',
       'usage',
     ])
-    expect(Object.keys(contract.organizations)).toEqual(['create', 'skip', 'update', 'delete'])
-    expect(contract.billing.topUp['~orpc'].route.path).toBe('/billing/top-up')
+    expect(Object.keys(contract.onboarding)).toEqual(['create', 'skip'])
+    expect(Object.keys(contract.billing)).toContain('topUp')
   })
 
   it('refuses a create without accepted terms', () => {
-    const schema = contract.organizations.create['~orpc'].inputSchema!
+    const schema = contract.onboarding.create['~orpc'].inputSchema!
     const result = schema['~standard'].validate({ name: 'Acme', termsAccepted: 'true' })
     expect('issues' in (result as object)).toBe(true)
   })

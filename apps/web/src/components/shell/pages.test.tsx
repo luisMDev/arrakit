@@ -1,20 +1,17 @@
 import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { answer, api, quiet } from '#/test/rpc'
+import { answer, quiet, setupTestApi } from '#/test/rpc'
 
 import { PAID_WAIT_TRIES } from './on-paid-plan'
 import { meAs, renderApp } from './testing'
 import { safeNext } from './unavailable-page'
 
-beforeAll(() => api.listen({ onUnhandledFrame: 'error' }))
+setupTestApi({ onUnhandledFrame: 'error' })
 afterEach(() => {
-  api.resetHandlers()
-  vi.restoreAllMocks()
   vi.useRealTimers()
 })
-afterAll(() => api.close())
 
 describe('Home', () => {
   it('greets the person and names the organization and its plan', async () => {
@@ -36,7 +33,7 @@ describe('Home', () => {
     )
     expect(within(main).getByRole('link', { name: 'Members' })).toHaveAttribute(
       'href',
-      '/app/members',
+      '/app/settings?section=members',
     )
     expect(within(main).getByRole('link', { name: 'Plans' })).toHaveAttribute('href', '/app/plans')
   })
@@ -69,7 +66,10 @@ describe('Welcome', () => {
     renderApp('/app/welcome')
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(title)
     expect(screen.getByRole('link', { name: 'Go to the app →' })).toHaveAttribute('href', '/app')
-    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/app/billing')
+    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute(
+      'href',
+      '/app/settings?section=billing',
+    )
   })
 
   it('sends an organization on Free with no checkout to Plans', async () => {
@@ -108,7 +108,7 @@ describe('Welcome', () => {
 
   it('opens Plans when reading the plan fails while waiting', async () => {
     quiet()
-    answer('me/get', meAs({ plan: 'free' }), 500)
+    answer('me/get', meAs({ plan: 'free' }), 500, meAs({ plan: 'free' }))
     const { location } = renderApp('/app/welcome?session_id=cs_test_1')
     expect(await screen.findByRole('heading', { name: 'Plans' })).toBeInTheDocument()
     expect(location()).toBe('/app/plans')
@@ -142,19 +142,6 @@ describe('Unavailable', () => {
     expect(location()).toBe('/profile')
   })
 
-  it('names who can help when the account is forbidden, with no Try again', async () => {
-    renderApp('/unavailable?reason=forbidden')
-    expect(
-      await screen.findByRole('heading', { name: "Your account can't open Arrakit right now." }),
-    ).toBeInTheDocument()
-    expect(screen.getByText(/Ask your organization's admin/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
-    expect(within(screen.getByRole('main')).getByRole('link', { name: 'Home' })).toHaveAttribute(
-      'href',
-      'https://example.com',
-    )
-  })
-
   it.each([
     '/pricing',
     'https://evil.example/app',
@@ -165,7 +152,10 @@ describe('Unavailable', () => {
     expect(safeNext(next)).toBe('/app')
   })
 
-  it.each(['/app', '/app/settings', '/app?x=1', '/profile', '/signup'])('keeps next=%s', (next) => {
-    expect(safeNext(next)).toBe(next)
-  })
+  it.each(['/app', '/app/settings', '/app?x=1', '/profile', '/signup', '/signin?plan=pro'])(
+    'keeps next=%s',
+    (next) => {
+      expect(safeNext(next)).toBe(next)
+    },
+  )
 })

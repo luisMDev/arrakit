@@ -23,7 +23,11 @@ export function WelcomePage() {
       </Button>
       <p className="text-sm text-muted-foreground">
         {t('welcome.receiptSent')}{' '}
-        <Link to="/app/billing" className="underline underline-offset-4">
+        <Link
+          to="/app/settings"
+          search={{ section: 'billing' }}
+          className="underline underline-offset-4"
+        >
           {t('welcome.settings')}
         </Link>
         {t('welcome.receiptEnd')}

@@ -16,8 +16,7 @@ test('a new person signs up with a magic link, skips Profile and lands on Home',
   page,
 }) => {
   const email = uniqueEmail('new')
-  await page.goto('/start')
-  await expect(page).toHaveURL(/\/signup$/)
+  await page.goto('/signup')
   await expect(page).toHaveTitle('Arrakit · Where to write')
   const link = await askForLink(page, email)
   expect(new URL(link).searchParams.get('callbackURL')).toBe(`${WEB_ORIGIN}/profile`)
@@ -115,18 +114,6 @@ test('a paid plan chosen before signup goes to checkout after Profile', async ({
   await page.getByRole('button', { name: 'Skip' }).click()
   await expect(page).toHaveURL(/\/app\/checkout\?plan=team&cycle=monthly$/)
 })
-
-for (const legacy of ['/start', '/new']) {
-  test(`${legacy} lands on /signup keeping the whole query`, async ({ page }) => {
-    await page.goto(`${legacy}?plan=pro&cycle=yearly&utm_source=news`)
-    await expect(page).toHaveURL(/\/signup\?/)
-    expect(Object.fromEntries(new URL(page.url()).searchParams)).toEqual({
-      plan: 'pro',
-      cycle: 'yearly',
-      utm_source: 'news',
-    })
-  })
-}
 
 test('an invalid email shows the inline error and sends nothing', async ({ page }) => {
   let sent = false

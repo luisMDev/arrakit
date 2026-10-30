@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { joined, ownerOf } from '../testing/people'
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp } from '../testing/app'
@@ -15,6 +15,22 @@ describe('me and account', () => {
     t = await createTestApp()
   })
   afterAll(() => t.close())
+  afterEach(() => vi.useRealTimers())
+
+  /** Every cookie a browser keeps from opening the magic link, the cached session included. */
+  const browserCookies = async (email: string) => {
+    await t.request('/api/auth/sign-in/magic-link', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: TEST_WEB_ORIGIN },
+      body: JSON.stringify({ email, callbackURL: `${TEST_WEB_ORIGIN}/app` }),
+    })
+    const link = new URL(t.linkFor(email))
+    const opened = await t.request(link.pathname + link.search, { redirect: 'manual' })
+    return opened.headers
+      .getSetCookie()
+      .map((cookie) => cookie.split(';')[0])
+      .join('; ')
+  }
 
   const signInFrom = async (email: string, userAgent: string) =>
     new Headers({
@@ -31,10 +47,11 @@ describe('me and account', () => {
       language: 'en',
       organization: null,
       role: null,
+      permissions: {},
       plan: null,
       seats: null,
     })
-    await t.client(headers).organizations.create({
+    await t.client(headers).onboarding.create({
       name: '',
       personName: 'Lucía Gómez',
       termsAccepted: true,
@@ -88,6 +105,39 @@ describe('me and account', () => {
       body: '{}',
     })
     expect(anonymous.status).toBe(401)
+  })
+
+  it('reads the name and language fresh, past the cached session', async () => {
+    const headers = new Headers({
+      cookie: await browserCookies('fresh@devices.vc'),
+      origin: TEST_WEB_ORIGIN,
+    })
+    await t.client(headers).onboarding.create({
+      name: 'Fresh',
+      personName: 'Ana Ibarra',
+      termsAccepted: true,
+    })
+    await t.client(headers).me.account.update({ language: 'es' })
+    await expect(t.client(headers).me.get()).resolves.toMatchObject({
+      name: 'Ana Ibarra',
+      language: 'es',
+    })
+  })
+
+  it('lets a signed-out device pass the session check for up to five minutes, never me.get', async () => {
+    const laptop = await signInFrom('cache@devices.vc', MAC)
+    const phone = new Headers({ cookie: await browserCookies('cache@devices.vc') })
+    expect(phone.get('cookie')).toContain('session_data=')
+    await t.app.request('/api/auth/revoke-other-sessions', {
+      method: 'POST',
+      headers: { ...Object.fromEntries(laptop), 'content-type': 'application/json' },
+      body: '{}',
+    })
+    // Signed in still: past the session check, refused only for having no organization.
+    await expect(t.client(phone).usage.get()).rejects.toMatchObject({ status: 404 })
+    await expect(t.client(phone).me.get()).rejects.toMatchObject({ status: 401 })
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 6 * 60 * 1000 })
+    await expect(t.client(phone).usage.get()).rejects.toMatchObject({ status: 401 })
   })
 
   it('updates only what is sent, trimmed, and reflects the name in me', async () => {
@@ -165,9 +215,9 @@ describe('me and account', () => {
       await t.client(admin.headers).me.delete()
       await expect(t.client(admin.headers).me.get()).rejects.toMatchObject({ status: 401 })
       await expect(t.client(phone).me.get()).rejects.toMatchObject({ status: 401 })
-      expect(await t.client(owner.headers).members.list()).toEqual([
-        { name: '', email: 'owner@pine.vc', role: 'owner' },
-      ])
+      expect(
+        (await t.data.forOrganization(owner.organizationId).members.list()).map((m) => m.email),
+      ).toEqual(['owner@pine.vc'])
       await expect(t.client().me.delete()).rejects.toMatchObject({ status: 401 })
     })
   })

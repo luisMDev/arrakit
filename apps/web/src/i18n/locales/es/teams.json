@@ -1,0 +1,33 @@
+{
+  "settings": {
+    "teamsSettings": {
+      "title": "Equipos",
+      "hint": "Los equipos agrupan a la gente de la organización.",
+      "empty": "Todavía no hay equipos.",
+      "teamName": "Nombre del equipo",
+      "create": "Crear equipo",
+      "enterName": "Escribe el nombre del equipo.",
+      "nameOf": "Nombre de {{team}}",
+      "save": "Guardar",
+      "deleteTeam": "Eliminar {{team}}",
+      "confirmDeleteTitle": "¿Eliminar {{team}}?",
+      "membersOf": "Miembros de {{team}}",
+      "noMembers": "Todavía no hay nadie en este equipo.",
+      "addTo": "Añadir a alguien a {{team}}",
+      "add": "Añadir",
+      "removeFrom": "Sacar a {{name}} de {{team}}",
+      "created": "{{team}} creado.",
+      "notCreated": "No se ha podido crear el equipo. Inténtalo de nuevo.",
+      "renamed": "El equipo ahora se llama {{team}}.",
+      "notRenamed": "No se ha podido renombrar el equipo. Inténtalo de nuevo.",
+      "deleted": "{{team}} eliminado.",
+      "notDeleted": "No se ha podido eliminar el equipo. Inténtalo de nuevo.",
+      "added": "{{name}} añadido a {{team}}.",
+      "notAdded": "No se ha podido añadir a {{name}} al equipo. Inténtalo de nuevo.",
+      "removed": "{{name}} ya no está en {{team}}.",
+      "notRemoved": "No se ha podido sacar a {{name}} del equipo. Inténtalo de nuevo.",
+      "notLoaded": "No se han podido cargar los equipos de la organización. Recarga la página.",
+      "remove": "Quitar"
+    }
+  }
+}

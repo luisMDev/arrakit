@@ -1,7 +1,8 @@
+import { personName } from '@arrakit/address'
 import { daysUntil, memberEmail, signinEmail, toMail } from '@arrakit/emails'
 
 import { MAGIC_LINK_MINUTES, isTrustedOrigin } from './config'
-import type { AuthDeps, InvitationForMail } from './deps'
+import type { AuthDeps } from './deps'
 
 const JOIN_PATH = /^\/join\/([^/]+)$/
 
@@ -24,9 +25,6 @@ export function invitationIdOf(linkURL: string, config: AuthDeps['config']): str
   }
 }
 
-const inviterLabel = (inviter: InvitationForMail['inviter']) =>
-  inviter.name.trim() || inviter.email.split('@')[0] || inviter.email
-
 export function magicLinkSender(deps: AuthDeps, now: () => Date = () => new Date()) {
   return async ({ email, url }: { email: string; url: string }) => {
     const invitationId = invitationIdOf(url, deps.config)
@@ -34,7 +32,7 @@ export function magicLinkSender(deps: AuthDeps, now: () => Date = () => new Date
     const mail = invitation
       ? memberEmail({
           organization: invitation.organization.name,
-          inviter: inviterLabel(invitation.inviter),
+          inviter: personName(invitation.inviter.name, invitation.inviter.email),
           expiresInDays: daysUntil(invitation.expiresAt, now()),
           links: { join: url },
         })

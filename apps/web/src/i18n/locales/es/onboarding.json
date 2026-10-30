@@ -1,8 +1,4 @@
 {
-  "onboarding": {
-    "unreachable": "No se ha podido conectar con Arrakit. Revisa tu conexión y recarga.",
-    "failed": "Algo ha ido mal. Recarga e inténtalo de nuevo."
-  },
   "profile": {
     "titleStart": "Cuéntanos",
     "titleEnd": "sobre tu organización.",

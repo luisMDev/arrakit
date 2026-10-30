@@ -1,12 +1,11 @@
 import { expect, test } from '@playwright/test'
 
-import { createOrganization, signIn, uniqueEmail } from './session'
+import { signedInOwner } from './session'
 
 test('an owner sees what is left this month in Settings > Usage', async ({ page }) => {
-  await signIn(page, uniqueEmail('owner'))
-  await createOrganization(page, 'Usage Co')
+  await signedInOwner(page, { organization: 'Usage Co' })
   await page.goto('/app/settings')
-  await page.getByRole('button', { name: 'Usage' }).click()
+  await page.getByRole('link', { name: 'Usage' }).click()
 
   const section = page.getByRole('region', { name: 'Usage' })
   await expect(section.locator('[data-metric="credits"] [data-available]')).toHaveText(

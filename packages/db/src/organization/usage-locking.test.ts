@@ -12,7 +12,7 @@ import { consoleLog } from '../log'
 import { type Data, openData } from '../open-data'
 import { toOrganizationId } from '../organization-id'
 import * as schema from '../schema/index'
-import { creditLedger, organizations } from '../schema/index'
+import { organizations } from '../schema/index'
 import { memoryStorage } from '../storage/memory'
 import { usageScope } from './usage'
 
@@ -60,15 +60,13 @@ describe('usage row lock (emitted SQL)', () => {
     expect(query).toMatch(/for no key update\s*$/)
   }
 
-  it('locks the organization row only to write a missing grant before reading balances', async () => {
+  it('reads balances without a lock or a write', async () => {
     const usage = await scope()
-    queries.length = 0
-    await usage.summary()
-    expect(queries.some((q) => /for no key update\s*$/.test(q))).toBe(true)
     queries.length = 0
     await usage.summary()
     await usage.check('credits', 1)
     expect(queries.some((q) => /for no key update/.test(q))).toBe(false)
+    expect(queries.some((q) => /^(insert|update|delete)/.test(q))).toBe(false)
   })
 
   it('locks the organization row before spending or setting a level', async () => {
@@ -87,14 +85,6 @@ describe('usage row lock (emitted SQL)', () => {
         usage.reverse(100, { idempotencyKey: 're', payment: { key: 'pi', cents: 1_000 } }),
       ),
     )
-  })
-
-  it('writes the monthly grant with on conflict do nothing', async () => {
-    const usage = await scope()
-    queries.length = 0
-    await usage.summary()
-    const grant = queries.find((q) => q.startsWith('insert into "credit_ledger"'))
-    expect(grant).toMatch(/on conflict do nothing/)
   })
 })
 
@@ -136,22 +126,6 @@ describe.skipIf(!postgresUrl)('usage under real Postgres concurrency', () => {
       expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(3)
       const credits = (await usage.summary()).find((m) => m.metric === 'credits')!
       expect(credits).toMatchObject({ used: 90, available: 10 })
-    } finally {
-      await cleanup(id)
-    }
-  })
-
-  it('writes the monthly grant once under concurrent first reads', async () => {
-    const { id, usage } = await newOrganization()
-    try {
-      await Promise.all(Array.from({ length: 10 }, () => usage.summary()))
-      const rows = await data.db
-        .select()
-        .from(creditLedger)
-        .where(eq(creditLedger.organizationId, id))
-      expect(rows.filter((r) => r.reason === 'plan_grant' && r.metric === 'credits')).toHaveLength(
-        1,
-      )
     } finally {
       await cleanup(id)
     }

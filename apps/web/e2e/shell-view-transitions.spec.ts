@@ -1,17 +1,12 @@
 import { type Page, expect, test } from '@playwright/test'
 
-import { createOrganization, signIn, uniqueEmail } from './session'
-
-async function signInWithOrganization(page: Page) {
-  await signIn(page, uniqueEmail('vt'))
-  await createOrganization(page, 'Acme', 'Ana Ruiz')
-}
+import { signedInOwner } from './session'
 
 const viewTransitionName = (page: Page, selector: string) =>
   page.locator(selector).evaluate((element) => getComputedStyle(element).viewTransitionName)
 
 test('the header and the app bar stay out of the page fade', async ({ page }) => {
-  await signInWithOrganization(page)
+  await signedInOwner(page, { who: 'vt', personName: 'Ana Ruiz' })
   await page.goto('/app')
   await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible()
   expect(await viewTransitionName(page, 'header')).toBe('site-header')
@@ -29,7 +24,7 @@ test('a navigation runs inside a view transition', async ({ page }) => {
       return original(update)
     }) as typeof document.startViewTransition
   })
-  await signInWithOrganization(page)
+  await signedInOwner(page, { who: 'vt', personName: 'Ana Ruiz' })
   await page.goto('/app')
   await page.getByRole('button', { name: 'Account menu' }).click()
   await page.locator('#app-menu').getByRole('link', { name: 'Settings' }).click()

@@ -1,10 +1,10 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import '#/i18n'
 import { renderWithQueries, setupAuthTestApi } from '#/components/auth/testing'
-import { answer, meAs } from '#/test/rpc'
+import { answer, answerAuth, meAs } from '#/test/rpc'
 
 import { consent, publicClientName } from './oauth-api'
 import { OAuthConsentPage } from './oauth-consent-page'
@@ -16,6 +16,14 @@ vi.mock('./oauth-api', async (original) => ({
 }))
 
 const QUERY = 'response_type=code&client_id=claude-id&state=s%2Fx&exp=1&sig=abc'
+
+const ARDENT = { ...meAs().organization!, name: 'Ardent Ventures' }
+const BIRCH = {
+  id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+  name: 'Birch',
+  slug: 'birch',
+  plan: 'free',
+}
 
 const clientName = vi.mocked(publicClientName)
 const answerConsent = vi.mocked(consent)
@@ -31,6 +39,7 @@ beforeEach(() => {
     'me/get',
     meAs({ organization: { ...meAs().organization!, name: 'Ardent Ventures' } }),
   )
+  answerAuth('organization/list', [ARDENT])
 })
 
 const renderPage = (search = `?${QUERY}`) => renderWithQueries(<OAuthConsentPage search={search} />)
@@ -38,6 +47,30 @@ const renderPage = (search = `?${QUERY}`) => renderWithQueries(<OAuthConsentPage
 const FAILED = "Couldn't finish connecting. Try again."
 
 describe('OAuthConsentPage', () => {
+  it('lets a person in several organizations pick the one to connect', async () => {
+    answerAuth('organization/list', [ARDENT, BIRCH])
+    const chosen = answerAuth('organization/set-active', BIRCH)
+    renderPage()
+    const picker = await screen.findByRole('combobox', { name: 'Organization' })
+    expect(picker).toHaveTextContent('Ardent Ventures')
+    answer('me/get', meAs({ organization: BIRCH as never }))
+    await userEvent.click(picker)
+    await userEvent.click(await screen.findByRole('option', { name: 'Birch' }))
+    expect(await screen.findByText('Claude will act as you in Birch.')).toBeInTheDocument()
+    expect(chosen).toEqual([{ input: { organizationId: BIRCH.id } }])
+    expect(chosen[0]!.input).not.toHaveProperty('oauth_query')
+  })
+
+  it('shows no picker to a person in one organization', async () => {
+    const lists = answerAuth('organization/list', [ARDENT])
+    renderPage()
+    expect(
+      await screen.findByText('Claude will act as you in Ardent Ventures.'),
+    ).toBeInTheDocument()
+    await waitFor(() => expect(lists).toHaveLength(1))
+    expect(screen.queryByRole('combobox')).toBeNull()
+  })
+
   it('loads the client and the organization, then asks with Allow and Deny only', async () => {
     renderPage()
     expect(screen.getByRole('status')).toHaveTextContent('Loading…')

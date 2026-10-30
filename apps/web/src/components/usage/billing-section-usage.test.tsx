@@ -1,32 +1,25 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { billingOf, meOn } from '#/components/billing/testing'
 import { BillingSection } from '#/components/settings/billing-section'
-import { answer, api, quiet, renderAt } from '#/test/rpc'
+import { leave } from '#/lib/leave'
+import { answer, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
 import { usageFixture } from './fixtures'
 
-beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
-afterEach(() => {
-  api.resetHandlers()
-  vi.restoreAllMocks()
-  window.history.pushState({}, '', '/')
-})
-afterAll(() => api.close())
+setupTestApi()
+vi.mock('#/lib/leave', () => ({ leave: vi.fn() }))
 
 async function openBilling(
   usage: Parameters<typeof answer>[1] = usageFixture(),
-  redirect: (url: string) => void = () => undefined,
+  url = '/app/settings?section=billing',
 ) {
   answer('billing/get', billingOf())
   const usageCalls = answer('usage/get', usage)
-  const view = renderAt(<BillingSection redirect={redirect} />, {
-    me: meOn('pro'),
-    url: '/app/billing',
-  })
-  await screen.findByText('Plan', { selector: 'dt' })
+  const view = renderAt(<BillingSection />, { me: meOn('pro'), url })
+  await screen.findByText('Plan', { selector: '[data-label]' })
   return { ...view, usageCalls }
 }
 
@@ -128,8 +121,7 @@ describe('Settings > Billing usage (through the Billing page)', () => {
   })
 
   it('says a paid Checkout is on its way after ?top_up=paid', async () => {
-    window.history.pushState({}, '', '/app/billing?top_up=paid')
-    await openBilling()
+    await openBilling(usageFixture(), '/app/settings?section=billing&top_up=paid')
     expect(within(usageRegion()).getByRole('status')).toHaveTextContent(
       'Payment received. Your credits show up here in a moment.',
     )
@@ -137,8 +129,7 @@ describe('Settings > Billing usage (through the Billing page)', () => {
 
   it('opens Add credits, previews the amount and sends the admin to Checkout for the cents', async () => {
     const topUps = answer('billing/topUp', { url: 'https://checkout.stripe.test/c/pay/1' })
-    const redirect = vi.fn()
-    await openBilling(usageFixture(), redirect)
+    await openBilling()
     const user = userEvent.setup()
     await user.click(within(usageRegion()).getByRole('button', { name: 'Add credits' }))
     const dialog = await screen.findByRole('dialog')
@@ -154,9 +145,7 @@ describe('Settings > Billing usage (through the Billing page)', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Continue to payment' }))
     await waitFor(() => expect(topUps).toHaveLength(1))
     expect(topUps[0]!.input).toEqual({ cents: 4_500 })
-    await waitFor(() =>
-      expect(redirect).toHaveBeenCalledWith('https://checkout.stripe.test/c/pay/1'),
-    )
+    await waitFor(() => expect(leave).toHaveBeenCalledWith('https://checkout.stripe.test/c/pay/1'))
   })
 
   it.each(['5', '501', ''])('refuses an amount of "%s" outside the bounds', async (typed) => {
@@ -190,7 +179,7 @@ describe('Settings > Billing usage (through the Billing page)', () => {
     quiet()
     await openBilling(502)
     expect(await screen.findByText("Couldn't load usage. Reload the page.")).toBeInTheDocument()
-    expect(screen.getByText('Plan', { selector: 'dt' })).toBeInTheDocument()
+    expect(screen.getByText('Plan', { selector: '[data-label]' })).toBeInTheDocument()
     expect(within(usageRegion()).queryByText(/credits left/)).not.toBeInTheDocument()
     expect(document.querySelector('[data-top-ups]')).not.toBeInTheDocument()
   })

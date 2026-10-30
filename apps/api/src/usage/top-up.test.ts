@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { type TestApp, TEST_WEB_ORIGIN, createTestApp } from '../testing/app'
 import { type FakeStripe, fakeStripe } from '../testing/fake-stripe'
+import { joinAs, ownerOf } from '../testing/people'
 
 describe('top-ups', () => {
   let t: TestApp
@@ -13,15 +14,8 @@ describe('top-ups', () => {
   beforeAll(async () => {
     stripe = fakeStripe()
     t = await createTestApp({ stripe })
-    const signedIn = await t.signIn({ email: 'ana@acme.com' })
-    owner = signedIn.headers
-    organizationId = (
-      await t.data.createOrganization('Acme', { userId: signedIn.userId, termsAccepted: true })
-    ).id
-    const other = await t.signIn({ email: 'mo@acme.com' })
-    const { test } = await t.deps.auth.$context
-    await test.addMember!({ userId: other.userId, organizationId, role: 'member' })
-    member = other.headers
+    ;({ headers: owner, organizationId } = await ownerOf(t, 'ana@acme.com', 'free'))
+    ;({ headers: member } = await joinAs(t, organizationId, 'mo@acme.com', 'member'))
   })
   afterAll(async () => {
     vi.restoreAllMocks()
@@ -58,7 +52,7 @@ describe('top-ups', () => {
       headers.set('origin', 'https://evil.example')
       await expect(t.client(headers).billing.topUp({ cents: 2_000 })).rejects.toMatchObject({
         status: 403,
-        message: 'Add credits from the app.',
+        message: 'Use the app.',
       })
     })
 
@@ -72,15 +66,14 @@ describe('top-ups', () => {
       stripe.failNext('topUpCheckout', new Error('stripe is down'))
       await expect(t.client(owner).billing.topUp({ cents: 2_000 })).rejects.toMatchObject({
         status: 502,
-        message: "Couldn't load billing from Stripe. Try again in a minute.",
+        message: "Couldn't reach Stripe. Try again in a minute.",
       })
     })
 
     it('answers 503 without Stripe', async () => {
       const bare = await createTestApp()
       try {
-        const { headers, userId } = await bare.signIn({ email: 'zoe@zed.io' })
-        await bare.data.createOrganization('Zed', { userId, termsAccepted: true })
+        const { headers } = await ownerOf(bare, 'zoe@zed.io', 'free')
         await expect(bare.client(headers).billing.topUp({ cents: 2_000 })).rejects.toMatchObject({
           status: 503,
           message: 'Payments are not set up yet.',
@@ -107,10 +100,8 @@ describe('top-ups', () => {
       paymentIntentId,
       amount,
     })
-    const newOrganization = async (email: string, name: string) => {
-      const { userId } = await t.signIn({ email })
-      return (await t.data.createOrganization(name, { userId, termsAccepted: true })).id
-    }
+    const newOrganization = async (email: string) =>
+      (await ownerOf(t, email, 'free')).organizationId
 
     it('credits a paid top-up once per Checkout session, completed or async', async () => {
       const before = await purchased()
@@ -122,8 +113,7 @@ describe('top-ups', () => {
     })
 
     it('shows the credited top-up in usage.get', async () => {
-      const { userId, headers } = await t.signIn({ email: 'una@usage.io' })
-      const { id } = await t.data.createOrganization('Usage view', { userId, termsAccepted: true })
+      const { headers, organizationId: id } = await ownerOf(t, 'una@usage.io', 'free')
       await t.webhook(paid('cs_view', { organizationId: id, cents: 2_550 }))
       const usage = await t.client(headers).usage.get()
       expect(usage.topUps).toEqual([
@@ -144,7 +134,7 @@ describe('top-ups', () => {
     })
 
     it('keeps the first Stripe customer without changing the plan', async () => {
-      const id = await newOrganization('cy@customer.io', 'Customer')
+      const id = await newOrganization('cy@customer.io')
       await t.webhook(paid('cs_c1', { organizationId: id, customerId: 'cus_first' }))
       await t.webhook(paid('cs_c2', { organizationId: id, customerId: 'cus_second' }))
       const organization = await t.data.forOrganization(id).organization()
@@ -153,7 +143,7 @@ describe('top-ups', () => {
     })
 
     it('credits nothing while the payment is pending, then credits when it succeeds', async () => {
-      const id = await newOrganization('pat@pending.io', 'Pending')
+      const id = await newOrganization('pat@pending.io')
       expect(
         (await t.webhook(paid('cs_pending', { organizationId: id, paid: false }))).status,
       ).toBe(204)
@@ -171,7 +161,7 @@ describe('top-ups', () => {
     })
 
     it('reverses a refund proportionally, tax apart, once', async () => {
-      const id = await newOrganization('rae@refund.io', 'Refunds')
+      const id = await newOrganization('rae@refund.io')
       await t.webhook(paid('cs_refund', { organizationId: id }))
       stripe.topUpPayments.set('pi_1', { organizationId: id, cents: 2_000, total: 2_420 })
       expect((await t.webhook(reversal('re_1', 'pi_1', 1_210))).status).toBe(204)
@@ -182,7 +172,7 @@ describe('top-ups', () => {
     })
 
     it('never takes back more than the top-up, even for a dispute of the whole charge', async () => {
-      const id = await newOrganization('dee@dispute.io', 'Disputes')
+      const id = await newOrganization('dee@dispute.io')
       await t.webhook(paid('cs_dispute', { organizationId: id }))
       await t.data.forOrganization(id).usage.consume('credits', 1_500, { idempotencyKey: 'job-1' })
       stripe.topUpPayments.set('pi_2', { organizationId: id, cents: 2_000, total: 2_420 })
@@ -197,7 +187,7 @@ describe('top-ups', () => {
     })
 
     it('caps a refund followed by a dispute of the same payment at the top-up', async () => {
-      const id = await newOrganization('ria@refund-dispute.io', 'Refund then dispute')
+      const id = await newOrganization('ria@refund-dispute.io')
       await t.webhook(paid('cs_split', { organizationId: id }))
       await t.webhook(paid('cs_other', { organizationId: id }))
       stripe.topUpPayments.set('pi_split', { organizationId: id, cents: 2_000, total: 2_420 })

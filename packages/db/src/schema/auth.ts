@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm'
 import { boolean, check, index, pgTable, text, uuid } from 'drizzle-orm/pg-core'
 
 import { at, createdAt, updatedAt } from './columns'
-import { organizations } from './organizations'
+import { organizations, teams } from './organizations'
 
 export { ACCOUNT_LANGUAGES, type AccountLanguage } from '@arrakit/address'
 
@@ -40,6 +40,7 @@ export const sessions = pgTable(
     activeOrganizationId: uuid('active_organization_id').references(() => organizations.id, {
       onDelete: 'set null',
     }),
+    activeTeamId: text('active_team_id').references(() => teams.id, { onDelete: 'set null' }),
   },
   (t) => [index('sessions_user_id_idx').on(t.userId)],
 )

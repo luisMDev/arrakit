@@ -1,25 +1,23 @@
-import { ORPCError } from '@orpc/client'
-import { render as renderUi, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { withQueries } from '#/test/rpc'
+import { leave } from '#/lib/leave'
+import { answer, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
 import { BillingUsage, TopUpsList } from './billing-usage'
 import { usageFixture } from './fixtures'
 
-const render = (ui: React.ReactElement) => renderUi(ui, { wrapper: withQueries() })
+vi.mock('#/lib/leave', () => ({ leave: vi.fn() }))
 
-const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }))
-vi.mock('sonner', async (original) => {
-  const sonner = await original<typeof import('sonner')>()
-  return { ...sonner, toast: Object.assign(vi.fn(), sonner.toast, { error: toastError }) }
-})
+setupTestApi()
 
-async function openDialog(props: Partial<React.ComponentProps<typeof BillingUsage>> = {}) {
+const render = (ui: React.ReactElement, url = '/app/settings') => renderAt(ui, { url })
+
+async function openDialog() {
   const user = userEvent.setup()
-  render(<BillingUsage usage={usageFixture()} topUpPaid={false} {...props} />)
-  await user.click(screen.getByRole('button', { name: 'Add credits' }))
+  render(<BillingUsage usage={usageFixture()} />)
+  await user.click(await screen.findByRole('button', { name: 'Add credits' }))
   const dialog = await screen.findByRole('dialog')
   const amount = within(dialog).getByLabelText('Amount (USD)')
   const pay = within(dialog).getByRole('button', { name: 'Continue to payment' })
@@ -27,9 +25,7 @@ async function openDialog(props: Partial<React.ComponentProps<typeof BillingUsag
 }
 
 describe('Settings > Billing usage', () => {
-  afterEach(() => toastError.mockReset())
-
-  it('shows the cards with the plan-then-purchased split', () => {
+  it('shows the cards with the plan-then-purchased split', async () => {
     render(
       <BillingUsage
         usage={usageFixture({
@@ -37,10 +33,9 @@ describe('Settings > Billing usage', () => {
           used: { credits: 150, storage_gb: 0 },
           purchased: { credits: 1_000, storage_gb: 100 },
         })}
-        topUpPaid={false}
       />,
     )
-    const section = screen.getByRole('region', { name: 'Usage' })
+    const section = await screen.findByRole('region', { name: 'Usage' })
     expect(within(section).getByText('950 credits left')).toBeInTheDocument()
     expect(
       within(section).getByText('0 credits from your plan · 950 credits purchased'),
@@ -48,15 +43,12 @@ describe('Settings > Billing usage', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('shows the bar percentage for each card', () => {
+  it('shows the bar percentage for each card', async () => {
     render(
-      <BillingUsage
-        usage={usageFixture({ purchased: { credits: 2_000, storage_gb: 200 } })}
-        topUpPaid={false}
-      />,
+      <BillingUsage usage={usageFixture({ purchased: { credits: 2_000, storage_gb: 200 } })} />,
     )
     expect(
-      screen.getByRole('progressbar', { name: '250 credits used this month' }),
+      await screen.findByRole('progressbar', { name: '250 credits used this month' }),
     ).toHaveAttribute('aria-valuenow', '8')
     expect(screen.getByRole('progressbar', { name: '12 GB of 300 GB used' })).toHaveAttribute(
       'aria-valuenow',
@@ -64,31 +56,17 @@ describe('Settings > Billing usage', () => {
     )
   })
 
-  it('says a paid Checkout is on its way', () => {
-    render(<BillingUsage usage={usageFixture()} topUpPaid />)
-    expect(screen.getByRole('status')).toHaveTextContent(
+  it('says a paid Checkout is on its way after ?top_up=paid', async () => {
+    render(<BillingUsage usage={usageFixture()} />, '/app/settings?section=billing&top_up=paid')
+    expect(await screen.findByRole('status')).toHaveTextContent(
       'Payment received. Your credits show up here in a moment.',
     )
   })
 
-  it('reads ?top_up=paid from the URL after mount when not told', async () => {
-    window.history.pushState({}, '', '/app/billing?top_up=paid')
-    try {
-      render(<BillingUsage usage={usageFixture()} />)
-      expect(await screen.findByRole('status')).toHaveTextContent('Payment received.')
-    } finally {
-      window.history.pushState({}, '', '/')
-    }
-  })
-
-  it('shows no paid status without ?top_up=paid', () => {
-    window.history.pushState({}, '', '/app/billing?top_up=cancelled')
-    try {
-      render(<BillingUsage usage={usageFixture()} />)
-      expect(screen.queryByRole('status')).not.toBeInTheDocument()
-    } finally {
-      window.history.pushState({}, '', '/')
-    }
+  it('shows no paid status without ?top_up=paid', async () => {
+    render(<BillingUsage usage={usageFixture()} />, '/app/settings?top_up=cancelled')
+    await screen.findByRole('region', { name: 'Usage' })
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('previews what an amount buys', async () => {
@@ -115,33 +93,25 @@ describe('Settings > Billing usage', () => {
   })
 
   it('leaves for Checkout with the amount in cents', async () => {
-    const startTopUp = vi.fn(async () => ({ url: 'https://checkout.stripe.test/c/pay/1' }))
-    const redirect = vi.fn()
-    const { pay, amount, user } = await openDialog({ startTopUp, redirect })
+    const topUps = answer('billing/topUp', { url: 'https://checkout.stripe.test/c/pay/1' })
+    const { pay, amount, user } = await openDialog()
     await user.clear(amount)
     await user.type(amount, '45')
     await user.click(pay)
-    await waitFor(() =>
-      expect(redirect).toHaveBeenCalledWith('https://checkout.stripe.test/c/pay/1'),
-    )
-    expect(startTopUp).toHaveBeenCalledWith(4_500)
+    await waitFor(() => expect(leave).toHaveBeenCalledWith('https://checkout.stripe.test/c/pay/1'))
+    expect(topUps).toEqual([{ input: { cents: 4_500 } }])
   })
 
   it('says when Checkout did not open and lets the admin retry', async () => {
-    const startTopUp = vi.fn(async () => {
-      throw new ORPCError('BAD_GATEWAY', { status: 502 })
-    })
-    const redirect = vi.fn()
-    const { pay, user } = await openDialog({ startTopUp, redirect })
+    quiet()
+    answer('billing/topUp', 502)
+    const { pay, user } = await openDialog()
     await user.click(pay)
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith(
-        "Couldn't open the payment. Try again in a minute.",
-        expect.anything(),
-      ),
-    )
+    expect(
+      await screen.findByText("Couldn't open the payment. Try again in a minute."),
+    ).toBeInTheDocument()
     expect(pay).toBeEnabled()
-    expect(redirect).not.toHaveBeenCalled()
+    expect(leave).not.toHaveBeenCalled()
   })
 
   it('closes on Cancel', async () => {
@@ -152,7 +122,7 @@ describe('Settings > Billing usage', () => {
 })
 
 describe('Top-ups list', () => {
-  it('lists top-ups newest first', () => {
+  it('lists top-ups newest first', async () => {
     render(
       <TopUpsList
         topUps={[
@@ -175,13 +145,13 @@ describe('Top-ups list', () => {
         ]}
       />,
     )
-    const rows = screen.getAllByRole('listitem')
+    const rows = await screen.findAllByRole('listitem')
     expect(rows[0]).toHaveTextContent('Oct 8, 2026$25 · 2,500 credits and 250 GB')
     expect(rows[1]).toHaveTextContent('Sep 1, 2026$10 · 1,000 credits and 100 GB')
   })
 
-  it('says when there are none', () => {
+  it('says when there are none', async () => {
     render(<TopUpsList topUps={[]} />)
-    expect(document.querySelector('[data-top-ups]')).toHaveTextContent('No top-ups yet.')
+    expect(await screen.findByText('No top-ups yet.')).toBeInTheDocument()
   })
 })

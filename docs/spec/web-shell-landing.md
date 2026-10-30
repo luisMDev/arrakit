@@ -9,7 +9,7 @@ build every screen with stock shadcn/ui components and the default shadcn theme.
 
 Cross-references to other areas (they own their screens; this area only routes to them): `auth-onboarding`
 (`/signin`, `/signup`, `/profile`, `/join/$invitationId`), `oauth-mcp` (`/oauth/signin`, `/oauth/consent`),
-`settings` (`/app/settings`, `/app/members`, `/app/billing`), `billing-plans` (`/pricing`, `/app/plans`, `/app/checkout`).
+`settings` (`/app/settings?section=…`; `/app/members` and `/app/billing` redirect there), `billing-plans` (`/pricing`, `/app/plans`, `/app/checkout`).
 
 ---
 
@@ -20,7 +20,7 @@ One place to rebrand. In arrakit:
 | Constant | saas-base value | arrakit location | Used by |
 | --- | --- | --- | --- |
 | `APP_NAME` | `'SaaS'` | `apps/web/src/config.ts` (and the emails package brand) | Page titles, wordmark, copy that says the product name |
-| `SITE_URL` | `'https://example.com'` | `apps/web/src/config.ts`, read from `VITE_SITE_URL` with that default | Wordmark link outside `/app`, Unavailable's "Home" (forbidden) |
+| `SITE_URL` | `'https://example.com'` | `apps/web/src/config.ts`, read from `VITE_SITE_URL` with that default | Wordmark link outside `/app`, Pricing's "Home" |
 | App origin used by the landing | `https://app.example.com` | `apps/landing`, from `PUBLIC_APP_URL` | Landing links (Pricing, Sign in, Get started) |
 
 README "Make it yours" checklist, to be reproduced in arrakit's README/AGENTS.md:
@@ -75,7 +75,7 @@ language active at navigation time). Keys and routes:
 | `/signup` | `app.titles.whereToWrite` | Where to write | Dónde escribir |
 | `/profile` | `app.titles.yourOrganization` | Your organization | Tu organización |
 | `/app` (index) | `app.titles.home` | Home | Inicio |
-| `/app/settings`, `/app/members`, `/app/billing` | `app.titles.settings` | Settings | Ajustes |
+| `/app/settings` | `app.titles.settings` | Settings | Ajustes |
 | `/app/plans` | `app.titles.plans` | Plans | Planes |
 | `/app/checkout` | `app.titles.checkout` | Checkout | Pago |
 | `/app/welcome` | `app.titles.welcome` | Welcome | Bienvenida |
@@ -89,8 +89,6 @@ The app has **no front page of its own**: the website (landing) is the front pag
 | Path | Behaviour | Guard | Owner area |
 | --- | --- | --- | --- |
 | `/` | Redirect to `/signin` | – | this |
-| `/start` | Redirect to `/signup` (the landing's "Get started" links here) | – | this |
-| `/new` | Redirect to `/signup` (legacy link) | – | this |
 | `/signin` | Sign-in screen (same component as signup, "returning" mode) | `skipWhenSignedIn` (signed-in person goes to `/app`, or `/profile` without organization) | auth-onboarding |
 | `/signup` | Get-started screen | `skipWhenSignedIn` | auth-onboarding |
 | `/profile` | Create organization | `requireAccount` | auth-onboarding |
@@ -100,9 +98,9 @@ The app has **no front page of its own**: the website (landing) is the front pag
 | `/oauth/signin` | Connector sign-in (no `skipWhenSignedIn`) | – | oauth-mcp |
 | `/oauth/consent` | Connector consent | – | oauth-mcp |
 | `/app` | Signed-in shell (§4) + Home (§7) | `requireUser` | this |
-| `/app/settings` | Settings, section `account` | `requireUser` | settings |
-| `/app/members` | Same Settings page, section `members` | `requireUser` | settings |
-| `/app/billing` | Same Settings page, section `billing` | `requireUser` | settings |
+| `/app/settings?section=<id>` | Settings on that section (`account` default; `general`, `usage`, `members`, `teams`, `roles`, `billing`, `security`) | `requireUser` | settings |
+| `/app/members` | Redirect to `/app/settings?section=members` | `requireUser` | settings |
+| `/app/billing` | Redirect to `/app/settings?section=billing`, keeping `top_up` (Stripe's top-up URLs and email links use it) | `requireUser` | settings |
 | `/app/plans` | Plans | `requireUser` | billing-plans |
 | `/app/checkout?plan=&cycle=` | Checkout | `requireUser` + `canCheckout` | billing-plans |
 | `/app/welcome[?session_id=]` | Welcome (§8) | `requireUser` + `onPaidPlan` | this |
@@ -113,9 +111,10 @@ shell (still behind `requireUser`), keeping the URL. Implement as a catch-all ro
 `/app/booking` and `/app/booked` keep their URL and show the not-found h1 with the account menu.
 
 Implementation notes for TanStack Start:
-- File routes: `routes/index.tsx` (redirect), `routes/start.tsx`, `routes/new.tsx` (redirects in `beforeLoad`),
-  `routes/app.tsx` (layout with `beforeLoad` = `requireUser`), `routes/app/index.tsx`, `routes/app/welcome.tsx`, etc.
-- Settings: one component reused by three routes, each passing its `section` (`account` | `members` | `billing`).
+- File routes: `routes/index.tsx` (redirect in `beforeLoad`), `routes/app.tsx` (layout with `beforeLoad` =
+  `requireUser`), `routes/app/index.tsx`, `routes/app/welcome.tsx`, etc.
+- Settings: `routes/app/settings.tsx` validates `?section` (`settingsSearch`) and renders `SettingsPage` on it;
+  `routes/app/members.tsx` and `routes/app/billing.tsx` only redirect.
 - Lazy-load route components (code splitting, `autoCodeSplitting`) — that is what makes stale chunk handling (§9)
   relevant.
 - Use view transitions on navigation if trivially available (`defaultViewTransition: true`); optional.
@@ -125,30 +124,32 @@ Implementation notes for TanStack Start:
 ## 4. Signed-in shell (`/app` layout route)
 
 ### 4.1 `requireUser` guard (beforeLoad of `/app`)
-Loads the signed-in person **once** (`me.get`, §10) before any `/app/*` screen renders, and stores it in the
-current-user state (TanStack Query cache key `['me']` via `orpc.me.get.queryOptions()`, plus helpers). Outcomes:
+Loads the signed-in person (`me.get`, §10) through `guardedMe` (`#/lib/guards/guarded-me.ts`) before any `/app/*`
+screen renders; the answer stays in the query cache (`orpc.me.get.queryOptions()`). Outcomes:
 
 | API result | Navigation |
 | --- | --- |
 | OK with `organization != null` | Allow. Before allowing, if `me.language !== activeLanguage`, **switch the UI language to `me.language` and wait for it** (§6) so the first signed-in render is already in the account language. |
 | OK with `organization === null` (also `role`/`plan`/`seats` null) — person in no organization, never joined or removed | Redirect to `/profile` |
 | `UNAUTHORIZED` (401) | Redirect to `/signin` |
-| `FORBIDDEN` (403) | Report error (console/logger), redirect to `/unavailable?reason=forbidden` |
-| Any other failure (500, network down, timeout) | Report error, redirect to `/unavailable?next=<requested URL>` (URL-encoded full path + search, e.g. `/unavailable?next=%2Fapp%2Fsettings`) |
+| Any other failure (403, 500, network down, timeout) | Redirect to `/unavailable?next=<requested URL>` (URL-encoded full path + search, e.g. `/unavailable?next=%2Fapp%2Fsettings`); the QueryCache reports it |
 
 A 403 or a 5xx is **never** treated as a sign-out.
 
 ### 4.2 Current-user state (`useCurrentUser()` hook)
 Derived from the `me` query:
 - `user: Me | null`
-- `role: 'owner' | 'admin' | 'member' | null`
-- `isAdmin = role === 'owner' || role === 'admin'` (owners and admins invite, remove, pay)
-- `isOwner = role === 'owner'`
+- `role: string | null`: Better Auth's role string (`owner`, `admin`, `member`, a custom role, or several joined by `,`)
+- `can(wanted)`: `allows(me.permissions, wanted)` from `@arrakit/auth/permissions` (e.g. `can({ billing: ['manage'] })`);
+  every permission-gated screen, link and button reads it. `grants(me, wanted)` is the same outside React (guards).
+- `isOwner = isOwnerRole(role)`
+- `managesMembers = can({ member: ['update'] }) || can({ invitation: ['create'] })`,
+  `managesBilling = can({ billing: ['manage'] })`
 - `planLabel = t('pricing.plan.<plan>')` (Free / Pro / Team / Internal; es: same words), `''` when none
-- `reload()`: refetch `me` (a count/setting moved behind the screen's back); failure keeps the loaded person and only reports the error.
+- `refresh()`: invalidate `me` so it refetches (a count/setting moved behind the screen's back).
 - `patch(fn)`: optimistic local update after a save the API already accepted (e.g. Settings renames the person → menu shows new name at once). Use `queryClient.setQueryData`.
-- `signedOut()`: clear the `me` cache (`queryClient.removeQueries`/`clear`).
-- Before anyone signs in: `isAdmin` and `isOwner` are false.
+- `signedOut()`: clear every query (`queryClient.removeQueries()`), so nothing of the previous person lingers.
+- Before anyone signs in: `can(...)` is false for everything and `isOwner` is false.
 
 Display name rule (`Me.name`): Better Auth's `user.name` trimmed; when blank, the local part of the email
 (`ana@acme.com` → `ana`). Apply in the API mapper or the client, consistently.
@@ -156,8 +157,8 @@ Display name rule (`Me.name`): Better Auth's `user.name` trimmed; when blank, th
 ### 4.3 Shell layout
 Renders, on the same row as the root header's wordmark (right-aligned), only when the person is loaded:
 - A `<nav aria-label={t('shell.account')}>` ("Account" / "Cuenta") containing:
-  - **Usage label** `t('shell.usage', { organization, plan: planLabel })` → "Acme · Pro". Visible from the `lg`
-    breakpoint only (`hidden lg:inline`); tests read it from the DOM text, so keep it in the DOM.
+  - The **organization switcher** (§4.5): a button `aria-label={t('orgSwitcher.label', { organization })}`
+    ("Organization: Acme") showing `t('shell.usage', { organization, plan: planLabel })` → "Acme · Pro".
   - The **app menu** (§4.4).
 - Then the `<Outlet />` with the signed-in screens.
 
@@ -177,8 +178,8 @@ Panel (`id="app-menu"`), only in the DOM while open:
 2. List `aria-label={t('appMenu.yourOrganization')}` ("Your organization"):
    - `Home` → `/app` (`appMenu.home`)
    - `Settings` → `/app/settings` (`appMenu.settings`)
-   - `Members` → `/app/members` (`appMenu.members`) — **admins only** (owner or admin)
-   - `Billing` → `/app/billing` (`appMenu.billing`) — **admins only**
+   - `Members` → `/app/settings?section=members` (`appMenu.members`) — when `managesMembers`
+   - `Billing` → `/app/settings?section=billing` (`appMenu.billing`) — when `can({ billing: ['read'] })`
 3. Theme switcher (`appMenu.theme`, "Theme"): a single-choice toggle group Light / Dark / System
    (`appMenu.themeLight|themeDark|themeSystem`), default System.
 4. List `aria-label={t('appMenu.more')}` ("More"):
@@ -197,19 +198,26 @@ Behaviour:
   current user (`signedOut()`), navigate to `/signin`. On failure: error toast `t('appMenu.notSignedOut')`
   ("Couldn't sign you out. Try again.") and stay.
 
+### 4.5 Organization switcher (`components/shell/org-switcher.tsx`)
+A person may belong to several organizations; the session's **active organization** (Better Auth
+`session.activeOrganizationId`) is the one every screen and procedure works in.
+- shadcn `DropdownMenu`. It loads `authClient.organization.list()` (query `['org', 'list']`) when opened, and lists each
+  organization as a radio item (name + plan label), the active one checked, under `orgSwitcher.organizations`.
+- Picking another: `switchOrganization(queryClient, id)` (`#/lib/organization-queries`: `organization.setActive`
+  then `queryClient.resetQueries()`, so every screen reloads for the new organization), then `/app`. Failure: toast
+  `orgSwitcher.notSwitched`.
+- Last item `orgSwitcher.create` "Create organization" opens `CreateOrganizationDialog`: a name (required,
+  `createOrganization.enterName`), `organization.create({ name, slug })` (the API replaces the slug with the first free
+  one), then `switchOrganization(newId)`, toast `createOrganization.created`, `/app`. Failure: toast
+  `createOrganization.notCreated` (or the API's words), the dialog stays open.
+- Better Auth changes the active organization in the database on create, accept, delete and leave without refreshing
+  the cookie cache, so the web always calls `setActive` after those (`switchOrganization`).
+
 ---
 
 ## 5. Unavailable screen (`/unavailable`)
 
-Public route. Two modes from the query string:
-
-**`?reason=forbidden`** (account recognised but refused; retrying will not help):
-- h1 `unavailable.forbiddenTitle` "Your account can't open SaaS right now." / "Tu cuenta no puede abrir SaaS ahora mismo."
-- p `unavailable.forbiddenBody` "Ask your organization's admin to check your access." / "Pide al administrador de tu organización que revise tu acceso."
-- Ghost link button `unavailable.home` "Home" → `SITE_URL` (full navigation).
-- **No** "Try again" button.
-
-**Otherwise** (API unreachable / failed):
+Public route, one mode (there is no `reason=forbidden` variant; any non-401 failure lands here):
 - h1 `unavailable.unreachableTitle` "Couldn't reach SaaS." / "No se ha podido conectar con SaaS."
 - p `unavailable.unreachableBody` "Nothing is lost. Try again in a moment." / "No se ha perdido nada. Inténtalo de nuevo en un momento."
 - Button `unavailable.tryAgain` "Try again" / "Reintentar": navigates to `next`, which re-runs that route's guards.
@@ -217,12 +225,12 @@ Public route. Two modes from the query string:
   `/unavailable?next=%2Fapp%2Fsettings`). Once the API answers, they land on the wanted screen.
 
 `next` sanitising (security, open-redirect guard): accept `next` only if it matches
-`^\/(?:app|signup|profile|reading)(?:[/?#]|$)` (keep `reading` for parity, or drop it; it is unused).
+`^\/(?:app|signup|signin|profile)(?:[/?#]|$)` (`safeNext`).
 Otherwise use `/app`. Rejected examples (all go to `/app`): `/pricing`, `https://evil.example/app`,
-`//evil.example/app`, `/application`. Accepted: `/app`, `/app/settings`, `/app?x=1`, `/profile`, `/signup`.
+`//evil.example/app`, `/application`. Accepted: `/app`, `/app/settings`, `/app?x=1`, `/profile`, `/signup`, `/signin`.
 
-The onboarding guards (`skipWhenSignedIn`, `requireAccount`, auth-onboarding area) also send API failures here with
-`next` = their own URL.
+The onboarding guards (`skipWhenSignedIn`, `requireAccount`, auth-onboarding area) and `canCheckout` also send API
+failures here with `next` = their own URL (all through `guardedMe`).
 
 ---
 
@@ -270,8 +278,8 @@ Content (only when the person is loaded):
   (es "{{organization}} está en {{plan}}. Aquí empieza tu producto.")
 - Actions (links styled as buttons):
   - `home.settings` "Settings" → `/app/settings` (primary) — everyone
-  - `home.members` "Members" → `/app/members` — admins only
-  - `home.plans` "Plans" → `/app/plans` — admins only
+  - `home.members` "Members" → `/app/settings?section=members` — when `managesMembers`
+  - `home.plans` "Plans" → `/app/plans` — when `managesBilling`
 - A `member` sees only Settings.
 
 ---
@@ -294,7 +302,7 @@ Content:
 - p `welcome.body` (key used by the template; **missing from both JSON files** in saas-base – add it, e.g.
   en "Your organization is all set. Everyone in it has the new plan now." / es "Tu organización está lista. Todos sus miembros tienen ya el nuevo plan.").
 - Primary button-link `welcome.goHome` "Go to the app →" / "Ir a la app →" → `/app`.
-- Footer line: `welcome.receiptSent` + link `welcome.settings` "Settings" → **`/app/billing`** + `welcome.receiptEnd` (".").
+- Footer line: `welcome.receiptSent` + link `welcome.settings` "Settings" → **`/app/settings?section=billing`** + `welcome.receiptEnd` (".").
   ("Receipt sent to your email. Manage your plan anytime in Settings.")
 
 ---
@@ -333,15 +341,17 @@ components), passing the navigation's target href.
     name: string;               // Better Auth user.name; may be '' (client falls back to email local part)
     language: 'en' | 'es';
     organization: { id: string; name: string; slug: string; plan: Plan } | null;
-    role: 'owner' | 'admin' | 'member' | null;   // null with no organization
+    role: string | null;                         // null with no organization
+    permissions: Record<string, string[]>;       // what the role grants there; {} with no organization
     plan: Plan | null;                           // organization.plan
     seats: number | null;                        // PLAN_OFFERS[plan].seats: free 1, pro 3, team 10, internal 100
   }
   ```
   `Plan = 'free' | 'pro' | 'team' | 'internal'`.
-- Logic: membership lookup of the session user (one organization per person); with none → all organization fields null.
-- Errors: `UNAUTHORIZED`. A `FORBIDDEN` (e.g. banned user) must be propagated as 403 so the web shows the forbidden screen.
-- Client mapping: if `organization|role|plan|seats` is null → `NoOrganization` (guard → `/profile`).
+- Logic: the session's active organization (the earliest joined when none is active or it is no longer the person's);
+  with none → all organization fields null and `permissions` `{}`.
+- Errors: `UNAUTHORIZED`. Any other failure sends the web to Unavailable.
+- Client mapping: if `organization|role|plan` is null → guard → `/profile`.
 
 ### Better Auth (mounted at `/api/auth/*`)
 - `POST /api/auth/sign-out` — app menu Sign out (via `authClient.signOut()`).
@@ -349,17 +359,25 @@ components), passing the navigation's target href.
 
 ### Referenced, owned by other areas
 - `me.updateAccount` (settings) — language switch trigger.
-- `organization`/billing endpoints for `/app/plans`, `/app/billing`.
+- `organization`/billing endpoints for `/app/plans` and Settings → Billing.
 
-Error toast rule for **all** screens (`useApiMutation` hook, shared): on a failed call, report the error (logger), show
-an error toast, then run the screen's own `onError` rollback. The toast says the API's own message when the API answered
-with a status of 400 or more other than 500 and a non-blank message of its own (not oRPC's fallback text for the code nor
-`Input validation failed`), otherwise the screen's fallback text. A failed load (`useFailureToast`) follows the same
-rule. 500, network failures (status 0) and errors without a message use the fallback. `run()` ignores a second call while the first is in flight. The same toast (same message+variant)
-never stacks: showing it again restarts its timer (Sonner: pass a stable `id` = message). Durations: info 3 s, error 6 s.
-`saveOnChange` helper (settings autosave, no Save button): saves each valid change **sequentially in order**; on failure
-it reports, toasts as above, calls `failed()` to restore server values, and **drops the queued changes** made
-before the failure; a change made after the failure is saved normally. (Implement with a promise queue + generation counter.)
+Error toast rule for **all** screens, handled once in the query client (`integrations/tanstack-query/root-provider.tsx`):
+the `QueryCache` and `MutationCache` `onError` handlers report every failure (`console.error('[<procedure>] failed', err)`)
+and, when the query or mutation has `meta.failure` (a string, or for mutations a function of the variables), toast
+`apiMessage(err) ?? failure`. A 401 is never reported or toasted (signed out). `apiMessage` is the API's own message when
+it answered with a status of 400 or more other than 500 and a non-blank message of its own (not oRPC's fallback text
+for the code nor `Input validation failed`); 500, network failures (status 0) and errors without a message use the
+fallback. Screens add no `onError` toasts of their own.
+
+`useApiMutation(options)` (`#/lib/use-api-mutation`) = `useMutation(options)` plus `run(variables)`, which ignores a
+second call while the first is in flight and resolves to the data or `undefined` on failure, and `busy` (pending, or
+succeeded and about to leave the screen). The same toast (same message+variant) never stacks: showing it again
+restarts its timer (`notify` passes a stable `id` of level + message + description). Durations: success 4 s,
+errors and warnings 6 s.
+
+Settings autosave (Account) is one mutation with `scope: { id: 'account' }`, so TanStack Query runs the saves one at a
+time in order; each save updates the cached account optimistically, and a failure invalidates it to put the server
+values back.
 
 ---
 
@@ -450,19 +468,21 @@ Static site, the product's **front page**. Port content and links; styling with 
 3. `/` → `/signin` when signed out (the front page is the website).
 4. Signed-in with org: shell shows "Acme · Pro" and trigger text "A"; `aria-expanded="false"` initially, `"true"` when open.
 5. Open menu shows "Ana Ruiz", "Acme · Pro", links Home/Settings/Members/Billing (owner/admin), button Sign out.
-6. Member's menu: no "Members", no "Billing", has "Settings". Owner's: has both.
+6. Member's menu: no "Members", no "Billing", has "Settings". Owner's: has both. A custom role sees what its
+   permissions open (`billing:read` → Billing).
+6b. The switcher lists the person's organizations; picking one makes it active and reloads; "Create organization"
+    makes a new one, active at once (`org-switcher.test.tsx`, e2e `organizations-switch.spec.ts`).
 7. Escape and outside click close the menu; link click navigates and closes; Home link from `/app/settings` goes to `/app`.
 8. Sign out → `/signin`.
-9. `me` 401 → `/signin`; 500 → `/unavailable?next=%2Fapp` with h1 "Couldn't reach SaaS." and the error reported;
-   403 on `/app/settings` → `/unavailable?reason=forbidden` with h1 "Your account can't open SaaS right now.".
+9. `me` 401 → `/signin`; 500 (or 403) → `/unavailable?next=%2Fapp` with h1 "Couldn't reach SaaS." and the error reported.
 10. Signed in, no organization (or removed) → `/profile`, never into `/app`.
 11. Unavailable: Try again returns to `next` once the API answers; stays (same URL) while still down; invalid `next` → `/app`;
-    `next=/profile` → `/profile`; forbidden mode has no Try again and contains "Ask your organization's admin".
-12. Home: "Hi, Ana Ruiz.", "Acme is on Pro."; admin sees Members and Plans links; member sees neither; Settings → `/app/settings`.
+    `next=/profile` → `/profile`.
+12. Home: "Hi, Ana Ruiz.", "Acme is on Pro."; owner/admin see Members and Plans links (by permission); member sees neither; Settings → `/app/settings`.
 13. Welcome: "Welcome to Pro." / "Welcome to Team."; free without `session_id` → `/app/plans`; "Go to the app →" → `/app`;
-    "Settings" → `/app/billing`; free with `session_id` polls up to 15 s.
+    "Settings" → `/app/settings?section=billing`; free with `session_id` polls up to 15 s.
 14. Menu → Settings/Members/Billing each show h1 "Settings" and an h2 section heading "Account"/"Members"/"Billing" at
-    `/app/settings`, `/app/members`, `/app/billing`.
+    `/app/settings`, `/app/settings?section=members`, `/app/settings?section=billing`.
 15. Language: switching updates already-rendered texts and `<html lang>`, and is remembered; browser `es-ES` → es;
     `fr-FR` → en; account language applied before the first signed-in render.
 16. Stale chunk: see §9 cases (Chrome message with URL; Safari message without; fetch failing still reloads; once per 10 s;
@@ -479,16 +499,16 @@ Static site, the product's **front page**. Port content and links; styling with 
 | --- | --- | --- |
 | `app.spec.ts` | RTL: root layout | header + wordmark + outlet; wordmark href per URL (it.each) |
 | `app.routes.spec.ts` | RTL/router tests | no-org → `/profile`; `/` → `/signin`; `/app/booking|booked` → not-found page; connector routes open their pages |
-| `signed-in/shell/shell.spec.ts` | RTL | all 11 cases (menu content, roles, Escape/outside click, navigation, sign out, 401/500/403 routing) |
+| `signed-in/shell/shell.spec.ts` | RTL | all cases (menu content, roles, Escape/outside click, navigation, sign out, 401/500 routing) |
 | `signed-in/home/home.page.spec.ts` | RTL | add the missing "member sees neither" assertion |
 | `signed-in/welcome/welcome.page.spec.ts` | RTL | plus a fake-timers test for the 15-try polling |
-| `signed-in/current-user.state.spec.ts` | Vitest | role → isAdmin/isOwner table; account language applied before set; neither before sign-in |
-| `signed-in/plan-access.spec.ts` | Vitest | `checkoutChoice`/`plansAbove` (shared with billing-plans) |
+| `signed-in/current-user.state.spec.ts` | Vitest | role → isOwner/managesMembers/managesBilling table; custom role read from permissions; account language applied before set; nothing granted before sign-in |
+| `signed-in/plan-access.spec.ts` | Vitest | `checkout-choice.test.ts`: `checkoutChoice` (shared with billing-plans) |
 | `unavailable/unavailable.page.spec.ts` | RTL | flaky API fake; `next` sanitising it.each |
 | `signed-in.flow.spec.ts` | Playwright e2e (PGlite + seeded user via Better Auth test utils) | one header; menu reaches Settings/Members/Billing with right h2; plan switch flow (billing area) |
 | `shared/i18n.spec.ts` | Vitest | switch + remember + `<html lang>`; browser language; fallback en |
 | `shared/stale-chunk.spec.ts` | Vitest | all 6 cases verbatim (pure function with fake `win`) |
-| `shared/api-call.spec.ts` | Vitest/RTL | API message for any answered status but 500; fallback for 500/0/no message; saveOnChange ordering, drop-after-failure, save-after-failure |
+| `shared/api-call.spec.ts` | Vitest/RTL | `api-errors.test.ts` (API message for any answered status but 500; fallback for 500/0/no message) and `use-api-mutation.test.tsx` (`run()` single-flight, `meta.failure` toast) |
 | `signed-in/no-recovery-copy.spec.ts` | Vitest | scan `apps/web/src` + locale files |
 | `edge/api-proxy.spec.ts` | Vitest | only if the production proxy is ported |
 | new | Vitest | `en`/`es` locale key parity |

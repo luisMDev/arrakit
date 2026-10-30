@@ -1,8 +1,8 @@
 import type { BillingView } from '@arrakit/contract'
+import { isPaidPlan } from '@arrakit/plans'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Receipt } from 'lucide-react'
-import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -14,6 +14,7 @@ import {
   scheduledLine,
   seatsLine,
 } from '#/components/billing/plan-copy'
+import { EmptyState } from '#/components/shell/empty-state'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -23,179 +24,150 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '#/components/ui/alert-dialog'
-import { EmptyState } from '#/components/shell/empty-state'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent } from '#/components/ui/card'
 import { Skeleton } from '#/components/ui/skeleton'
-import type { SectionProps } from '#/components/settings/settings-page'
 import { BillingUsage, TopUpsList } from '#/components/usage/billing-usage'
 import { useUsage } from '#/components/usage/use-usage'
+import { useCurrentUser } from '#/lib/current-user'
 import { fullDay, money } from '#/lib/format'
+import { leave } from '#/lib/leave'
 import { client, orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
-import { useFailureToast } from '#/lib/use-failure-toast'
+
+import { SettingRow, SettingsCard, SettingsHeading, SettingsSectionLayout } from './settings-ui'
 
 const KEY = 'settings.billingSettings'
 
-export interface BillingSectionProps extends Partial<SectionProps> {
-  openPortal?: (to: 'payment' | 'details') => Promise<{ url: string }>
-  redirect?: (url: string) => void
-}
-
-function Row({
-  label,
-  value,
-  children,
-}: {
-  label: string
-  value: ReactNode
-  children?: ReactNode
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 py-3 text-sm">
-      <dt className="text-muted-foreground w-32 shrink-0">{label}</dt>
-      <dd className="grow">{value}</dd>
-      {children && <dd className="flex gap-2">{children}</dd>}
-    </div>
-  )
-}
-
-export function BillingSection({
-  openPortal = (to) => client.billing.portal({ to }),
-  redirect = (url) => window.location.assign(url),
-}: BillingSectionProps = {}) {
+export function BillingSection() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const billingQuery = orpc.billing.get.queryOptions()
-  const { data: billing, error } = useQuery({ ...billingQuery, retry: false })
+  const billingQuery = orpc.billing.get.queryOptions({ meta: { failure: t(`${KEY}.notLoaded`) } })
+  const { data: billing, error } = useQuery(billingQuery)
   const usage = useUsage()
+  const { can, managesBilling } = useCurrentUser()
   const [cancelling, setCancelling] = useState(false)
-
-  useFailureToast(error, '[billing] billing.get failed', t(`${KEY}.notLoaded`))
 
   const replace = (next: BillingView) => queryClient.setQueryData(billingQuery.queryKey, next)
 
-  const cancel = useApiMutation(
-    {
-      ...orpc.billing.cancel.mutationOptions(),
-      onSuccess: (next) => {
-        replace(next)
-        setCancelling(false)
-      },
+  const cancel = useApiMutation({
+    ...orpc.billing.cancel.mutationOptions(),
+    onSuccess: (next) => {
+      replace(next)
+      setCancelling(false)
     },
-    { context: '[billing] cancel failed', failure: t(`${KEY}.notCancelled`) },
-  )
-  const resume = useApiMutation(
-    { ...orpc.billing.resume.mutationOptions(), onSuccess: replace },
-    { context: '[billing] resume failed', failure: t(`${KEY}.notKept`) },
-  )
+    meta: { failure: t(`${KEY}.notCancelled`) },
+  })
+  const resume = useApiMutation({
+    ...orpc.billing.resume.mutationOptions(),
+    onSuccess: replace,
+    meta: { failure: t(`${KEY}.notKept`) },
+  })
 
-  const portal = useApiMutation(
-    {
-      mutationFn: (to: 'payment' | 'details') => openPortal(to),
-      onSuccess: ({ url }) => redirect(url),
-    },
-    { context: '[billing] portal failed', failure: t(`${KEY}.portalNotOpened`) },
-  )
-  const portalBusy = portal.isPending || portal.isSuccess
+  const portal = useApiMutation({
+    mutationFn: (to: 'payment' | 'details') => client.billing.portal({ to }),
+    onSuccess: ({ url }) => leave(url),
+    meta: { failure: t(`${KEY}.portalNotOpened`) },
+  })
 
   const billed =
     !!billing &&
     billing.plan !== 'internal' &&
     (billing.plan !== 'free' || billing.card !== null || billing.invoices.length > 0)
-  const cancellable = !!billing && billing.plan !== 'free' && billing.plan !== 'internal'
   const scheduled = billing ? scheduledLine(billing) : null
 
   const edit = (to: 'payment' | 'details') =>
-    billed ? (
-      <Button size="sm" variant="outline" disabled={portalBusy} onClick={() => void portal.run(to)}>
+    billed && managesBilling ? (
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={portal.busy}
+        onClick={() => void portal.run(to)}
+      >
         {t(`${KEY}.edit`)}
       </Button>
     ) : undefined
 
   return (
-    <section aria-labelledby="settings-billing" className="flex flex-col gap-6">
-      <h2 id="settings-billing" className="text-lg font-semibold">
-        {t(`${KEY}.title`)}
-      </h2>
-
+    <SettingsSectionLayout id="billing" title={t(`${KEY}.title`)}>
       {billing ? (
-        <Card className="py-2">
-          <CardContent>
-            <dl className="divide-y">
-              <Row label={t(`${KEY}.plan`)} value={planLine(billing)}>
-                <Button asChild size="sm" variant="outline">
-                  <Link to="/app/plans">{t(`${KEY}.switchPlan`)}</Link>
-                </Button>
-                {billing.endsOn ? (
-                  <Button size="sm" disabled={resume.isPending} onClick={() => void resume.run({})}>
-                    {t(`${KEY}.keepMyPlan`)}
+        <SettingsCard>
+          <SettingRow
+            label={t(`${KEY}.plan`)}
+            action={
+              managesBilling && (
+                <span className="flex gap-2">
+                  <Button asChild size="sm" variant="outline">
+                    <Link to="/app/plans">{t(`${KEY}.switchPlan`)}</Link>
                   </Button>
-                ) : (
-                  cancellable && (
-                    <Button size="sm" variant="destructive" onClick={() => setCancelling(true)}>
-                      {t(`${KEY}.cancel`)}
+                  {billing.endsOn ? (
+                    <Button
+                      size="sm"
+                      disabled={resume.isPending}
+                      onClick={() => void resume.run({})}
+                    >
+                      {t(`${KEY}.keepMyPlan`)}
                     </Button>
-                  )
-                )}
-              </Row>
-              {billing.renewsOn && (
-                <Row label={t(`${KEY}.renewsOn`)} value={fullDay(billing.renewsOn)} />
-              )}
-              {billing.endsOn && <Row label={t(`${KEY}.endsOn`)} value={fullDay(billing.endsOn)} />}
-              {scheduled && <Row label={t(`${KEY}.then`)} value={scheduled} />}
-              {billing.nextInvoice && (
-                <Row label={t(`${KEY}.nextInvoice`)} value={money(billing.nextInvoice)} />
-              )}
-              <Row
-                label={t(`${KEY}.includes`)}
-                value={
-                  <span className="flex flex-wrap items-center gap-3">
-                    {seatsLine(billing.seats)}
-                    <Link to="/pricing" className="text-primary underline-offset-4 hover:underline">
-                      {t(`${KEY}.seePricing`)}
-                    </Link>
-                  </span>
-                }
-              />
-            </dl>
-          </CardContent>
-        </Card>
+                  ) : (
+                    isPaidPlan(billing.plan) && (
+                      <Button size="sm" variant="destructive" onClick={() => setCancelling(true)}>
+                        {t(`${KEY}.cancel`)}
+                      </Button>
+                    )
+                  )}
+                </span>
+              )
+            }
+          >
+            {planLine(billing)}
+          </SettingRow>
+          {billing.renewsOn && (
+            <SettingRow label={t(`${KEY}.renewsOn`)}>{fullDay(billing.renewsOn)}</SettingRow>
+          )}
+          {billing.endsOn && (
+            <SettingRow label={t(`${KEY}.endsOn`)}>{fullDay(billing.endsOn)}</SettingRow>
+          )}
+          {scheduled && <SettingRow label={t(`${KEY}.then`)}>{scheduled}</SettingRow>}
+          {billing.nextInvoice && (
+            <SettingRow label={t(`${KEY}.nextInvoice`)}>{money(billing.nextInvoice)}</SettingRow>
+          )}
+          <SettingRow label={t(`${KEY}.includes`)}>
+            <span className="flex flex-wrap items-center gap-3">
+              {seatsLine(billing.seats)}
+              <Link to="/pricing" className="text-primary underline-offset-4 hover:underline">
+                {t(`${KEY}.seePricing`)}
+              </Link>
+            </span>
+          </SettingRow>
+        </SettingsCard>
       ) : (
         !error && <Skeleton className="h-48" />
       )}
 
-      <BillingUsage usage={usage.data} redirect={redirect} />
+      {can({ usage: ['read'] }) && <BillingUsage usage={usage.data} />}
 
       {billing && (
-        <Card className="py-2">
-          <CardContent>
-            <dl className="divide-y">
-              <Row label={t(`${KEY}.payment`)} value={cardLine(billing)}>
-                {edit('payment')}
-              </Row>
-              <Row
-                label={t(`${KEY}.billingEmail`)}
-                value={billing.billingEmail ?? t(`${KEY}.notSet`)}
-              >
-                {edit('details')}
-              </Row>
-              <Row label={t(`${KEY}.invoiceTo`)} value={billing.invoiceTo}>
-                {edit('details')}
-              </Row>
-              <Row label={t(`${KEY}.taxId`)} value={billing.taxId ?? t(`${KEY}.notSet`)}>
-                {edit('details')}
-              </Row>
-            </dl>
-          </CardContent>
-        </Card>
+        <SettingsCard>
+          <SettingRow label={t(`${KEY}.payment`)} action={edit('payment')}>
+            {cardLine(billing)}
+          </SettingRow>
+          <SettingRow label={t(`${KEY}.billingEmail`)} action={edit('details')}>
+            {billing.billingEmail ?? t(`${KEY}.notSet`)}
+          </SettingRow>
+          <SettingRow label={t(`${KEY}.invoiceTo`)} action={edit('details')}>
+            {billing.invoiceTo}
+          </SettingRow>
+          <SettingRow label={t(`${KEY}.taxId`)} action={edit('details')}>
+            {billing.taxId ?? t(`${KEY}.notSet`)}
+          </SettingRow>
+        </SettingsCard>
       )}
 
       <TopUpsList topUps={usage.data?.topUps} />
 
       {billing && (
-        <div className="flex flex-col gap-4">
-          <h3 className="text-muted-foreground text-base font-medium">{t(`${KEY}.invoices`)}</h3>
+        <div className="flex flex-col gap-2">
+          <SettingsHeading>{t(`${KEY}.invoices`)}</SettingsHeading>
           <Card className="py-2">
             <CardContent>
               {billing.invoices.length > 0 ? (
@@ -245,6 +217,6 @@ export function BillingSection({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </section>
+    </SettingsSectionLayout>
   )
 }

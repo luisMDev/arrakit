@@ -1,75 +1,63 @@
-import { updateOrganizationSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import { Card, CardContent } from '#/components/ui/card'
 import { Field, FieldDescription, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
-import { apiFailed } from '#/lib/api-errors'
+import { authCall } from '#/lib/auth-call'
+import { authClient } from '#/lib/auth-client'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
 import { registerClearing, useClearingForm } from '#/lib/form'
-import { orpc } from '#/lib/orpc'
+import { organizationQueries } from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
 import { SettingsSectionLayout } from './settings-ui'
 
 const K = 'settings.generalSettings'
 
-const nameSchema = z.object({ name: updateOrganizationSchema.shape.name.unwrap() })
+const nameSchema = z.object({ name: z.string().trim().min(1).max(200) })
 
 export function GeneralSection() {
   const { t } = useTranslation()
   const me = useCurrentUser()
+  const queryClient = useQueryClient()
   const organization = me.user?.organization ?? null
   const form = useClearingForm({
     resolver: zodResolver(nameSchema),
     values: { name: organization?.name ?? '' },
   })
   const invalid = form.formState.errors.name !== undefined
-  const queryClient = useQueryClient()
+  const editable = me.can({ organization: ['update'] })
 
-  async function load(failure: string) {
-    try {
-      await queryClient.fetchQuery({ ...orpc.me.get.queryOptions(), staleTime: 0 })
-    } catch (err) {
-      apiFailed('[general] loading the organization failed', err, failure)
-    }
-  }
-
-  const loadOnOpen = useRef(() => load(t(`${K}.notLoaded`)))
-  useEffect(() => {
-    void loadOnOpen.current()
-  }, [])
-
-  const rename = useApiMutation(
-    {
-      ...orpc.organizations.update.mutationOptions(),
-      onSuccess: (saved) => {
-        me.patch((current) =>
-          current.organization
-            ? { ...current, organization: { ...current.organization, name: saved.name } }
-            : current,
-        )
-        form.reset({ name: saved.name })
-      },
-      onError: async () => {
-        form.reset()
-        await load(t(`${K}.notSaved`))
-      },
+  const rename = useApiMutation({
+    mutationKey: ['org', 'update'],
+    mutationFn: ({ organizationId, name }: { organizationId: string; name: string }) =>
+      authCall(authClient.organization.update({ organizationId, data: { name } })),
+    onSuccess: (saved) => {
+      me.patch((current) =>
+        current.organization
+          ? { ...current, organization: { ...current.organization, name: saved.name } }
+          : current,
+      )
+      form.reset({ name: saved.name })
+      void queryClient.invalidateQueries({ queryKey: organizationQueries.list().queryKey })
     },
-    { context: '[general] renaming the organization failed', failure: t(`${K}.notSaved`) },
-  )
+    onError: async () => {
+      form.reset()
+      await me.refresh()
+    },
+    meta: { failure: t(`${K}.notSaved`) },
+  })
 
   async function saveName({ name: trimmed }: z.output<typeof nameSchema>) {
-    if (!organization || !me.isAdmin) return
+    if (!organization || !editable) return
     if (trimmed === organization.name) {
       form.reset()
       return
     }
-    await rename.run({ name: trimmed })
+    await rename.run({ organizationId: organization.id, name: trimmed })
   }
 
   const nameField = registerClearing(form, 'name')
@@ -90,7 +78,7 @@ export function GeneralSection() {
               <Input
                 id="organization-name"
                 autoComplete="organization"
-                disabled={!me.isAdmin}
+                disabled={!editable}
                 aria-invalid={invalid || undefined}
                 {...nameField}
                 onBlur={(event) => {

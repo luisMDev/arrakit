@@ -2,7 +2,6 @@ import { isWorkEmail, normalizeEmail } from '@arrakit/address'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { type ReactNode, useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -10,6 +9,8 @@ import { Alert, AlertDescription } from '#/components/ui/alert'
 import { Button } from '#/components/ui/button'
 import { Field, FieldError, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
+import { useClearingForm } from '#/lib/form'
+import { leave } from '#/lib/leave'
 import { orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
@@ -55,38 +56,31 @@ export function SignInOptions({
   const { t } = useTranslation()
   const providers = useQuery(orpc.authProviders.get.queryOptions()).data ?? PROVIDERS_UNKNOWN
   const refused = refusalOf(search)
-  const form = useForm({
+  const form = useClearingForm({
     resolver: zodResolver(emailForm),
     defaultValues: { email: '' },
     mode: 'onTouched',
   })
   const [sentTo, setSentTo] = useState<string | null>(null)
 
-  const magicLink = useApiMutation(
-    {
-      mutationFn: (email: string) => sendMagicLink(email, landing),
-      onSuccess: (sent, email) => {
-        if (!sent) return form.setError('email', { type: 'refused' })
-        form.setValue('email', email)
-        setSentTo(email)
-      },
+  const magicLink = useApiMutation({
+    mutationKey: ['auth', 'magicLink'],
+    mutationFn: (email: string) => sendMagicLink(email, landing),
+    onSuccess: (sent, email) => {
+      if (!sent) return form.setError('email', { type: 'refused' })
+      form.setValue('email', email)
+      setSentTo(email)
     },
-    {
-      context: '[auth] sending the magic link failed',
-      failure: t('auth.signInOptions.linkNotSent'),
-    },
-  )
-  const social = useApiMutation(
-    {
-      mutationFn: (provider: SocialProvider) => socialSignInUrl(provider, landing),
-      onSuccess: (url) => {
-        window.location.href = url
-      },
-    },
-    { context: '[auth] social sign-in failed', failure: t('auth.signInOptions.notSignedIn') },
-  )
+    meta: { failure: t('auth.signInOptions.linkNotSent') },
+  })
+  const social = useApiMutation({
+    mutationKey: ['auth', 'social'],
+    mutationFn: (provider: SocialProvider) => socialSignInUrl(provider, landing),
+    onSuccess: leave,
+    meta: { failure: t('auth.signInOptions.notSignedIn') },
+  })
   const { reset: resetSocial } = social
-  const pending = magicLink.isPending || social.isPending || social.isSuccess
+  const pending = magicLink.isPending || social.busy
 
   useEffect(() => {
     const shown = (event: PageTransitionEvent) => {

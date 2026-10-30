@@ -18,7 +18,6 @@ describe('memberEmail (MailMember)', () => {
     const email = memberEmail(input)
 
     expect(email.subject).toBe(`Ana invited you to Acme on ${APP_NAME}`)
-    expect(email.replyTo).toBeNull()
     expect(email.text).toContain('Join Acme')
     expect(email.text).toContain(`on ${APP_NAME}.`)
     expect(email.text).toContain('Ana Pérez Soler invited you to work with them in Acme.')

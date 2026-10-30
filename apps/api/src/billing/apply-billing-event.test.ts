@@ -70,13 +70,13 @@ describe('applyBillingEvent', () => {
 
   it('says which plan the organization was on before: Free on the first payment, Pro on a replay', async () => {
     const org = await organization()
-    const stripe = stripeWith(org.id, { requestedBy: 'lucia@alder.vc' })
+    const stripe = stripeWith(org.id)
     expect(await applyBillingEvent(data, stripe, event())).toMatchObject({
       kind: 'applied',
       previousPlan: 'free',
       plan: 'pro',
       organization: { name: 'Alder', slug: org.slug },
-      subscription: { lookupKey: 'pro_yearly', requestedBy: 'lucia@alder.vc' },
+      subscription: { lookupKey: 'pro_yearly' },
     })
     expect(await applyBillingEvent(data, stripe, event())).toMatchObject({
       previousPlan: 'pro',

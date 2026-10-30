@@ -16,6 +16,9 @@ export function authDatabase(db: Database) {
       organizations: schema.organizations,
       members: schema.members,
       invitations: schema.invitations,
+      teams: schema.teams,
+      teamMembers: schema.teamMembers,
+      organizationRoles: schema.organizationRoles,
       // Plural of the jwt plugin's `jwks` model.
       jwkss: schema.jwks,
       oauthClients: schema.oauthClients,

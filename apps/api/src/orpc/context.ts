@@ -1,30 +1,55 @@
-import { type OrganizationRole, isAdminRole } from '@arrakit/address'
 import type { Auth } from '@arrakit/auth'
-import { isTrustedOrigin } from '@arrakit/auth'
-import type { OrganizationRow, OrganizationScope, ScopedData } from '@arrakit/db'
+import {
+  type Permissions,
+  allows,
+  isStaticRole,
+  parsePermissions,
+  permissionsOf,
+  rolesOf,
+} from '@arrakit/auth/permissions'
+import { DomainError, type OrganizationRow, type OrganizationScope } from '@arrakit/db'
 import { ORPCError, os } from '@orpc/server'
+import { isAPIError } from 'better-auth/api'
 
 import type { AppDeps } from '../deps'
 import type { Logger } from '../observability/logger'
 import { isUnexpected, reportUnexpected } from '../observability/unexpected-error'
-import { toMemberError } from '../organizations/member-errors'
 
 export interface BaseContext {
   deps: AppDeps
-  data: ScopedData
   headers: Headers
   /** The app logger bound to this request's id. */
   log: Logger
 }
 
 export function procedureContext(deps: AppDeps, headers: Headers, log: Logger): BaseContext {
-  return { deps, data: deps.data, headers, log }
+  return { deps, headers, log }
+}
+
+/** oRPC has no default status for PAYMENT_REQUIRED. */
+export const PAYMENT_REQUIRED_STATUS = 402
+
+const toORPCError = (thrown: unknown): unknown => {
+  if (thrown instanceof DomainError) {
+    return new ORPCError(thrown.code, {
+      status: thrown.code === 'PAYMENT_REQUIRED' ? PAYMENT_REQUIRED_STATUS : undefined,
+      message: thrown.message,
+      data: thrown.data,
+    })
+  }
+  if (isAPIError(thrown) && thrown.statusCode < 500) {
+    return new ORPCError(String(thrown.status), {
+      status: thrown.statusCode,
+      message: thrown.body?.message ?? thrown.message,
+    })
+  }
+  return thrown
 }
 
 /**
- * Maps the data layer's domain errors to oRPC errors. oRPC answers a thrown error itself, before
- * Hono's onError, so unexpected ones are logged and reported here (for every transport), then
- * rethrown for oRPC to answer 500.
+ * Maps the data layer's domain errors and Better Auth's refusals to oRPC errors. oRPC answers a thrown error itself, before
+ * Hono's onError, so unexpected ones are logged and reported here, then rethrown for oRPC to
+ * answer 500.
  */
 export const reportErrors = os
   .$context<BaseContext>()
@@ -32,7 +57,7 @@ export const reportErrors = os
     try {
       return await next()
     } catch (thrown) {
-      const error = toMemberError(thrown)
+      const error = toORPCError(thrown)
       if (isUnexpected(error)) {
         reportUnexpected(context.log, context.deps.errors, error, { procedure: path.join('.') })
       }
@@ -40,24 +65,23 @@ export const reportErrors = os
     }
   })
 
-export const notInOrganization = () =>
+const notInOrganization = () =>
   new ORPCError('NOT_FOUND', { message: 'Not found in your organization.' })
 
 type SessionResult = NonNullable<Awaited<ReturnType<Auth['api']['getSession']>>>
 type SessionUser = SessionResult['user']
-export type Session = SessionResult['session']
+type Session = SessionResult['session']
 
 interface SessionContext extends BaseContext {
   user: SessionUser
   session: Session
 }
 
-export type MemberLevel = 'member' | 'admin' | 'owner'
-export type { OrganizationRole }
-
 export interface MemberContext extends SessionContext {
   activeOrganization: OrganizationRow
-  role: OrganizationRole
+  /** Better Auth's role string (`owner`, `admin`, `member`, custom roles, joined by `,`). */
+  role: string
+  permissions: Permissions
   /** forOrganization(activeOrganization.id): the only way to reach this organization's data. */
   scope: OrganizationScope
 }
@@ -68,51 +92,38 @@ export const requireSession = os.$context<BaseContext>().middleware(async ({ con
   return next({ context: { user: result.user, session: result.session } })
 })
 
-function roleAllows(role: OrganizationRole, level: MemberLevel): boolean {
-  if (level === 'owner') return role === 'owner'
-  if (level === 'admin') return isAdminRole(role)
-  return true
+/** What `role` grants in the organization, reading its custom roles only when it has one. */
+export async function grantedTo(role: string, scope: OrganizationScope): Promise<Permissions> {
+  if (rolesOf(role).every(isStaticRole)) return permissionsOf(role)
+  const custom = await scope.customRoles()
+  return permissionsOf(
+    role,
+    Object.fromEntries(custom.map((row) => [row.role, parsePermissions(row.permission)])),
+  )
 }
 
 /**
- * Membership read fresh on every call (memberOf). 404 with no organization; 403 below `level`.
- * The organization is always the session person's; ids in the input are ignored.
+ * Membership in the session's active organization, read fresh on every call (the earliest
+ * organization when none is active or it is no longer theirs). 404 with no organization; 403
+ * when the role lacks `wanted`. Organization ids in the input are ignored.
  */
-export function requireMember(level: MemberLevel) {
+export function requireMember(wanted: Permissions = {}) {
   return os.$context<SessionContext>().middleware(async ({ context, next }) => {
-    const membership = await context.data.memberOf(context.user.id)
+    const { data } = context.deps
+    const membership = await data.activeMembership(context.user.id, context.session.id)
     if (!membership) throw notInOrganization()
-    if (!roleAllows(membership.role, level)) {
-      throw new ORPCError('FORBIDDEN', {
-        message:
-          level === 'owner'
-            ? "Only the organization's owner can do this."
-            : 'Only an admin of the organization can do this.',
-      })
+    const scope = data.forOrganization(membership.organization.id)
+    const permissions = await grantedTo(membership.role, scope)
+    if (!allows(permissions, wanted)) {
+      throw new ORPCError('FORBIDDEN', { message: "You don't have permission to do this." })
     }
     return next({
       context: {
         activeOrganization: membership.organization,
         role: membership.role,
-        scope: context.data.forOrganization(membership.organization.id),
+        permissions,
+        scope,
       },
     })
   })
 }
-
-/** 403 `message` unless the request's Origin is exactly one of the trusted origins (CSRF guard). */
-export function requireTrustedOrigin(message: string) {
-  return os.$context<BaseContext>().middleware(async ({ context, next }) => {
-    if (!isTrustedOrigin(context.headers.get('origin'), context.deps.authConfig.trustedOrigins)) {
-      throw new ORPCError('FORBIDDEN', { message })
-    }
-    return next()
-  })
-}
-
-export const requireStripe = os.$context<BaseContext>().middleware(async ({ context, next }) => {
-  const stripe = context.deps.stripe
-  if (!stripe)
-    throw new ORPCError('SERVICE_UNAVAILABLE', { message: 'Payments are not set up yet.' })
-  return next({ context: { stripe } })
-})

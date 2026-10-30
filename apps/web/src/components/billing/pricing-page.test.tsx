@@ -1,24 +1,17 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { SITE_URL } from '#/config'
-import { answer, api, renderAt } from '#/test/rpc'
+import { renderAt, setupTestApi } from '#/test/rpc'
 
 import { PricingPage } from './pricing-page'
-import { OFFERS } from './testing'
 
-beforeAll(() => api.listen({ onUnhandledFrame: 'bypass' }))
-afterEach(() => {
-  api.resetHandlers()
-  vi.restoreAllMocks()
-})
-afterAll(() => api.close())
+setupTestApi()
 
 const card = (name: string) => screen.getByRole('article', { name })
 
 function setup() {
-  answer('plans/list', OFFERS)
   return renderAt(<PricingPage />, { me: null, url: '/pricing' })
 }
 
@@ -74,13 +67,5 @@ describe('PricingPage', () => {
     )
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/signin')
     expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('href', SITE_URL)
-  })
-
-  it('says so when the plans cannot load', async () => {
-    answer('plans/list', 500)
-    renderAt(<PricingPage />, { me: null, url: '/pricing' })
-    await waitFor(() =>
-      expect(screen.getByText("Couldn't load the plans. Reload the page.")).toBeInTheDocument(),
-    )
   })
 })

@@ -42,7 +42,9 @@ export function SettingRow({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
-      <div className="text-muted-foreground w-36 shrink-0 text-sm">{label}</div>
+      <div data-label className="text-muted-foreground w-36 shrink-0 text-sm">
+        {label}
+      </div>
       <div className="min-w-0 flex-1 text-sm">{children}</div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>

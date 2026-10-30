@@ -1,5 +1,4 @@
-import type { OrganizationRole } from '@arrakit/address'
-import type { ScopedData } from '@arrakit/db'
+import type { OrganizationRow } from '@arrakit/db'
 import { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
@@ -14,9 +13,8 @@ const MCP_INSTRUCTIONS =
 /** Who a request acts as: the person and organization its token names, never a tool argument. */
 export interface ConnectorCaller {
   userId: string
-  organizationId: string
-  role: OrganizationRole
-  organizationSlug: string
+  organization: OrganizationRow
+  role: string
   clientId: string
   scopes: string[]
 }
@@ -28,13 +26,10 @@ const WHOAMI_OUTPUT = z.object({
     slug: z.string(),
     plan: z.string(),
   }),
-  role: z.string().describe("The person's role in it: owner, admin or member"),
+  role: z.string().describe("The person's role in it: owner, admin, member or a custom role"),
 })
 
-export function createMcpServer(
-  data: ScopedData,
-  caller: Pick<ConnectorCaller, 'userId' | 'organizationId' | 'role'>,
-): McpServer {
+export function createMcpServer(caller: Pick<ConnectorCaller, 'organization' | 'role'>): McpServer {
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     { capabilities: { tools: { listChanged: false } }, instructions: MCP_INSTRUCTIONS },
@@ -48,15 +43,11 @@ export function createMcpServer(
       outputSchema: WHOAMI_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async () => {
-      const organization = await data.forOrganization(caller.organizationId).organization()
-      if (!organization) {
-        return { isError: true, content: [{ type: 'text', text: 'The organization is gone.' }] }
-      }
-      const output = { organization: organizationSummary(organization), role: caller.role }
+    () => {
+      const { organization, role } = caller
       return {
-        content: [{ type: 'text', text: `${organization.name} (${caller.role})` }],
-        structuredContent: output,
+        content: [{ type: 'text', text: `${organization.name} (${role})` }],
+        structuredContent: { organization: organizationSummary(organization), role },
       }
     },
   )

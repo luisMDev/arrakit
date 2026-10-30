@@ -26,17 +26,14 @@ describe('templates', () => {
 })
 
 describe('toMail', () => {
-  const rendered = { subject: 's', html: '<p>h</p>', text: 't', replyTo: null }
+  const rendered = { subject: 's', html: '<p>h</p>', text: 't' }
 
-  it('addresses a rendered email, with no Reply-To unless it has one', () => {
+  it('addresses a rendered email', () => {
     expect(toMail(rendered, 'ana@acme.com')).toEqual({
       to: 'ana@acme.com',
       subject: 's',
       html: '<p>h</p>',
       text: 't',
     })
-    expect(toMail({ ...rendered, replyTo: 'billing@acme.com' }, 'ana@acme.com').replyTo).toBe(
-      'billing@acme.com',
-    )
   })
 })

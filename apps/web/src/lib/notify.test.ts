@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { notify } from './notify'
 
 vi.mock('sonner', () => ({
-  toast: { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() },
 }))
 
 describe('notify', () => {
@@ -12,7 +12,6 @@ describe('notify', () => {
 
   it.each([
     ['success', 4000],
-    ['info', 4000],
     ['warning', 6000],
     ['error', 6000],
   ] as const)('shows a %s toast for %i ms', (level, duration) => {
@@ -28,11 +27,9 @@ describe('notify', () => {
   })
 
   it('tells levels and descriptions apart in the id', () => {
-    notify.info('Done')
     notify.success('Done')
     notify.warning('Email not sent', { description: 'For ana@acme.com' })
     notify.warning('Email not sent', { description: 'For kim@acme.com' })
-    expect(vi.mocked(toast.info).mock.calls[0]?.[1]?.id).toBe('info:Done')
     expect(vi.mocked(toast.success).mock.calls[0]?.[1]?.id).toBe('success:Done')
     expect(vi.mocked(toast.warning).mock.calls.map(([, options]) => options?.id)).toEqual([
       'warning:Email not sent:For ana@acme.com',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { checkoutChoice, profileLanding } from './checkout-choice'
+import { appLanding, checkoutChoice, profileLanding } from './checkout-choice'
 
 describe('checkoutChoice', () => {
   it('keeps a paid plan with a known cycle', () => {
@@ -28,5 +28,15 @@ describe('profileLanding', () => {
     expect(profileLanding({ plan: 'team', cycle: 'monthly' })).toBe(
       '/profile?plan=team&cycle=monthly',
     )
+  })
+})
+
+describe('appLanding', () => {
+  it('lands on Checkout for a choice, else Home', () => {
+    expect(appLanding(null)).toEqual({ to: '/app' })
+    expect(appLanding({ plan: 'pro', cycle: 'yearly' })).toEqual({
+      to: '/app/checkout',
+      search: { plan: 'pro', cycle: 'yearly' },
+    })
   })
 })

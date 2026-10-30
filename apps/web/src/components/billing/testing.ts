@@ -1,27 +1,6 @@
-import type { BillingView, Me, PlanOfferView } from '@arrakit/contract'
+import type { BillingView, Me } from '@arrakit/contract'
 
 import { meAs } from '#/test/rpc'
-
-export const OFFERS: PlanOfferView[] = [
-  {
-    plan: 'free',
-    monthly: { amount: 0, currency: 'usd' },
-    yearly: { amount: 0, currency: 'usd' },
-    seats: 1,
-  },
-  {
-    plan: 'pro',
-    monthly: { amount: 2_000, currency: 'usd' },
-    yearly: { amount: 19_200, currency: 'usd' },
-    seats: 3,
-  },
-  {
-    plan: 'team',
-    monthly: { amount: 5_000, currency: 'usd' },
-    yearly: { amount: 48_000, currency: 'usd' },
-    seats: 10,
-  },
-]
 
 export const meOn = (plan: Me['plan'], role: Me['role'] = 'owner'): Me =>
   meAs({ name: 'Lucía', plan, role, seats: 1 })

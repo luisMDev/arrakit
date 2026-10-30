@@ -10,7 +10,7 @@ export interface HealthReport {
   queue: ProbeState
 }
 
-export const PROBE_TIMEOUT_MS = 3000
+const PROBE_TIMEOUT_MS = 3000
 
 async function probe(
   ctx: DataContext,

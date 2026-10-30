@@ -1,65 +1,73 @@
 import { Link } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AccountSection } from '#/components/settings/account-section'
 import { BillingSection } from '#/components/settings/billing-section'
 import { GeneralSection } from '#/components/settings/general-section'
 import { MembersSection } from '#/components/settings/members-section'
+import { RolesSection } from '#/components/settings/roles-section'
 import { SecuritySection } from '#/components/settings/security-section'
+import { TeamsSection } from '#/components/settings/teams-section'
 import { UsageSection } from '#/components/settings/usage-section'
 import { Button } from '#/components/ui/button'
 import { useCurrentUser } from '#/lib/current-user'
 
-export type SettingsSection = 'account' | 'general' | 'usage' | 'members' | 'billing' | 'security'
+const SETTINGS_SECTIONS = [
+  'account',
+  'general',
+  'usage',
+  'members',
+  'teams',
+  'roles',
+  'billing',
+  'security',
+] as const
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]
 
-export interface SectionProps {
-  /** Opens another settings section in place. */
-  open: (section: SettingsSection) => void
+export interface SettingsSearch {
+  section?: SettingsSection
+  top_up?: string
 }
 
-const SETTINGS_NAV: {
-  group: string
-  items: { id: SettingsSection; adminOnly?: boolean }[]
-}[] = [
-  { group: 'settings.mySettings', items: [{ id: 'account' }] },
+const isSection = (value: unknown): value is SettingsSection =>
+  (SETTINGS_SECTIONS as readonly unknown[]).includes(value)
+
+export const settingsSearch = (search: Record<string, unknown>): SettingsSearch => ({
+  ...(isSection(search.section) ? { section: search.section } : {}),
+  ...(typeof search.top_up === 'string' ? { top_up: search.top_up } : {}),
+})
+
+const SETTINGS_NAV: { group: string; items: SettingsSection[] }[] = [
+  { group: 'settings.mySettings', items: ['account'] },
   {
     group: 'settings.organizationSettings',
-    items: [
-      { id: 'general' },
-      { id: 'usage' },
-      { id: 'members', adminOnly: true },
-      { id: 'billing', adminOnly: true },
-      { id: 'security' },
-    ],
+    items: ['general', 'usage', 'members', 'teams', 'roles', 'billing', 'security'],
   },
 ]
 
-const SECTIONS: Record<SettingsSection, (props: SectionProps) => React.JSX.Element> = {
+const SECTIONS: Record<SettingsSection, () => React.JSX.Element> = {
   account: AccountSection,
   general: GeneralSection,
   usage: UsageSection,
   members: MembersSection,
+  teams: TeamsSection,
+  roles: RolesSection,
   billing: BillingSection,
   security: SecuritySection,
 }
 
-const ADMIN_ONLY = new Set(
-  SETTINGS_NAV.flatMap((group) => group.items)
-    .filter((item) => item.adminOnly)
-    .map((item) => item.id),
-)
-
-export function SettingsPage({ section }: { section: SettingsSection }) {
+export function SettingsPage({ section = 'account' }: { section?: SettingsSection }) {
   const { t } = useTranslation()
-  const { isAdmin } = useCurrentUser()
-  const visible = (id: SettingsSection) => isAdmin || !ADMIN_ONLY.has(id)
-  const [chosen, setChosen] = useState<SettingsSection>(section)
-  const current = visible(chosen) ? chosen : 'account'
-  const open = (id: SettingsSection) => {
-    if (visible(id)) setChosen(id)
+  const { can, managesMembers } = useCurrentUser()
+  const shown: Partial<Record<SettingsSection, boolean>> = {
+    usage: can({ usage: ['read'] }),
+    members: managesMembers,
+    roles: can({ ac: ['create'] }),
+    billing: can({ billing: ['read'] }),
   }
+  const visible = (id: SettingsSection) => shown[id] ?? true
+  const current = visible(section) ? section : 'account'
   const Section = SECTIONS[current]
 
   return (
@@ -81,24 +89,27 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
               className="flex flex-col gap-1"
             >
               <p className="text-muted-foreground px-3 text-xs font-medium">{t(group.group)}</p>
-              {group.items
-                .filter((item) => visible(item.id))
-                .map((item) => (
-                  <Button
-                    key={item.id}
-                    variant={current === item.id ? 'secondary' : 'ghost'}
-                    className="justify-start"
-                    aria-current={current === item.id ? 'true' : undefined}
-                    onClick={() => open(item.id)}
+              {group.items.filter(visible).map((id) => (
+                <Button
+                  key={id}
+                  asChild
+                  variant={current === id ? 'secondary' : 'ghost'}
+                  className="justify-start"
+                >
+                  <Link
+                    to="/app/settings"
+                    search={{ section: id }}
+                    aria-current={current === id ? 'page' : undefined}
                   >
-                    {t(`settings.${item.id}`)}
-                  </Button>
-                ))}
+                    {t(`settings.${id}`)}
+                  </Link>
+                </Button>
+              ))}
             </div>
           ))}
         </nav>
       </div>
-      <Section open={open} />
+      <Section />
     </main>
   )
 }

@@ -9,8 +9,6 @@
     "checkStart": "Check your",
     "checkEnd": "inbox.",
     "sentBody": "Open the new link in this browser to join. Nothing there? Look in spam.",
-    "takenTitle": "You already belong to an organization.",
-    "takenBody": "A person is in one organization for now. Sign in to open yours.",
     "signIn": "Sign in",
     "closedTitle": "This invite is not open.",
     "closedBody": "It was cancelled, it expired, or it was sent to another email. Ask whoever invited you to send it again.",
@@ -18,14 +16,16 @@
     "failedBody": "Nothing is lost. Open the link again in a moment.",
     "workEmail": "Enter your work email, like name@company.com.",
     "tooManyLinks": "Too many links asked for. Wait a minute and try again.",
-    "linkNotSent": "Couldn't send the link. Try again."
+    "linkNotSent": "Couldn't send the link. Try again.",
+    "alreadyTitle": "You're already in this organization.",
+    "alreadyBody": "Open the app to work in it.",
+    "openApp": "Open the app"
   },
   "settings": {
     "generalSettings": {
       "title": "General",
       "organizationName": "Organization name",
       "notSaved": "Couldn't save the organization's settings. Try again.",
-      "notLoaded": "Couldn't load your organization's settings. Reload the page.",
       "slug": "Slug: {{slug}}"
     },
     "securitySettings": {
@@ -36,7 +36,40 @@
       "confirmTitle": "Delete the organization?",
       "notDeleted": "Couldn't delete your organization. Try again.",
       "deleted": "Your organization is deleted.",
-      "ownerOnly": "Only the owner can delete the organization."
+      "ownerOnly": "Only the owner can delete the organization.",
+      "leaveOrganization": "Leave the organization",
+      "leaveHint": "You lose access to {{organization}} until someone invites you again.",
+      "leave": "Leave",
+      "confirmLeaveTitle": "Leave {{organization}}?",
+      "left": "You left {{organization}}.",
+      "notLeft": "Couldn't leave the organization. Try again."
     }
+  },
+  "orgErrors": {
+    "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED": "The organization has no free seat. Its owner can upgrade to add more people.",
+    "USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION": "They're already in the organization.",
+    "USER_IS_ALREADY_INVITED_TO_THIS_ORGANIZATION": "They're already invited.",
+    "YOU_ARE_NOT_ALLOWED_TO_INVITE_USERS_TO_THIS_ORGANIZATION": "You can't invite people to this organization.",
+    "YOU_ARE_NOT_ALLOWED_TO_INVITE_USER_WITH_THIS_ROLE": "You can't invite someone with that role.",
+    "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_MEMBER": "You can't change this person's role.",
+    "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_MEMBER": "You can't remove this person.",
+    "YOU_CANNOT_LEAVE_THE_ORGANIZATION_AS_THE_ONLY_OWNER": "You're the organization's only owner, so you can't leave it.",
+    "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_ORGANIZATION": "You can't rename this organization.",
+    "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_ORGANIZATION": "Only the owner deletes the organization.",
+    "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_TEAM": "You can't create teams.",
+    "YOU_ARE_NOT_ALLOWED_TO_CREATE_TEAMS_IN_THIS_ORGANIZATION": "You can't create teams.",
+    "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_TEAM": "You can't change this team.",
+    "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_TEAM": "You can't delete this team.",
+    "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_TEAM_MEMBER": "You can't add people to teams.",
+    "YOU_ARE_NOT_ALLOWED_TO_REMOVE_A_TEAM_MEMBER": "You can't take people out of teams.",
+    "TEAM_ALREADY_EXISTS": "A team already has that name.",
+    "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_ROLE": "You can't create this role: it gives permissions you don't have.",
+    "YOU_ARE_NOT_ALLOWED_TO_UPDATE_A_ROLE": "You can't change this role: it would give permissions you don't have.",
+    "YOU_ARE_NOT_ALLOWED_TO_DELETE_A_ROLE": "You can't delete roles.",
+    "ROLE_NAME_IS_ALREADY_TAKEN": "A role already has that name.",
+    "ROLE_IS_ASSIGNED_TO_MEMBERS": "Someone has this role. Give them another role first.",
+    "CANNOT_DELETE_A_PRE_DEFINED_ROLE": "Owner, Admin and Member can't be deleted.",
+    "TOO_MANY_ROLES": "The organization has as many roles as it can.",
+    "INVALID_RESOURCE": "One of those permissions doesn't exist."
   }
 }

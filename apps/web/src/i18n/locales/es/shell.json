@@ -35,9 +35,6 @@
     "goHome": "Ir a la app →"
   },
   "unavailable": {
-    "forbiddenTitle": "Tu cuenta no puede abrir Arrakit ahora mismo.",
-    "forbiddenBody": "Pide al administrador de tu organización que revise tu acceso.",
-    "home": "Inicio",
     "unreachableTitle": "No se ha podido conectar con Arrakit.",
     "unreachableBody": "No se ha perdido nada. Inténtalo de nuevo en un momento.",
     "tryAgain": "Reintentar"
@@ -46,5 +43,22 @@
     "title": "Esta página no existe.",
     "body": "Revisa la dirección o vuelve a Arrakit.",
     "home": "Volver al inicio"
+  },
+  "orgSwitcher": {
+    "label": "Organización: {{organization}}",
+    "organizations": "Tus organizaciones",
+    "create": "Crear organización",
+    "notSwitched": "No se ha podido cambiar de organización. Inténtalo de nuevo.",
+    "notLoaded": "No se han podido cargar tus organizaciones."
+  },
+  "createOrganization": {
+    "title": "Crear una organización",
+    "description": "Serás su propietario, en el plan Free. Cambia de organización desde la cabecera.",
+    "name": "Nombre de la organización",
+    "enterName": "Escribe el nombre de la organización.",
+    "create": "Crear",
+    "cancel": "Cancelar",
+    "created": "{{organization}} está lista.",
+    "notCreated": "No se ha podido crear la organización. Inténtalo de nuevo."
   }
 }

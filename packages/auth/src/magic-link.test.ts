@@ -4,6 +4,7 @@ import type { Mail } from '@arrakit/emails'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { createAuth } from './auth'
+import { testOrganizationDeps } from './test-deps'
 import { loadAuthConfig } from './config'
 import type { InvitationForMail } from './deps'
 import { invitationIdOf } from './magic-link'
@@ -27,7 +28,7 @@ describe('magic link sign-in (PGlite)', () => {
         const found = invitations.get(id)
         return found && found.email === email ? found.invitation : null
       },
-      organizationOf: (userId) => data.organizationOf(userId),
+      organizations: testOrganizationDeps(data),
     })
   })
   afterAll(() => data.close())
@@ -225,19 +226,9 @@ describe('magic link sign-in (PGlite)', () => {
     expect(sent.at(-1)!.subject).toBe('Your link to sign in to Arrakit')
   })
 
-  it.each([
-    ['POST', '/organization/create'],
-    ['POST', '/organization/update'],
-    ['POST', '/organization/invite-member'],
-    ['GET', '/organization/list'],
-    ['GET', '/token'],
-  ])('closes %s %s', async (method, path) => {
+  it('closes the session-to-JWT route', async () => {
     const res = await auth.handler(
-      new Request(`${WEB}/api/auth${path}`, {
-        method,
-        headers: { origin: WEB, 'content-type': 'application/json' },
-        ...(method === 'POST' ? { body: '{}' } : {}),
-      }),
+      new Request(`${WEB}/api/auth/token`, { headers: { origin: WEB } }),
     )
     expect(res.status).toBe(404)
   })

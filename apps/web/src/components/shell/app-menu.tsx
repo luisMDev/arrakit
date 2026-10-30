@@ -2,6 +2,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import type { SettingsSearch } from '#/components/settings/settings-page'
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
 import { Button } from '#/components/ui/button'
 import { Separator } from '#/components/ui/separator'
@@ -18,25 +19,24 @@ async function signOutOrThrow(): Promise<void> {
 
 /**
  * A disclosure (a button and the links it shows), not an ARIA menu. Escape, a click outside and
- * a click on a link close it. Members and Billing are for admins.
+ * a click on a link close it. Members and Billing show to those their role lets in.
  */
 export function AppMenu() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { user, name, isAdmin, planLabel, signedOut } = useCurrentUser()
+  const { user, name, can, managesMembers, planLabel, signedOut } = useCurrentUser()
   const [open, setOpen] = useState(false)
   const host = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
-  const signOutMutation = useApiMutation(
-    {
-      mutationFn: signOutOrThrow,
-      onSuccess: () => {
-        signedOut()
-        void navigate({ to: '/signin' })
-      },
+  const signOutMutation = useApiMutation({
+    mutationKey: ['auth', 'signOut'],
+    mutationFn: signOutOrThrow,
+    onSuccess: () => {
+      signedOut()
+      void navigate({ to: '/signin' })
     },
-    { context: '[appMenu] signing out failed', failure: t('appMenu.notSignedOut') },
-  )
+    meta: { failure: t('appMenu.notSignedOut') },
+  })
 
   useEffect(() => {
     if (!open) return
@@ -64,16 +64,28 @@ export function AppMenu() {
     void signOutMutation.run()
   }
 
-  const links = [
+  const links: { to: '/app' | '/app/settings'; search?: SettingsSearch; label: string }[] = [
     { to: '/app', label: t('appMenu.home') },
-    { to: '/app/settings', label: t('appMenu.settings') },
-    ...(isAdmin
+    { to: '/app/settings', search: {}, label: t('appMenu.settings') },
+    ...(managesMembers
       ? [
-          { to: '/app/members', label: t('appMenu.members') },
-          { to: '/app/billing', label: t('appMenu.billing') },
+          {
+            to: '/app/settings' as const,
+            search: { section: 'members' as const },
+            label: t('appMenu.members'),
+          },
         ]
       : []),
-  ] as const
+    ...(can({ billing: ['read'] })
+      ? [
+          {
+            to: '/app/settings' as const,
+            search: { section: 'billing' as const },
+            label: t('appMenu.billing'),
+          },
+        ]
+      : []),
+  ]
 
   return (
     <div ref={host} className="relative">
@@ -105,9 +117,14 @@ export function AppMenu() {
           <Separator className="my-1" />
           <ul aria-label={t('appMenu.yourOrganization')} className="flex flex-col">
             {links.map((link) => (
-              <li key={link.to}>
+              <li key={link.label}>
                 <Button asChild variant="ghost" size="sm" className="w-full justify-start">
-                  <Link to={link.to} activeOptions={{ exact: true }} onClick={close}>
+                  <Link
+                    to={link.to}
+                    search={link.search}
+                    activeOptions={{ exact: true }}
+                    onClick={close}
+                  >
                     {link.label}
                   </Link>
                 </Button>

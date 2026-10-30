@@ -1,42 +1,40 @@
-import { type UseMutationOptions, type UseMutationResult, useMutation } from '@tanstack/react-query'
+import {
+  type DefaultError,
+  type UseMutationOptions,
+  type UseMutationResult,
+  useMutation,
+} from '@tanstack/react-query'
 import { useCallback, useRef } from 'react'
 
-import { apiFailed } from './api-errors'
-
-interface ApiMutationFailure<TVariables> {
-  /** Prefix for the reported error, e.g. `[members] inviting failed`. */
-  context: string
-  /** The toast when the API gives no message of its own. */
-  failure: string | ((variables: TVariables) => string)
-}
-
-type ApiMutation<TData, TVariables, TError> = UseMutationResult<TData, TError, TVariables> & {
+type ApiMutation<TData, TError, TVariables, TOnMutateResult> = UseMutationResult<
+  TData,
+  TError,
+  TVariables,
+  TOnMutateResult
+> & {
   /**
    * Runs the mutation unless this one is already running (checked synchronously, so a double
    * click sends one request). Resolves to the data, or `undefined` when it failed or was skipped.
    */
   run(...args: RunArgs<TVariables>): Promise<TData | undefined>
+  /** Running, or done and about to leave the screen. */
+  busy: boolean
 }
 
 type RunArgs<TVariables> = undefined extends TVariables
   ? [variables?: TVariables]
   : [variables: TVariables]
 
-/**
- * A mutation for a screen: a failure is reported and toasts the API's own message or
- * `failure`, then the caller's own `onError` runs (to put a control back).
- */
-export function useApiMutation<TData, TVariables = void, TError = unknown>(
-  options: UseMutationOptions<TData, TError, TVariables>,
-  { context, failure }: ApiMutationFailure<TVariables>,
-): ApiMutation<TData, TVariables, TError> {
-  const mutation = useMutation<TData, TError, TVariables>({
-    ...options,
-    onError: (err, variables, onMutateResult, mutationContext) => {
-      apiFailed(context, err, typeof failure === 'string' ? failure : failure(variables))
-      return options.onError?.(err, variables, onMutateResult, mutationContext)
-    },
-  })
+/** A mutation for a screen; its failure toasts `meta.failure` through the query client. */
+export function useApiMutation<
+  TData = unknown,
+  TError = DefaultError,
+  TVariables = void,
+  TOnMutateResult = unknown,
+>(
+  options: UseMutationOptions<TData, TError, TVariables, TOnMutateResult>,
+): ApiMutation<TData, TError, TVariables, TOnMutateResult> {
+  const mutation = useMutation(options)
   const running = useRef(false)
   const { mutateAsync } = mutation
 
@@ -55,5 +53,5 @@ export function useApiMutation<TData, TVariables = void, TError = unknown>(
     [mutateAsync],
   )
 
-  return { ...mutation, run }
+  return { ...mutation, run, busy: mutation.isPending || mutation.isSuccess }
 }

@@ -26,12 +26,6 @@ test('serves the MCP protected resource metadata through the web origin', async 
   expect(((await res.json()) as { resource: string }).resource).toBe(`${WEB_ORIGIN}/api/mcp`)
 })
 
-test('serves /api/openapi.json through the web origin', async ({ request }) => {
-  const doc = await request.get(`${WEB_ORIGIN}/api/openapi.json`)
-  expect(doc.status()).toBe(200)
-  expect(((await doc.json()) as { openapi: string }).openapi).toMatch(/^3\./)
-})
-
 test('forwards POST bodies, leaves redirects to the browser and passes the client address', async ({
   request,
 }) => {

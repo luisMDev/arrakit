@@ -1,18 +1,16 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { answer, api } from '#/test/rpc'
+import { answer, setupTestApi } from '#/test/rpc'
 
 import { meAs, renderApp } from './testing'
 import { viewTransitionRouterOptions } from './view-transitions'
 
-beforeAll(() => api.listen({ onUnhandledFrame: 'error' }))
+setupTestApi({ onUnhandledFrame: 'error' })
 afterEach(() => {
-  api.resetHandlers()
   Reflect.deleteProperty(document, 'startViewTransition')
 })
-afterAll(() => api.close())
 
 function stubStartViewTransition() {
   const start = vi.fn((update: ViewTransitionUpdateCallback | StartViewTransitionOptions) => {

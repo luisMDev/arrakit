@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 
-import { mcpResourceURL } from '@arrakit/auth'
+import { loadAuthConfig, mcpResourceURL } from '@arrakit/auth'
 import type { Contract } from '@arrakit/contract'
 import type { Storage } from '@arrakit/db'
 import { type TestData, openTestData } from '@arrakit/db/testing'
@@ -10,7 +10,7 @@ import { RPCLink } from '@orpc/client/fetch'
 import type { ContractRouterClient } from '@orpc/contract'
 
 import { type App, createApp } from '../app'
-import type { StripeGateway } from '../billing/stripe-gateway'
+import { type StripeGateway, unconfiguredStripe } from '../billing/stripe-gateway'
 import type { AppDeps } from '../deps'
 import { loadApiEnv } from '../env'
 import { recordingMailer } from '../mail/mailer'
@@ -70,7 +70,7 @@ export interface TestApp {
   context(headers?: HeadersLike): BaseContext
   /** Calls the app in-process at `TEST_WEB_ORIGIN + path`. */
   request(path: string, init?: RequestInit): Promise<Response>
-  /** oRPC client calling the app in-process; pass Better Auth headers to act as someone. */
+  /** oRPC client calling the app in-process from the app's origin; pass Better Auth headers to act as someone. */
   client(headers?: HeadersLike): ContractRouterClient<Contract>
   /** Signs in the user with `email`, creating it verified on first use; returns session headers (cookie + trusted Origin). */
   signIn(user: { email: string; name?: string }): Promise<{ headers: Headers; userId: string }>
@@ -116,7 +116,7 @@ export async function rpcResult(
 }
 
 export async function createTestApp(
-  options: { env?: Record<string, string>; stripe?: StripeGateway | null; storage?: Storage } = {},
+  options: { env?: Record<string, string>; stripe?: StripeGateway; storage?: Storage } = {},
 ): Promise<TestApp> {
   const rawEnv = {
     NODE_ENV: 'test',
@@ -131,10 +131,10 @@ export async function createTestApp(
   const { errors, captured } = recordingErrorReporter()
   const deps = buildDeps({
     env: loadApiEnv(rawEnv),
-    rawEnv,
+    authConfig: loadAuthConfig(rawEnv),
     data,
     mailer,
-    stripe: options.stripe ?? null,
+    stripe: options.stripe ?? unconfiguredStripe(),
     log,
     errors,
     testing: true,
@@ -147,7 +147,11 @@ export async function createTestApp(
     createORPCClient<ContractRouterClient<Contract>>(
       new RPCLink({
         url: `${TEST_WEB_ORIGIN}/api/rpc`,
-        headers: () => Object.fromEntries(new Headers(headers).entries()),
+        headers: () => {
+          const sent = new Headers(headers)
+          if (!sent.has('origin')) sent.set('origin', TEST_WEB_ORIGIN)
+          return Object.fromEntries(sent.entries())
+        },
         fetch: async (req) => app.fetch(req as Request),
       }),
     )

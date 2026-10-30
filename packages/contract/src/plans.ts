@@ -11,7 +11,5 @@ export const planOfferSchema = z.object({
 export type PlanOfferView = z.infer<typeof planOfferSchema>
 
 export const plansContract = {
-  list: base
-    .route({ method: 'GET', path: '/plans', tags: ['plans'] })
-    .output(z.array(planOfferSchema)),
+  list: base.output(z.array(planOfferSchema)),
 }

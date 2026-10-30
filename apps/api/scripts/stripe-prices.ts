@@ -27,12 +27,8 @@ export async function syncPrices(stripe: Stripe, log: (line: string) => void = c
     for (const { cycle, interval, cents } of CYCLES) {
       const lookupKey = priceLookupKey(plan, cycle)
       const amount = offer[cents]
-      const metadata = { plan, cycle }
       const [current] = (await stripe.prices.list({ lookup_keys: [lookupKey], limit: 1 })).data
       if (current?.active && current.unit_amount === amount) {
-        if (current.metadata.plan !== plan || current.metadata.cycle !== cycle) {
-          await stripe.prices.update(current.id, { metadata })
-        }
         log(
           `${mode} ${lookupKey}: ${amount / 100} ${CURRENCY.toUpperCase()} a ${interval}, already there`,
         )
@@ -45,7 +41,6 @@ export async function syncPrices(stripe: Stripe, log: (line: string) => void = c
         recurring: { interval },
         lookup_key: lookupKey,
         transfer_lookup_key: true,
-        metadata,
       })
       if (current) await stripe.prices.update(current.id, { active: false })
       log(`${mode} ${lookupKey}: ${amount / 100} ${CURRENCY.toUpperCase()} a ${interval}, created`)

@@ -6,7 +6,6 @@
     "subtitle": "Un precio al mes por organización.",
     "perMonth": "/ mes",
     "home": "Inicio",
-    "loadFailed": "No se han podido cargar los planes. Recarga la página.",
     "startFree": "Empieza gratis",
     "getPlan": "Contratar {{plan}}",
     "noCardNeeded": "Sin tarjeta",
@@ -52,7 +51,6 @@
     }
   },
   "plans": {
-    "loadFailed": "No se han podido cargar los planes. Recarga la página.",
     "billingLoadFailed": "No se ha podido cargar tu facturación. Recarga la página.",
     "priceFailed": "No se ha podido calcular el precio del cambio. Inténtalo de nuevo en un minuto.",
     "switchFailed": "No se ha podido cambiar de plan. No ha cambiado nada; inténtalo de nuevo.",
@@ -92,7 +90,6 @@
     "continueMonthly": "Continuar con mensual"
   },
   "checkout": {
-    "loadFailed": "No se ha podido cargar el plan. Recarga la página.",
     "openFailed": "No se ha podido abrir el formulario de pago. Recarga la página para volver a intentarlo.",
     "per": {
       "monthly": "al mes",

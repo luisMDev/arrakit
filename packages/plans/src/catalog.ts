@@ -17,6 +17,16 @@ export type BillingCycle = (typeof BILLING_CYCLES)[number]
 export const PAID_PLANS = ['pro', 'team'] as const
 export type PaidPlan = (typeof PAID_PLANS)[number]
 
+/** Plans shown on the pricing page (every plan except internal). */
+export const SOLD_PLANS = ['free', 'pro', 'team'] as const
+export type SoldPlan = (typeof SOLD_PLANS)[number]
+
+export const isPaidPlan = (value: unknown): value is PaidPlan =>
+  (PAID_PLANS as readonly unknown[]).includes(value)
+
+export const isBillingCycle = (value: unknown): value is BillingCycle =>
+  (BILLING_CYCLES as readonly unknown[]).includes(value)
+
 export interface PlanOffer {
   plan: Plan
   monthlyCents: number
@@ -53,6 +63,23 @@ export const PLAN_OFFERS: Record<Plan, PlanOffer> = {
 /** Exact, case-sensitive match. */
 export function isPlan(value: unknown): value is Plan {
   return typeof value === 'string' && (PLANS as readonly string[]).includes(value)
+}
+
+export function seatLimitMessage(plan: Plan): string {
+  const seats = PLAN_OFFERS[plan].seats
+  return `Your organization's ${PLAN_LABELS[plan]} plan includes ${seats} ${seats === 1 ? 'seat' : 'seats'}, all taken. Upgrade to invite more people.`
+}
+
+export function soldOffers() {
+  return SOLD_PLANS.map((plan) => {
+    const offer = PLAN_OFFERS[plan]
+    return {
+      plan,
+      monthly: { amount: offer.monthlyCents, currency: CURRENCY },
+      yearly: { amount: offer.yearlyCents, currency: CURRENCY },
+      seats: offer.seats,
+    }
+  })
 }
 
 /** A top-up: any whole number of cents in [min, max]. Adds to every metric; never expires. */

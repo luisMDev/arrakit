@@ -5,6 +5,7 @@ import {
   type MetricBalance,
   type MetricKind,
   type MetricSums,
+  type Plan,
   type UsagePeriod,
   isMetric,
   metricAmounts,
@@ -14,12 +15,14 @@ import {
   splitConsumption,
   usagePeriod,
 } from '@arrakit/plans'
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, ne, sql } from 'drizzle-orm'
 
-import type { Database } from '../connection'
+import { type Database, transaction } from '../connection'
 import type { DataContext } from '../context'
+import { DomainError } from '../errors'
 import type { OrganizationId } from '../organization-id'
-import { creditLedger, organizations, usageLevels } from '../schema/index'
+import { creditLedger, usageLevels } from '../schema/index'
+import { organizationRow } from './organization'
 
 export type { MetricBalance } from '@arrakit/plans'
 
@@ -52,7 +55,6 @@ export interface OrganizationUsage {
   set(metric: Metric, value: number): Promise<MetricUsage>
   credit(cents: number, options: { idempotencyKey: string }): Promise<boolean>
   reverse(cents: number, options: ReverseOptions): Promise<boolean>
-  adjust(metric: Metric, amount: number, options: { idempotencyKey: string }): Promise<boolean>
   topUps(): Promise<TopUp[]>
 }
 
@@ -62,11 +64,11 @@ interface ReverseOptions {
    * The top-up payment being taken back. All reversals of one payment together never take back
    * more than `cents`: a partial refund followed by a full dispute reverses only what is left.
    */
-  payment?: { key: string; cents: number }
+  payment: { key: string; cents: number }
 }
 
 /** Thrown when a use would exceed what the organization has (mapped to HTTP 402). */
-export class UsageLimitError extends Error {
+export class UsageLimitError extends DomainError {
   override name = 'UsageLimitError'
   readonly kind: MetricKind
 
@@ -77,9 +79,11 @@ export class UsageLimitError extends Error {
   ) {
     const { kind, label, unit } = metricOf(metric)
     super(
+      'PAYMENT_REQUIRED',
       kind === 'capacity'
         ? `${label} limit reached: this needs ${requested} ${unit} more and your organization has ${available} left. Add credits in Settings → Billing to raise it.`
         : `Not enough ${label.toLowerCase()}: this needs ${requested} ${unit} and your organization has ${available} left. Add credits in Settings → Billing.`,
+      { metric, requested, available },
     )
     this.kind = kind
   }
@@ -103,80 +107,34 @@ function keyOf(idempotencyKey: string): string {
   return key
 }
 
-interface Locked {
-  tx: Database
+interface Billing {
+  plan: Plan
   period: UsagePeriod
+}
+
+interface Locked extends Billing {
+  tx: Database
 }
 
 export function usageScope(ctx: DataContext, organizationId: OrganizationId): OrganizationUsage {
   const own = eq(creditLedger.organizationId, organizationId)
 
-  async function billingPeriod(db: Database, lock: boolean) {
-    const query = db
-      .select({
-        plan: organizations.plan,
-        createdAt: organizations.createdAt,
-        usageAnchor: organizations.usageAnchor,
-      })
-      .from(organizations)
-      .where(eq(organizations.id, organizationId))
-    const [org] = await (lock ? query.for('no key update') : query)
+  async function billingOf(db: Database, lock: boolean): Promise<Billing> {
+    const org = await organizationRow(db, organizationId, { lock })
     if (!org) throw new Error(`[data] organization ${organizationId} is gone`)
     return { plan: org.plan, period: usagePeriod(org.usageAnchor ?? org.createdAt, ctx.now()) }
   }
 
-  async function locked<R>(work: (locked: Locked) => Promise<R>): Promise<R> {
-    return ctx.db.transaction(async (transaction) => {
-      const tx = transaction as unknown as Database
-      const { plan, period } = await billingPeriod(tx, true)
-      const grantedRows = await tx
-        .select({
-          metric: creditLedger.metric,
-          granted: sql<string>`coalesce(sum(${creditLedger.amount}), 0)`,
-        })
-        .from(creditLedger)
-        .where(
-          and(
-            own,
-            eq(creditLedger.reason, 'plan_grant'),
-            eq(creditLedger.periodStart, period.start),
-          ),
-        )
-        .groupBy(creditLedger.metric)
-      const grantedSoFar = new Map(grantedRows.map((r) => [r.metric, Number(r.granted)]))
-      const grant = planGrant(plan)
-      const owed = METRIC_KEYS.map((metric) => ({
-        metric,
-        amount: grant[metric] - (grantedSoFar.get(metric) ?? 0),
-      })).filter((g) => g.amount > 0)
-      if (owed.length > 0) {
-        await tx
-          .insert(creditLedger)
-          .values(
-            owed.map(({ metric, amount }) => ({
-              organizationId,
-              metric,
-              bucket: 'plan' as const,
-              reason: 'plan_grant' as const,
-              amount,
-              periodStart: period.start,
-              idempotencyKey: `grant:${period.start.toISOString()}:${plan}`,
-            })),
-          )
-          .onConflictDoNothing()
-      }
-      return work({ tx, period })
-    })
-  }
+  const locked = <R>(work: (locked: Locked) => Promise<R>): Promise<R> =>
+    transaction(ctx.db, async (tx) => work({ tx, ...(await billingOf(tx, true)) }))
 
-  async function usageOf({ tx, period }: Locked): Promise<Map<Metric, MetricUsage>> {
+  function ledgerSums(db: Database, { period }: Billing) {
     const inPeriod = eq(creditLedger.periodStart, period.start)
     const sumWhere = (condition: ReturnType<typeof and>) =>
       sql<string>`coalesce(sum(${creditLedger.amount}) filter (where ${condition}), 0)`
-    const rows = await tx
+    return db
       .select({
         metric: creditLedger.metric,
-        granted: sumWhere(and(eq(creditLedger.reason, 'plan_grant'), inPeriod)),
         planUsed: sumWhere(
           and(eq(creditLedger.bucket, 'plan'), eq(creditLedger.reason, 'consumption'), inPeriod),
         ),
@@ -184,18 +142,26 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
         used: sumWhere(and(eq(creditLedger.reason, 'consumption'), inPeriod)),
       })
       .from(creditLedger)
-      .where(own)
+      .where(and(own, ne(creditLedger.reason, 'plan_grant')))
       .groupBy(creditLedger.metric)
-    const levels = await tx
+  }
+
+  function levelsOf(db: Database) {
+    return db
       .select({ metric: usageLevels.metric, value: usageLevels.value })
       .from(usageLevels)
       .where(eq(usageLevels.organizationId, organizationId))
+  }
 
+  type LedgerSums = Awaited<ReturnType<typeof ledgerSums>>
+  type Levels = Awaited<ReturnType<typeof levelsOf>>
+
+  function usageFrom({ plan, period }: Billing, rows: LedgerSums, levels: Levels) {
+    const grant = planGrant(plan)
     const sums = new Map<string, MetricSums>(
       rows.map((r) => [
         r.metric,
         {
-          granted: Number(r.granted),
           planUsed: 0 - Number(r.planUsed) || 0,
           purchased: Number(r.purchased),
           used: 0 - Number(r.used) || 0,
@@ -203,30 +169,36 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
       ]),
     )
     const levelOf = new Map(levels.map((l) => [l.metric, Number(l.value)]))
-    return new Map(
+    return new Map<Metric, MetricUsage>(
       METRIC_KEYS.map((metric) => [
         metric,
         {
-          ...metricBalance(metric, sums.get(metric) ?? {}, levelOf.get(metric) ?? 0),
+          ...metricBalance(
+            metric,
+            { ...sums.get(metric), granted: grant[metric] },
+            levelOf.get(metric) ?? 0,
+          ),
           resetsOn: period.end,
         },
       ]),
     )
   }
 
-  /** Lock-free once this period's grant is written; otherwise writes it under the lock first. */
   async function currentUsage(): Promise<Map<Metric, MetricUsage>> {
-    const { plan, period } = await billingPeriod(ctx.db, false)
-    const usage = await usageOf({ tx: ctx.db, period })
-    const grant = planGrant(plan)
-    if (METRIC_KEYS.every((metric) => usage.get(metric)!.granted >= grant[metric])) return usage
-    return locked(usageOf)
+    const billing = await billingOf(ctx.db, false)
+    const [rows, levels] = await Promise.all([ledgerSums(ctx.db, billing), levelsOf(ctx.db)])
+    return usageFrom(billing, rows, levels)
+  }
+
+  async function lockedUsage(l: Locked): Promise<Map<Metric, MetricUsage>> {
+    const rows = await ledgerSums(l.tx, l)
+    return usageFrom(l, rows, await levelsOf(l.tx))
   }
 
   async function addPurchased(
-    rows: { metric: Metric; amount: number; reason: 'purchase' | 'adjustment'; cents?: number }[],
+    rows: { metric: Metric; amount: number; reason: 'purchase' | 'adjustment'; cents: number }[],
     idempotencyKey: string,
-    db: Database = ctx.db,
+    db: Database,
   ): Promise<boolean> {
     if (rows.length === 0) return false
     const written = await db
@@ -238,7 +210,7 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
           bucket: 'purchased' as const,
           reason: row.reason,
           amount: row.amount,
-          cents: row.cents ?? null,
+          cents: row.cents,
           idempotencyKey,
         })),
       )
@@ -278,7 +250,7 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
       wholeAtLeast(quantity, 1, 'a quantity')
       const key = keyOf(idempotencyKey)
       return locked(async (l) => {
-        const usage = (await usageOf(l)).get(metric)!
+        const usage = (await lockedUsage(l)).get(metric)!
         const [existing] = await l.tx
           .select({ id: creditLedger.id })
           .from(creditLedger)
@@ -326,7 +298,7 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
       }
       wholeAtLeast(value, 0, 'a level')
       return locked(async (l) => {
-        const usage = (await usageOf(l)).get(metric)!
+        const usage = (await lockedUsage(l)).get(metric)!
         const limit = usage.limit ?? 0
         if (value > usage.used && value > limit) {
           throw new UsageLimitError(metric, value - usage.used, usage.available)
@@ -354,14 +326,13 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
           cents,
         })),
         key,
+        ctx.db,
       )
     },
 
     async reverse(cents, { idempotencyKey, payment }) {
       wholeAtLeast(cents, 1, 'an amount of cents')
       const key = keyOf(idempotencyKey)
-      if (!payment) return addPurchased(reversalRows(cents), key)
-
       const paymentKey = keyOf(payment.key)
       const paid = wholeAtLeast(payment.cents, 1, 'a payment amount of cents')
       const prefix = `reversal-of:${encodeURIComponent(paymentKey)}:`
@@ -383,15 +354,6 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
         if (take <= 0) return false
         return addPurchased(reversalRows(take), storedKey, tx)
       })
-    },
-
-    async adjust(metric, amount, { idempotencyKey }) {
-      knownMetric(metric)
-      if (!Number.isSafeInteger(amount) || amount === 0) {
-        throw new Error(`[data] an adjustment must be a whole number other than 0, not ${amount}`)
-      }
-      const key = keyOf(idempotencyKey)
-      return addPurchased([{ metric, amount, reason: 'adjustment' }], key)
     },
 
     async topUps() {

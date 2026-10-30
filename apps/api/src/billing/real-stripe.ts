@@ -4,9 +4,11 @@ import Stripe from 'stripe'
 import type {
   BillingEvent,
   BillingSnapshot,
+  Card,
   Money,
   StripeGateway,
   SubscriptionSnapshot,
+  SubscriptionState,
 } from './stripe-gateway'
 import { PRICE_KEY_PREFIX, type PaidSubscription, priceLookupKey } from './subscription-plan'
 
@@ -30,16 +32,9 @@ const CHECKOUT_PAID_EVENTS = new Set([
   'checkout.session.async_payment_succeeded',
 ])
 const INVOICE_EVENTS = new Set(['invoice.upcoming', 'invoice.payment_failed', 'invoice.paid'])
-const PAID_REASONS = new Set(['subscription_cycle', 'subscription_update'])
 
-type PriceLike = Pick<Stripe.Price, 'lookup_key' | 'metadata'>
-
-export function planKeyOf(price: PriceLike): string | null {
-  const plan = price.metadata?.plan
-  const cycle = price.metadata?.cycle
-  if (plan && cycle) return `${plan}_${cycle}`
-  return price.lookup_key ? price.lookup_key.replace(PRICE_KEY_PREFIX, '') : null
-}
+export const planKeyOf = (price: Pick<Stripe.Price, 'lookup_key'>): string | null =>
+  price.lookup_key ? price.lookup_key.replace(PRICE_KEY_PREFIX, '') : null
 
 const priceMoney = (
   price: Stripe.Price | string | Stripe.DeletedPrice | undefined,
@@ -71,6 +66,27 @@ function subscriptionSnapshot(subscription: Stripe.Subscription): SubscriptionSn
           amount: priceMoney(nextPrice),
         }
       : null,
+  }
+}
+
+const cardOf = (method: string | Stripe.PaymentMethod | null | undefined): Card | null =>
+  typeof method === 'object' && method?.card
+    ? { brand: method.card.brand, last4: method.card.last4 }
+    : null
+
+function subscriptionState(subscription: Stripe.Subscription): SubscriptionState {
+  const item = subscription.items.data[0]
+  return {
+    id: subscription.id,
+    customerId: idOf(subscription.customer) ?? '',
+    organizationId: subscription.metadata.organizationId ?? null,
+    cancellationReason: subscription.cancellation_details?.reason ?? null,
+    status: subscription.status,
+    lookupKey: item ? planKeyOf(item.price) : null,
+    anchor: new Date(subscription.billing_cycle_anchor * 1000),
+    periodEnd: item?.current_period_end ?? subscription.billing_cycle_anchor,
+    itemId: item?.id ?? null,
+    scheduleId: idOf(subscription.schedule),
   }
 }
 
@@ -119,16 +135,10 @@ export function mapStripeEvent(event: Stripe.Event): BillingEvent | null {
   }
   if (SUBSCRIPTION_EVENTS.has(event.type)) {
     const subscription = event.data.object as Stripe.Subscription
-    const previous = (event.data as { previous_attributes?: Partial<Stripe.Subscription> })
-      .previous_attributes?.items?.data[0]?.price
-    const previousKey = previous ? planKeyOf(previous) : null
-    const current = subscription.items?.data[0]?.price
-    const moved = previousKey !== (current ? planKeyOf(current) : null)
     return {
       kind: 'subscription',
       subscriptionId: subscription.id,
       organizationId: subscription.metadata?.organizationId ?? null,
-      previousLookupKey: moved ? previousKey : null,
     }
   }
   if (!INVOICE_EVENTS.has(event.type)) return null
@@ -147,33 +157,36 @@ export function mapStripeEvent(event: Stripe.Event): BillingEvent | null {
       nextAttempt: invoice.next_payment_attempt,
     }
   }
-  if (!PAID_REASONS.has(invoice.billing_reason ?? '')) return null
+  if (!invoice.billing_reason?.startsWith('subscription')) return null
   return {
     kind: 'invoice-paid',
     subscriptionId,
-    invoiceId: invoice.id ?? '',
     amount: { amount: invoice.amount_paid, currency: invoice.currency },
-    pdfUrl: invoice.invoice_pdf ?? null,
+    invoiceUrl: invoice.invoice_pdf ?? invoice.hosted_invoice_url ?? null,
   }
 }
 
 export function realStripeGateway(keys: StripeKeys, stripe = new Stripe(keys.secretKey)) {
-  const priceOf = async ({ plan, cycle }: PaidSubscription): Promise<Stripe.Price> => {
-    const key = priceLookupKey(plan, cycle)
-    const [price] = (await stripe.prices.list({ lookup_keys: [key], active: true, limit: 1 })).data
-    if (!price) throw new Error(`[billing] no active Stripe price with lookup key ${key}`)
-    return price
-  }
-
-  const topUpProduct = memoised(async () => {
-    const [price] = (
-      await stripe.prices.list({ lookup_keys: [TOP_UP_LOOKUP_KEY], active: true, limit: 1 })
-    ).data
-    if (!price) {
-      throw new Error(`[billing] no active Stripe price with lookup key ${TOP_UP_LOOKUP_KEY}`)
+  const prices = new Map<string, () => Promise<Stripe.Price>>()
+  const priceByKey = (key: string): Promise<Stripe.Price> => {
+    let load = prices.get(key)
+    if (!load) {
+      load = memoised(async () => {
+        const [price] = (await stripe.prices.list({ lookup_keys: [key], active: true, limit: 1 }))
+          .data
+        if (!price) throw new Error(`[billing] no active Stripe price with lookup key ${key}`)
+        return price
+      })
+      prices.set(key, load)
     }
+    return load()
+  }
+  const priceOf = ({ plan, cycle }: PaidSubscription) => priceByKey(priceLookupKey(plan, cycle))
+
+  const topUpProduct = async () => {
+    const price = await priceByKey(TOP_UP_LOOKUP_KEY)
     return typeof price.product === 'string' ? price.product : price.product.id
-  })
+  }
 
   const portalConfiguration = memoised(async () => {
     const existing = (
@@ -193,15 +206,14 @@ export function realStripeGateway(keys: StripeKeys, stripe = new Stripe(keys.sec
     return created.id
   })
 
-  const itemOf = (subscription: Stripe.Subscription): Stripe.SubscriptionItem => {
-    const item = subscription.items.data[0]
-    if (!item) throw new Error(`[billing] subscription ${subscription.id} has no item`)
-    return item
+  const itemOf = (subscription: SubscriptionState): string => {
+    if (!subscription.itemId)
+      throw new Error(`[billing] subscription ${subscription.id} has no item`)
+    return subscription.itemId
   }
 
-  const releaseSchedule = async (subscription: Stripe.Subscription): Promise<void> => {
-    const schedule = idOf(subscription.schedule)
-    if (schedule) await stripe.subscriptionSchedules.release(schedule)
+  const releaseSchedule = async (subscription: SubscriptionState): Promise<void> => {
+    if (subscription.scheduleId) await stripe.subscriptionSchedules.release(subscription.scheduleId)
   }
 
   const customerFields = (customerId: string | null, email: string) =>
@@ -222,7 +234,7 @@ export function realStripeGateway(keys: StripeKeys, stripe = new Stripe(keys.sec
         mode: 'subscription',
         line_items: [{ price: price.id, quantity: 1 }],
         client_reference_id: organizationId,
-        subscription_data: { metadata: { organizationId, requestedBy: email } },
+        subscription_data: { metadata: { organizationId } },
         ...customerFields(customerId, email),
         allow_promotion_codes: true,
         billing_address_collection: 'required',
@@ -241,7 +253,7 @@ export function realStripeGateway(keys: StripeKeys, stripe = new Stripe(keys.sec
           { price_data: { currency: CURRENCY, product, unit_amount: cents }, quantity: 1 },
         ],
         client_reference_id: organizationId,
-        metadata: { kind: 'top_up', organizationId, requestedBy: email },
+        metadata: { kind: 'top_up', organizationId },
         payment_intent_data: { metadata: { kind: 'top_up', organizationId, cents: String(cents) } },
         invoice_creation: { enabled: true, invoice_data: { metadata: { kind: 'top_up' } } },
         ...(customerId
@@ -268,18 +280,17 @@ export function realStripeGateway(keys: StripeKeys, stripe = new Stripe(keys.sec
     },
 
     async subscription(id) {
-      const subscription = await stripe.subscriptions.retrieve(id)
-      const item = subscription.items.data[0]
+      return subscriptionState(await stripe.subscriptions.retrieve(id))
+    },
+
+    async customer(id) {
+      const customer = await stripe.customers.retrieve(id, {
+        expand: ['invoice_settings.default_payment_method'],
+      })
+      if (customer.deleted) return { email: null, card: null }
       return {
-        id: subscription.id,
-        customerId: idOf(subscription.customer) ?? '',
-        organizationId: subscription.metadata.organizationId ?? null,
-        requestedBy: subscription.metadata.requestedBy ?? null,
-        receiptFor: subscription.metadata.receiptFor ?? null,
-        cancellationReason: subscription.cancellation_details?.reason ?? null,
-        status: subscription.status,
-        lookupKey: item ? planKeyOf(item.price) : null,
-        anchor: new Date(subscription.billing_cycle_anchor * 1000),
+        email: customer.email,
+        card: cardOf(customer.invoice_settings.default_payment_method),
       }
     },
 
@@ -296,17 +307,15 @@ export function realStripeGateway(keys: StripeKeys, stripe = new Stripe(keys.sec
         stripe.invoices.list({ customer: customerId, limit: 24 }),
       ])
       const live = customer.deleted ? null : customer
-      const method = [
-        subscription?.default_payment_method,
-        live?.invoice_settings.default_payment_method,
-      ].find((m): m is Stripe.PaymentMethod => typeof m === 'object' && m !== null)
       return {
         subscription: subscription && subscriptionSnapshot(subscription),
         customer: live && {
           email: live.email,
           name: live.name ?? null,
           taxId: live.tax_ids?.data[0]?.value ?? null,
-          card: method?.card ? { brand: method.card.brand, last4: method.card.last4 } : null,
+          card:
+            cardOf(subscription?.default_payment_method) ??
+            cardOf(live.invoice_settings.default_payment_method),
         },
         invoices: invoices.data.flatMap((invoice) => {
           const status = INVOICE_STATUSES.find((shown) => shown === invoice.status)
@@ -331,15 +340,12 @@ export function realStripeGateway(keys: StripeKeys, stripe = new Stripe(keys.sec
       return money
     },
 
-    async previewNow(subscriptionId, choice) {
-      const [subscription, price] = await Promise.all([
-        stripe.subscriptions.retrieve(subscriptionId),
-        priceOf(choice),
-      ])
+    async previewNow(subscription, choice) {
+      const price = await priceOf(choice)
       const preview = await stripe.invoices.createPreview({
-        subscription: subscriptionId,
+        subscription: subscription.id,
         subscription_details: {
-          items: [{ id: itemOf(subscription).id, price: price.id }],
+          items: [{ id: itemOf(subscription), price: price.id }],
           proration_behavior: 'always_invoice',
           proration_date: Math.floor(Date.now() / 1000),
         },
@@ -347,37 +353,34 @@ export function realStripeGateway(keys: StripeKeys, stripe = new Stripe(keys.sec
       return { amount: preview.amount_due, currency: preview.currency }
     },
 
-    async changeNow(subscriptionId, choice, requestedBy) {
-      const [subscription, price] = await Promise.all([
-        stripe.subscriptions.retrieve(subscriptionId),
-        priceOf(choice),
-      ])
+    async changeNow(subscription, choice) {
+      const price = await priceOf(choice)
       await releaseSchedule(subscription)
-      await stripe.subscriptions.update(subscriptionId, {
-        items: [{ id: itemOf(subscription).id, price: price.id }],
+      const changed = await stripe.subscriptions.update(subscription.id, {
+        items: [{ id: itemOf(subscription), price: price.id }],
         proration_behavior: 'always_invoice',
         payment_behavior: 'error_if_incomplete',
         cancel_at_period_end: false,
-        metadata: { requestedBy },
       })
+      return subscriptionState(changed)
     },
 
-    async changeAtRenewal(subscriptionId, choice, requestedBy) {
-      const [subscription, price] = await Promise.all([
-        stripe.subscriptions.retrieve(subscriptionId),
-        priceOf(choice),
-      ])
+    async changeAtRenewal(subscription, choice) {
+      const price = await priceOf(choice)
       await releaseSchedule(subscription)
-      const metadata = { ...subscription.metadata, requestedBy }
-      await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: false, metadata })
-      const item = itemOf(subscription)
+      const kept = await stripe.subscriptions.update(subscription.id, {
+        cancel_at_period_end: false,
+      })
       const schedule = await stripe.subscriptionSchedules.create({
-        from_subscription: subscriptionId,
+        from_subscription: subscription.id,
       })
       const current = schedule.phases[0]
       if (!current) throw new Error(`[billing] schedule ${schedule.id} has no phase`)
       // Keep whatever the current phase carries (an existing discount, a coupon
       // or a promotion code), dropping empty entries Stripe would refuse.
+      const metadata: Stripe.MetadataParam = subscription.organizationId
+        ? { organizationId: subscription.organizationId }
+        : {}
       const discounts = current.discounts.flatMap(
         (entry): Stripe.SubscriptionScheduleUpdateParams.Phase.Discount[] => {
           const discount = idOf(entry.discount)
@@ -392,7 +395,10 @@ export function realStripeGateway(keys: StripeKeys, stripe = new Stripe(keys.sec
         end_behavior: 'release',
         phases: [
           {
-            items: [{ price: item.price.id, quantity: item.quantity ?? 1 }],
+            items: current.items.map((item) => ({
+              price: idOf(item.price) ?? '',
+              quantity: item.quantity ?? 1,
+            })),
             start_date: current.start_date,
             end_date: current.end_date,
             discounts,
@@ -408,16 +414,12 @@ export function realStripeGateway(keys: StripeKeys, stripe = new Stripe(keys.sec
           },
         ],
       })
+      return { ...subscriptionState(kept), scheduleId: schedule.id }
     },
 
-    async markReceipted(subscriptionId, key) {
-      await stripe.subscriptions.update(subscriptionId, { metadata: { receiptFor: key } })
-    },
-
-    async cancelAtPeriodEnd(subscriptionId, cancel) {
-      const subscription = await stripe.subscriptions.retrieve(subscriptionId)
+    async cancelAtPeriodEnd(subscription, cancel) {
       if (cancel) await releaseSchedule(subscription)
-      await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: cancel })
+      await stripe.subscriptions.update(subscription.id, { cancel_at_period_end: cancel })
     },
 
     async endNow(subscriptionId) {

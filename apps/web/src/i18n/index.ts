@@ -1,10 +1,11 @@
+import { ACCOUNT_LANGUAGES, type AccountLanguage, isAccountLanguage } from '@arrakit/address'
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 
 import { en, loadEs } from './resources'
 
-export const LANGUAGES = ['en', 'es'] as const
-export type Language = (typeof LANGUAGES)[number]
+const LANGUAGES = ACCOUNT_LANGUAGES
+export type Language = AccountLanguage
 
 export const STORED_LANGUAGE_KEY = 'arrakit.lang'
 
@@ -13,9 +14,7 @@ const loaders: Record<Language, () => Promise<Record<string, unknown>>> = {
   es: loadEs,
 }
 
-export function isLanguage(value: unknown): value is Language {
-  return typeof value === 'string' && (LANGUAGES as readonly string[]).includes(value)
-}
+export const isLanguage = isAccountLanguage
 
 void i18n.use(initReactI18next).init({
   lng: 'en',

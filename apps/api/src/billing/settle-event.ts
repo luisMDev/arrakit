@@ -1,5 +1,12 @@
 import type { ScopedData } from '@arrakit/db'
-import type { Mail, Mailer } from '@arrakit/emails'
+import {
+  type Mailer,
+  type RenderedEmail,
+  downgradedEmail,
+  failedEmail,
+  receiptEmail,
+  renewEmail,
+} from '@arrakit/emails'
 import { PLAN_LABELS } from '@arrakit/plans'
 
 import { dayOf } from '../day'
@@ -12,16 +19,13 @@ import {
 } from './apply-billing-event'
 import {
   adminsOf,
+  billingLink,
   chargeOf,
-  cycleReceiptDue,
   daysUntil,
   downgradeDue,
-  downgradedMails,
-  failedMails,
-  receiptMails,
+  mailsOf,
   recipients,
-  renewMails,
-  shouldSendReceipt,
+  sendMails,
 } from './billing-mail'
 import type { BillingEvent, StripeGateway, SubscriptionEvent } from './stripe-gateway'
 import { subscriptionOfLookupKey } from './subscription-plan'
@@ -42,18 +46,16 @@ interface SettleDeps {
 export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promise<void> {
   const { data, stripe, mailer, webUrl, log } = deps
   const now = deps.now ?? Date.now
-  const billingLink = `${webUrl}/app/billing`
+  const links = { billing: billingLink(webUrl) }
 
   const ignored = (reason: string) => log.warn({ reason }, 'billing event ignored')
 
   const notSent = (organizationId: string, kind: MailKind, err: unknown) =>
     log.error({ err, organizationId, mail: kind }, 'billing email not sent')
 
-  async function sendAll(organizationId: string, kind: MailKind, mails: Mail[]) {
-    const sent = await Promise.allSettled(mails.map((mail) => mailer.send(mail)))
-    for (const result of sent) {
-      if (result.status === 'rejected') notSent(organizationId, kind, result.reason)
-    }
+  async function send(organizationId: string, kind: MailKind, email: RenderedEmail, to: string[]) {
+    if (to.length === 0) return notSent(organizationId, kind, new Error('no address to send to'))
+    await sendMails(mailer, mailsOf(email, to), (err) => notSent(organizationId, kind, err))
   }
 
   async function settleTopUp(topUp: EventOf<'top-up'>) {
@@ -101,56 +103,33 @@ export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promi
     const { organizationId, subscription } = found
     const paid = subscriptionOfLookupKey(subscription.lookupKey)
     if (paid?.cycle !== 'yearly') return
-    const billing = await stripe.billing(subscription.customerId, subscription.id)
-    if (!billing.subscription) {
-      throw new Error(`subscription ${subscription.id} has no period to show`)
-    }
-    const { periodEnd } = billing.subscription
-    const to = recipients(billing.customer?.email)
-    if (to.length === 0) {
-      return notSent(
-        organizationId,
-        'renewal',
-        new Error(`subscription ${subscription.id} has no billing email`),
-      )
-    }
-    await sendAll(
-      organizationId,
-      'renewal',
-      renewMails({
-        plan: PLAN_LABELS[paid.plan],
-        charge: chargeOf(upcoming.amount, billing.customer?.card ?? null),
-        renewsOn: dayOf(periodEnd),
-        daysLeft: daysUntil(periodEnd, now()),
-        to,
-        webOrigin: webUrl,
-      }),
-    )
+    const customer = await stripe.customer(subscription.customerId)
+    const email = renewEmail({
+      plan: PLAN_LABELS[paid.plan],
+      charge: chargeOf(upcoming.amount, customer.card),
+      renewsOn: dayOf(subscription.periodEnd),
+      daysLeft: daysUntil(subscription.periodEnd, now()),
+      links,
+    })
+    await send(organizationId, 'renewal', email, recipients(customer.email))
   }
 
-  async function settleCycleReceipt(invoice: EventOf<'invoice-paid'>) {
+  async function settleReceipt(invoice: EventOf<'invoice-paid'>) {
+    if (invoice.amount.amount === 0) return
     const found = await findSubscriptionOrganization(data, stripe, invoice.subscriptionId)
     if (found.kind === 'ignored') return ignored(found.reason)
     const { organizationId, subscription } = found
-    const { lookupKey } = subscription
-    const paid = subscriptionOfLookupKey(lookupKey)
-    if (!lookupKey || !paid || !cycleReceiptDue({ lookupKey, receiptFor: subscription.receiptFor }))
-      return
-    const billing = await stripe.billing(subscription.customerId, subscription.id)
-    if (!billing.subscription) {
-      throw new Error(`subscription ${subscription.id} has no period to show`)
-    }
-    const mails = receiptMails({
+    const paid = subscriptionOfLookupKey(subscription.lookupKey)
+    if (!paid) return ignored(`subscription ${subscription.id} bills no known price`)
+    const customer = await stripe.customer(subscription.customerId)
+    const email = receiptEmail({
       plan: PLAN_LABELS[paid.plan],
-      cycle: paid.cycle,
-      charge: chargeOf(invoice.amount, billing.customer?.card ?? null),
-      renewsOn: dayOf(billing.subscription.periodEnd),
-      invoiceUrl: invoice.pdfUrl ?? billingLink,
-      to: recipients(subscription.requestedBy, billing.customer?.email),
-      webOrigin: webUrl,
+      billing: paid.cycle,
+      charge: chargeOf(invoice.amount, customer.card),
+      renewsOn: dayOf(subscription.periodEnd),
+      links: { ...links, invoice: invoice.invoiceUrl ?? links.billing },
     })
-    await stripe.markReceipted(subscription.id, lookupKey)
-    await sendAll(organizationId, 'receipt', mails)
+    await send(organizationId, 'receipt', email, recipients(customer.email))
   }
 
   async function settleFailed(failed: EventOf<'invoice-failed'>) {
@@ -158,85 +137,41 @@ export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promi
     const found = await findSubscriptionOrganization(data, stripe, failed.subscriptionId)
     if (found.kind === 'ignored') return ignored(found.reason)
     const { organizationId, scope, subscription } = found
-    const [billing, members] = await Promise.all([
-      stripe.billing(subscription.customerId, subscription.id),
+    const [customer, members] = await Promise.all([
+      stripe.customer(subscription.customerId),
       scope.members.list(),
     ])
-    await sendAll(
+    const email = failedEmail({
+      charge: chargeOf(failed.amount, customer.card),
+      retryInDays: daysUntil(failed.nextAttempt, now()),
+      links,
+    })
+    await send(
       organizationId,
       'failed payment',
-      failedMails({
-        charge: chargeOf(failed.amount, billing.customer?.card ?? null),
-        retryInDays: daysUntil(failed.nextAttempt, now()),
-        to: recipients(billing.customer?.email, ...adminsOf(members)),
-        webOrigin: webUrl,
-      }),
+      email,
+      recipients(customer.email, ...adminsOf(members)),
     )
-  }
-
-  async function settleReceipt(outcome: Applied, event: SubscriptionEvent) {
-    const { subscription } = outcome
-    const { lookupKey } = subscription
-    const paid = subscriptionOfLookupKey(lookupKey)
-    if (!lookupKey || !paid || outcome.plan === 'free' || subscription.receiptFor === lookupKey) {
-      return
-    }
-    const previousLookupKey = event.previousLookupKey ?? null
-    if (previousLookupKey && cycleReceiptDue({ lookupKey, receiptFor: previousLookupKey })) {
-      await stripe.markReceipted(subscription.id, previousLookupKey)
-      return
-    }
-    const due = shouldSendReceipt({
-      previousLookupKey,
-      previousPlan: outcome.previousPlan,
-      plan: outcome.plan,
-      lookupKey,
-      receiptFor: subscription.receiptFor,
-    })
-    if (due) {
-      const billing = await stripe.billing(subscription.customerId, subscription.id)
-      const invoice = billing.invoices.find((shown) => shown.status === 'paid')
-      if (!invoice || !billing.subscription) {
-        throw new Error(`subscription ${subscription.id} has no paid invoice or period to show`)
-      }
-      const to = recipients(subscription.requestedBy, billing.customer?.email)
-      if (to.length === 0) {
-        throw new Error(`subscription ${subscription.id} has no address to send to`)
-      }
-      await sendAll(
-        outcome.organizationId,
-        'receipt',
-        receiptMails({
-          plan: PLAN_LABELS[paid.plan],
-          cycle: paid.cycle,
-          charge: chargeOf(invoice.total, billing.customer?.card ?? null),
-          renewsOn: dayOf(billing.subscription.periodEnd),
-          invoiceUrl: invoice.pdfUrl ?? billingLink,
-          to,
-          webOrigin: webUrl,
-        }),
-      )
-    }
-    if (due || previousLookupKey) await stripe.markReceipted(subscription.id, lookupKey)
   }
 
   async function settleDowngrade(outcome: Applied) {
     const { subscription, previousPlan, plan } = outcome
     if (!downgradeDue({ previousPlan, plan, cancellationReason: subscription.cancellationReason }))
       return
-    const [billing, members] = await Promise.all([
-      stripe.billing(subscription.customerId, null),
+    const [customer, members] = await Promise.all([
+      stripe.customer(subscription.customerId),
       data.forOrganization(outcome.organizationId).members.list(),
     ])
-    await sendAll(
+    const email = downgradedEmail({
+      organization: outcome.organization.name,
+      plan: PLAN_LABELS[previousPlan],
+      links,
+    })
+    await send(
       outcome.organizationId,
       'downgraded',
-      downgradedMails({
-        organization: outcome.organization,
-        plan: PLAN_LABELS[previousPlan],
-        to: recipients(billing.customer?.email, ...adminsOf(members)),
-        webOrigin: webUrl,
-      }),
+      email,
+      recipients(customer.email, ...adminsOf(members)),
     )
   }
 
@@ -244,11 +179,6 @@ export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promi
     const outcome = await applyBillingEvent(data, stripe, event)
     if (outcome.kind === 'ignored') return ignored(outcome.reason)
     log.info({ organizationId: outcome.organizationId, plan: outcome.plan }, 'plan updated')
-    try {
-      await settleReceipt(outcome, event)
-    } catch (err) {
-      notSent(outcome.organizationId, 'receipt', err)
-    }
     try {
       await settleDowngrade(outcome)
     } catch (err) {
@@ -264,7 +194,7 @@ export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promi
     case 'invoice-upcoming':
       return settleRenewal(event)
     case 'invoice-paid':
-      return settleCycleReceipt(event)
+      return settleReceipt(event)
     case 'invoice-failed':
       return settleFailed(event)
     case 'subscription':

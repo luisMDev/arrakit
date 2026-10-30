@@ -1,5 +1,5 @@
 import type { Me } from '@arrakit/contract'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { type QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRouteWithContext,
@@ -12,21 +12,28 @@ import { render } from '@testing-library/react'
 
 import { Toaster } from '#/components/ui/sonner'
 import '#/i18n'
+import { settingsSearch } from '#/components/settings/settings-page'
 import { requireUser } from '#/lib/guards/require-user'
-import { meAs as sharedMeAs } from '#/test/rpc'
+import { meAs as sharedMeAs, testQueryClient } from '#/test/rpc'
 
 import { AppShell } from './app-shell'
 import { HomePage } from './home-page'
 import { NotFoundPage } from './not-found-page'
-import { onPaidPlan } from './on-paid-plan'
+import { onPaidPlan, welcomeSearch } from './on-paid-plan'
 import { RootLayout } from './root-layout'
 import { ThemeProvider } from './theme-provider'
-import { UnavailablePage } from './unavailable-page'
+import { UnavailablePage, unavailableSearch } from './unavailable-page'
 import { viewTransitionRouterOptions } from './view-transitions'
 import { WelcomePage } from './welcome-page'
 
 export const meAs = (overrides: Partial<Me> = {}): Me =>
   sharedMeAs({ email: 'ana@acme.com', name: 'Ana Ruiz', plan: 'pro', seats: 3, ...overrides })
+
+const SECTION_TITLES: Record<string, string> = {
+  account: 'Account',
+  members: 'Members',
+  billing: 'Billing',
+}
 
 function Heading({ title, section }: { title: string; section?: string }) {
   return (
@@ -38,7 +45,7 @@ function Heading({ title, section }: { title: string; section?: string }) {
 }
 
 /** The shell's routes over memory history, with stand-ins for other modules' screens. */
-export function renderApp(url: string, { queryClient = new QueryClient() } = {}) {
+export function renderApp(url: string, { queryClient = testQueryClient() } = {}) {
   const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({
     component: RootLayout,
   })
@@ -62,10 +69,7 @@ export function renderApp(url: string, { queryClient = new QueryClient() } = {})
   const unavailable = createRoute({
     getParentRoute: () => rootRoute,
     path: '/unavailable',
-    validateSearch: (search: Record<string, unknown>): { reason?: 'forbidden'; next?: string } => ({
-      ...(search.reason === 'forbidden' ? { reason: 'forbidden' as const } : {}),
-      ...(typeof search.next === 'string' ? { next: search.next } : {}),
-    }),
+    validateSearch: unavailableSearch,
     component: function Unavailable() {
       return <UnavailablePage {...unavailable.useSearch()} />
     },
@@ -77,13 +81,14 @@ export function renderApp(url: string, { queryClient = new QueryClient() } = {})
     component: AppShell,
   })
   const home = createRoute({ getParentRoute: () => app, path: '/', component: HomePage })
-  const settings = ['settings:Account', 'members:Members', 'billing:Billing'].map((entry) => {
-    const [path, section] = entry.split(':') as [string, string]
-    return createRoute({
-      getParentRoute: () => app,
-      path,
-      component: () => <Heading title="Settings" section={section} />,
-    })
+  const settings = createRoute({
+    getParentRoute: () => app,
+    path: '/settings',
+    validateSearch: settingsSearch,
+    component: function Settings() {
+      const { section = 'account' } = settings.useSearch()
+      return <Heading title="Settings" section={SECTION_TITLES[section] ?? section} />
+    },
   })
   const plans = createRoute({
     getParentRoute: () => app,
@@ -93,8 +98,7 @@ export function renderApp(url: string, { queryClient = new QueryClient() } = {})
   const welcome = createRoute({
     getParentRoute: () => app,
     path: '/welcome',
-    validateSearch: (search: Record<string, unknown>): { session_id?: string } =>
-      typeof search.session_id === 'string' ? { session_id: search.session_id } : {},
+    validateSearch: welcomeSearch,
     beforeLoad: onPaidPlan,
     component: WelcomePage,
   })
@@ -113,7 +117,7 @@ export function renderApp(url: string, { queryClient = new QueryClient() } = {})
     signin,
     profile,
     unavailable,
-    app.addChildren([home, ...settings, plans, welcome, appCatchAll]),
+    app.addChildren([home, settings, plans, welcome, appCatchAll]),
     catchAll,
   ])
   const router = createRouter({

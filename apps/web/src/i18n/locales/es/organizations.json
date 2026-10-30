@@ -9,8 +9,6 @@
     "checkStart": "Revisa tu",
     "checkEnd": "bandeja de entrada.",
     "sentBody": "Abre el enlace nuevo en este navegador para entrar. ¿No está? Mira en spam.",
-    "takenTitle": "Ya perteneces a una organización.",
-    "takenBody": "Por ahora, cada persona está en una sola organización. Inicia sesión para abrir la tuya.",
     "signIn": "Iniciar sesión",
     "closedTitle": "Esta invitación no está abierta.",
     "closedBody": "Se canceló, caducó o se envió a otro email. Pide a quien te invitó que te la vuelva a enviar.",
@@ -18,14 +16,16 @@
     "failedBody": "No se ha perdido nada. Vuelve a abrir el enlace en un momento.",
     "workEmail": "Escribe tu email de trabajo, como nombre@empresa.com.",
     "tooManyLinks": "Has pedido demasiados enlaces. Espera un minuto y vuelve a intentarlo.",
-    "linkNotSent": "No se ha podido enviar el enlace. Inténtalo de nuevo."
+    "linkNotSent": "No se ha podido enviar el enlace. Inténtalo de nuevo.",
+    "alreadyTitle": "Ya estás en esta organización.",
+    "alreadyBody": "Abre la app para trabajar en ella.",
+    "openApp": "Abrir la app"
   },
   "settings": {
     "generalSettings": {
       "title": "General",
       "organizationName": "Nombre de la organización",
       "notSaved": "No se han podido guardar los ajustes de la organización. Inténtalo de nuevo.",
-      "notLoaded": "No se han podido cargar los ajustes de tu organización. Recarga la página.",
       "slug": "Slug: {{slug}}"
     },
     "securitySettings": {
@@ -36,7 +36,40 @@
       "confirmTitle": "¿Eliminar la organización?",
       "notDeleted": "No se ha podido eliminar tu organización. Inténtalo de nuevo.",
       "deleted": "Tu organización se ha eliminado.",
-      "ownerOnly": "Solo el propietario puede eliminar la organización."
+      "ownerOnly": "Solo el propietario puede eliminar la organización.",
+      "leaveOrganization": "Salir de la organización",
+      "leaveHint": "Pierdes el acceso a {{organization}} hasta que alguien te vuelva a invitar.",
+      "leave": "Salir",
+      "confirmLeaveTitle": "¿Salir de {{organization}}?",
+      "left": "Has salido de {{organization}}.",
+      "notLeft": "No se ha podido salir de la organización. Inténtalo de nuevo."
     }
+  },
+  "orgErrors": {
+    "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED": "La organización no tiene plazas libres. Su propietario puede cambiar de plan para añadir a más gente.",
+    "USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION": "Ya está en la organización.",
+    "USER_IS_ALREADY_INVITED_TO_THIS_ORGANIZATION": "Ya está invitado.",
+    "YOU_ARE_NOT_ALLOWED_TO_INVITE_USERS_TO_THIS_ORGANIZATION": "No puedes invitar a gente a esta organización.",
+    "YOU_ARE_NOT_ALLOWED_TO_INVITE_USER_WITH_THIS_ROLE": "No puedes invitar a alguien con ese rol.",
+    "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_MEMBER": "No puedes cambiar el rol de esta persona.",
+    "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_MEMBER": "No puedes quitar a esta persona.",
+    "YOU_CANNOT_LEAVE_THE_ORGANIZATION_AS_THE_ONLY_OWNER": "Eres el único propietario de la organización, así que no puedes salir.",
+    "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_ORGANIZATION": "No puedes cambiar el nombre de esta organización.",
+    "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_ORGANIZATION": "Solo el propietario elimina la organización.",
+    "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_TEAM": "No puedes crear equipos.",
+    "YOU_ARE_NOT_ALLOWED_TO_CREATE_TEAMS_IN_THIS_ORGANIZATION": "No puedes crear equipos.",
+    "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_TEAM": "No puedes cambiar este equipo.",
+    "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_TEAM": "No puedes eliminar este equipo.",
+    "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_TEAM_MEMBER": "No puedes añadir gente a los equipos.",
+    "YOU_ARE_NOT_ALLOWED_TO_REMOVE_A_TEAM_MEMBER": "No puedes sacar a gente de los equipos.",
+    "TEAM_ALREADY_EXISTS": "Ya hay un equipo con ese nombre.",
+    "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_ROLE": "No puedes crear este rol: da permisos que no tienes.",
+    "YOU_ARE_NOT_ALLOWED_TO_UPDATE_A_ROLE": "No puedes cambiar este rol: daría permisos que no tienes.",
+    "YOU_ARE_NOT_ALLOWED_TO_DELETE_A_ROLE": "No puedes eliminar roles.",
+    "ROLE_NAME_IS_ALREADY_TAKEN": "Ya hay un rol con ese nombre.",
+    "ROLE_IS_ASSIGNED_TO_MEMBERS": "Alguien tiene este rol. Dale otro rol primero.",
+    "CANNOT_DELETE_A_PRE_DEFINED_ROLE": "Propietario, Administrador y Miembro no se pueden eliminar.",
+    "TOO_MANY_ROLES": "La organización ya tiene todos los roles que puede tener.",
+    "INVALID_RESOURCE": "Uno de esos permisos no existe."
   }
 }

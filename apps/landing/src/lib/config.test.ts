@@ -7,7 +7,7 @@ describe('appLink', () => {
     expect(appLink('/pricing')).toMatch(/^https?:\/\/[^/]+\/pricing$/)
   })
 
-  it.each(['/pricing', '/signin', '/start'])('points %s at the app host', (path) => {
+  it.each(['/pricing', '/signin', '/signup'])('points %s at the app host', (path) => {
     expect(appLink(path, 'https://app.acme.test/')).toBe(`https://app.acme.test${path}`)
   })
 })

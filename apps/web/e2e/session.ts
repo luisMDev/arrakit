@@ -28,8 +28,29 @@ export async function signIn(page: Page, email: string, callbackURL = '/app') {
   await page.goto(await magicLinkFor(page.request, email))
 }
 
-export const createOrganization = (page: Page, name: string, personName?: string) =>
-  rpc<{ id: string }>(page, 'organizations/create', { name, personName, termsAccepted: true })
+/** Calls Better Auth's `/api/auth/organization/<path>` as the user signed in on `page`. */
+async function organizationApi<T>(page: Page, path: string, body: unknown): Promise<T> {
+  const res = await page.request.post(`/api/auth/organization/${path}`, {
+    data: body,
+    headers: { origin: WEB_ORIGIN },
+  })
+  expect(res.ok(), await res.text()).toBe(true)
+  return (await res.json()) as T
+}
+
+/** Creates the person's organization as the profile step does, and makes it the active one. */
+async function createOrganization(page: Page, name: string, personName?: string) {
+  const created = await rpc<{ id: string }>(page, 'onboarding/create', {
+    name,
+    personName,
+    termsAccepted: true,
+  })
+  await organizationApi(page, 'set-active', { organizationId: created.id })
+  return created
+}
+
+export const inviteMember = (page: Page, organizationId: string, email: string, role = 'member') =>
+  organizationApi<{ id: string }>(page, 'invite-member', { email, role, organizationId })
 
 /** Posts `body` to the Stripe webhook as the API's fake gateway signs it. */
 export async function stripeWebhook(page: Page, body: unknown) {
@@ -38,4 +59,82 @@ export async function stripeWebhook(page: Page, body: unknown) {
     data: JSON.stringify(body),
   })
   expect(res.status(), await res.text()).toBe(204)
+}
+
+/** Signs a new person in on `page` and creates their organization; they are its owner. */
+export async function signedInOwner(
+  page: Page,
+  {
+    who = 'owner',
+    organization = 'Acme',
+    personName,
+    callbackURL,
+  }: { who?: string; organization?: string; personName?: string; callbackURL?: string } = {},
+) {
+  const email = uniqueEmail(who)
+  await signIn(page, email, callbackURL)
+  const { id } = await createOrganization(page, organization, personName)
+  return { email, organizationId: id }
+}
+
+type LookupKey = 'pro_monthly' | 'pro_yearly' | 'team_monthly' | 'team_yearly'
+
+const PRICE_CENTS: Record<LookupKey, number> = {
+  pro_monthly: 2_000,
+  pro_yearly: 19_200,
+  team_monthly: 5_000,
+  team_yearly: 48_000,
+}
+
+const RENEWAL = Date.UTC(2027, 9, 4) / 1000
+
+/**
+ * Subscribes the organization to `lookupKey` through the fake Stripe webhook, paid with a Visa
+ * ending 4242, and waits until the person on `page` sees the new plan.
+ */
+export async function payFor(
+  page: Page,
+  organizationId: string,
+  lookupKey: LookupKey,
+  { billingEmail = 'finance@billing.test', invoiceTo = 'Billing Co SL' } = {},
+) {
+  const slug = organizationId.slice(0, 8)
+  const customerId = `cus_${slug}`
+  const subscriptionId = `sub_${slug}`
+  const amount = { amount: PRICE_CENTS[lookupKey], currency: 'usd' }
+  await stripeWebhook(page, {
+    subscriptionId,
+    organizationId,
+    subscribe: { id: subscriptionId, customerId, organizationId, status: 'active', lookupKey },
+    bill: {
+      customerId,
+      snapshot: {
+        subscription: {
+          status: 'active',
+          lookupKey,
+          periodEnd: RENEWAL,
+          cancelAtPeriodEnd: false,
+          amount,
+          scheduled: null,
+        },
+        customer: {
+          email: billingEmail,
+          name: invoiceTo,
+          taxId: null,
+          card: { brand: 'visa', last4: '4242' },
+        },
+        invoices: [
+          {
+            id: `in_${slug}`,
+            created: Date.UTC(2026, 9, 4) / 1000,
+            total: amount,
+            status: 'paid',
+            pdfUrl: 'https://pay.stripe.test/in_1.pdf',
+          },
+        ],
+      },
+    },
+  })
+  const plan = lookupKey.split('_')[0]
+  await expect.poll(async () => (await rpc<{ plan: string }>(page, 'me/get')).plan).toBe(plan)
 }

@@ -10,28 +10,25 @@ const R2 = {
 }
 
 describe('loadDataConfig', () => {
-  it('falls back to PGlite and local storage in development', () => {
+  it('falls back to PGlite and in-memory storage in development', () => {
     expect(loadDataConfig({})).toEqual({
       databaseUrl: undefined,
       pgliteDir: '.data/pglite',
       pgliteReset: false,
-      storageDir: '.data/storage',
       s3: undefined,
     })
   })
 
-  it('reads Postgres, a PGlite dir and a storage dir', () => {
+  it('reads Postgres and a PGlite dir', () => {
     const config = loadDataConfig({
       DATABASE_URL: 'postgres://localhost/arrakit',
       PGLITE_DIR: '/tmp/pg',
       PGLITE_RESET: '1',
-      STORAGE_DIR: '/tmp/files',
     })
     expect(config).toMatchObject({
       databaseUrl: 'postgres://localhost/arrakit',
       pgliteDir: '/tmp/pg',
       pgliteReset: true,
-      storageDir: '/tmp/files',
     })
   })
 
@@ -59,16 +56,5 @@ describe('loadDataConfig', () => {
     expect(
       loadDataConfig({ NODE_ENV: 'production', DATABASE_URL: 'postgres://db/a', ...R2 }).s3,
     ).toBeDefined()
-  })
-
-  it('signs local storage URLs with a secret derived from BETTER_AUTH_SECRET, at the web origin', () => {
-    const config = loadDataConfig({
-      BETTER_AUTH_SECRET: 'x'.repeat(40),
-      BETTER_AUTH_URL: 'http://localhost:5200/path',
-    })
-    expect(config.storageSigning?.baseUrl).toBe('http://localhost:5200')
-    expect(config.storageSigning?.secret).toMatch(/^[\w-]{43}$/)
-    expect(config.storageSigning?.secret).not.toContain('x'.repeat(40))
-    expect(loadDataConfig({}).storageSigning).toBeUndefined()
   })
 })

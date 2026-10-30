@@ -1,9 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { SettingsPage } from '#/components/settings/settings-page'
+import { SettingsPage, settingsSearch } from '#/components/settings/settings-page'
 import { titled } from '#/lib/page-title'
 
 export const Route = createFileRoute('/app/settings')({
+  validateSearch: settingsSearch,
   head: titled('settings'),
-  component: () => <SettingsPage section="account" />,
+  component: function Settings() {
+    return <SettingsPage section={Route.useSearch().section} />
+  },
 })

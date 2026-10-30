@@ -1,20 +1,15 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { answer, api, quiet } from '#/test/rpc'
+import { answer, quiet, setupTestApi } from '#/test/rpc'
 
 import { meAs, renderApp } from './testing'
 
 const signOut = vi.hoisted(() => vi.fn())
 vi.mock('#/lib/auth-client', () => ({ authClient: { signOut } }))
 
-beforeAll(() => api.listen({ onUnhandledFrame: 'error' }))
-afterEach(() => {
-  api.resetHandlers()
-  vi.restoreAllMocks()
-})
-afterAll(() => api.close())
+setupTestApi({ onUnhandledFrame: 'error' })
 
 async function open(url = '/app', me = meAs()) {
   answer('me/get', me)
@@ -104,8 +99,8 @@ describe('Signed-in shell', () => {
 
   it.each([
     ['Settings', '/app/settings', 'Account'],
-    ['Members', '/app/members', 'Members'],
-    ['Billing', '/app/billing', 'Billing'],
+    ['Members', '/app/settings?section=members', 'Members'],
+    ['Billing', '/app/settings?section=billing', 'Billing'],
   ])('reaches %s with its section heading', async (item, path, section) => {
     const { openMenu, location, user } = await open()
     await user.click(within(await openMenu()).getByRole('link', { name: item }))
@@ -172,14 +167,14 @@ describe('requireUser', () => {
     expect(report).toHaveBeenCalled()
   })
 
-  it('keeps a person the API forbids off sign in, and says who can help', async () => {
+  it('sends a person the API refuses to Unavailable, like any other failure', async () => {
     quiet()
     answer('me/get', 403)
     const { location } = renderApp('/app/settings')
     expect(
-      await screen.findByRole('heading', { name: "Your account can't open Arrakit right now." }),
+      await screen.findByRole('heading', { name: "Couldn't reach Arrakit." }),
     ).toBeInTheDocument()
-    expect(location()).toBe('/unavailable?reason=forbidden')
+    expect(location()).toBe('/unavailable?next=%2Fapp%2Fsettings')
   })
 
   it('sends a person with no organization to create one', async () => {

@@ -8,6 +8,8 @@
     "general": "General",
     "usage": "Usage",
     "members": "Members",
+    "teams": "Teams",
+    "roles": "Roles",
     "billing": "Billing",
     "security": "Security and data",
     "accountSettings": {
@@ -47,7 +49,6 @@
       "notDeleted": "Couldn't delete your account. Try again.",
       "notSignedOut": "Couldn't sign out your other devices. Try again.",
       "notLoaded": "Couldn't load your account. Reload the page.",
-      "devicesNotLoaded": "Couldn't load your devices. Reload the page.",
       "enterName": "Enter your name.",
       "signedOut": "Signed out on your other devices.",
       "deleted": "Your account is deleted.",

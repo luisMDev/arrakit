@@ -30,10 +30,9 @@ describe('the OAuth 2.1 provider for the MCP connector', () => {
 
   const owner = async (email: string, name: string) => {
     const cookie = await t.magicLinkSignIn(email)
-    const organization = await t.data.createOrganization(name, {
-      userId: await sessionUserId(cookie),
-      termsAccepted: true,
-    })
+    const organization = await t
+      .client(new Headers({ cookie }))
+      .onboarding.create({ name, termsAccepted: true })
     return { cookie, organization }
   }
 
@@ -81,17 +80,8 @@ describe('the OAuth 2.1 provider for the MCP connector', () => {
     ])
   })
 
-  it('closes the organization plugin routes and the session-to-JWT route', async () => {
+  it('closes the session-to-JWT route', async () => {
     const { headers } = await t.signIn({ email: 'closed@acme.com' })
-    expect((await t.request('/api/auth/organization/list', { headers })).status).toBe(404)
-    for (const path of ['/api/auth/organization/create', '/api/auth/organization/invite-member']) {
-      const res = await t.request(path, {
-        method: 'POST',
-        headers: { ...Object.fromEntries(headers), 'content-type': 'application/json' },
-        body: JSON.stringify({ name: 'X', slug: 'x', email: 'a@b.com', role: 'member' }),
-      })
-      expect(res.status).toBe(404)
-    }
     expect((await t.request('/api/auth/token', { headers })).status).toBe(404)
   })
 
