@@ -13,7 +13,7 @@ export const BUCKET_CORS = {
 } as const
 
 /** The web origins (scheme, host, port; no path) the bucket answers. */
-export function corsOrigins(origins: readonly string[]): string[] {
+function corsOrigins(origins: readonly string[]): string[] {
   if (origins.length === 0) throw new Error('[data] bucket CORS needs at least one web origin')
   return origins.map((origin) => {
     let parsed: URL

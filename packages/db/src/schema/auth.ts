@@ -1,11 +1,11 @@
+import { type AccountLanguage } from '@arrakit/address'
 import { sql } from 'drizzle-orm'
 import { boolean, check, index, pgTable, text, uuid } from 'drizzle-orm/pg-core'
 
 import { at, createdAt, updatedAt } from './columns'
 import { organizations } from './organizations'
 
-export const ACCOUNT_LANGUAGES = ['en', 'es'] as const
-export type AccountLanguage = (typeof ACCOUNT_LANGUAGES)[number]
+export { ACCOUNT_LANGUAGES, type AccountLanguage } from '@arrakit/address'
 
 export const users = pgTable(
   'users',

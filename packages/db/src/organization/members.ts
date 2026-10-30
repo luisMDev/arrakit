@@ -1,4 +1,11 @@
-import { isWorkEmail, normalizeEmail } from '@arrakit/address'
+import {
+  type AssignableRole,
+  type OrganizationRole,
+  isAdminRole,
+  isWorkEmail,
+  normalizeEmail,
+  toOrganizationRole,
+} from '@arrakit/address'
 import { PLAN_LABELS, PLAN_OFFERS, type Plan } from '@arrakit/plans'
 import { type SQL, and, asc, eq, gt, inArray, ne, sql } from 'drizzle-orm'
 
@@ -15,11 +22,10 @@ import type { OrganizationId } from '../organization-id'
 import { invitations, members, organizations, users } from '../schema/index'
 import { revokeGrants } from '../data/organizations'
 
-export type OrganizationRole = 'owner' | 'admin' | 'member'
-export type AssignableRole = 'admin' | 'member'
+export type { AssignableRole, OrganizationRole }
 
-export const INVITE_DAYS = 7
-export const INVITE_MS = INVITE_DAYS * 24 * 60 * 60 * 1000
+const INVITE_DAYS = 7
+const INVITE_MS = INVITE_DAYS * 24 * 60 * 60 * 1000
 
 export interface MemberView {
   userId: string
@@ -55,17 +61,10 @@ export interface OrganizationMembers {
   remove(actorUserId: string, email: string): Promise<void>
 }
 
-const ROLES: readonly string[] = ['owner', 'admin', 'member']
-
-export const toOrganizationRole = (role: string): OrganizationRole =>
-  ROLES.includes(role) ? (role as OrganizationRole) : 'member'
-
 export const toAssignableRole = (role: string | null): AssignableRole =>
   role === 'admin' ? 'admin' : 'member'
 
-const isAdminRole = (role: string) => role === 'owner' || role === 'admin'
-
-export interface PolicyMember {
+interface PolicyMember {
   userId: string
   organizationId: string
   role: string
@@ -84,53 +83,39 @@ export interface MemberChangeInput {
   admins: number
 }
 
-export type MemberChangeVerdict = { ok: true } | { ok: false; reason: string }
-
-const ALLOWED: MemberChangeVerdict = { ok: true }
-const refuse = (reason: string): MemberChangeVerdict => ({ ok: false, reason })
-
-/** Whether `actor` may make `change`. Pure: callers read the rows under a lock. */
-export function checkMemberChange({
-  actor,
-  change,
-  owners,
-  admins,
-}: MemberChangeInput): MemberChangeVerdict {
+/** Pure: callers read the rows under a lock. */
+export function requireMemberChange({ actor, change, owners, admins }: MemberChangeInput): void {
+  const refuse = (reason: string): never => {
+    throw new MemberChangeRefusedError(reason)
+  }
   const organizationId =
     change.kind === 'invite' ? change.organizationId : change.target.organizationId
-  if (actor.organizationId !== organizationId)
-    return refuse('That person is not in your organization.')
-  if (!isAdminRole(actor.role)) return refuse('Only an admin manages members.')
+  if (actor.organizationId !== organizationId) refuse('That person is not in your organization.')
+  if (!isAdminRole(actor.role)) refuse('Only an admin manages members.')
   const isOwner = actor.role === 'owner'
 
   if (change.kind !== 'remove') {
-    if (change.role === 'owner')
-      return refuse('No one is made owner: the organization has its creator.')
+    if (change.role === 'owner') refuse('No one is made owner: the organization has its creator.')
     if (change.role !== 'admin' && change.role !== 'member')
-      return refuse(`There is no role "${change.role}".`)
+      refuse(`There is no role "${change.role}".`)
   }
-  if (change.kind === 'invite') return ALLOWED
+  if (change.kind === 'invite') return
 
   const { target } = change
   const self = target.userId === actor.userId
   const newRole = change.kind === 'role' ? change.role : null
   if (target.role === 'owner') {
-    if (!self) return refuse("Only the owner changes the owner's role or seat.")
-    return owners > 1 ? ALLOWED : refuse("You are the organization's only owner.")
+    if (!self) refuse("Only the owner changes the owner's role or seat.")
+    if (owners <= 1) refuse("You are the organization's only owner.")
+    return
   }
   if (target.role === 'admin') {
-    if (newRole === 'admin') return ALLOWED
-    if (!self && !isOwner) return refuse('Only the owner demotes or removes an admin.')
-    if (self && owners + admins - 1 < 1) return refuse("You are the organization's last admin.")
-    return ALLOWED
+    if (newRole === 'admin') return
+    if (!self && !isOwner) refuse('Only the owner demotes or removes an admin.')
+    if (self && owners + admins - 1 < 1) refuse("You are the organization's last admin.")
+    return
   }
-  if (newRole === 'admin' && !isOwner) return refuse('Only the owner names admins.')
-  return ALLOWED
-}
-
-export function requireMemberChange(input: MemberChangeInput): void {
-  const verdict = checkMemberChange(input)
-  if (!verdict.ok) throw new MemberChangeRefusedError(verdict.reason)
+  if (newRole === 'admin' && !isOwner) refuse('Only the owner names admins.')
 }
 
 export function seatLimitError(plan: Plan): SeatLimitError {
@@ -142,7 +127,7 @@ export function seatLimitError(plan: Plan): SeatLimitError {
 
 type InvitationRow = typeof invitations.$inferSelect
 
-export const toPending = (row: InvitationRow): PendingInvitation => ({
+const toPending = (row: InvitationRow): PendingInvitation => ({
   id: row.id,
   email: row.email,
   role: toAssignableRole(row.role),
@@ -176,8 +161,10 @@ export async function memberCount(tx: Database, organizationId: string): Promise
 
 /** Members plus live invitations other than `holding`'s fill the plan: SeatLimitError. */
 async function requireSeat(tx: Database, organizationId: string, plan: Plan, holding: string) {
-  const [held] = await tx
-    .select({ n: sql<number>`count(*)::int` })
+  const [taken] = await tx
+    .select({
+      n: sql<number>`(select count(*)::int from ${members} where ${eq(members.organizationId, organizationId)}) + count(*)::int`,
+    })
     .from(invitations)
     .where(
       and(
@@ -186,9 +173,7 @@ async function requireSeat(tx: Database, organizationId: string, plan: Plan, hol
         ne(invitations.email, holding),
       ),
     )
-  if ((await memberCount(tx, organizationId)) + (held?.n ?? 0) >= PLAN_OFFERS[plan].seats) {
-    throw seatLimitError(plan)
-  }
+  if ((taken?.n ?? 0) >= PLAN_OFFERS[plan].seats) throw seatLimitError(plan)
 }
 
 const memberColumns = {

@@ -43,28 +43,30 @@ async function readAccount(
   userId: string,
   currentSessionId: string,
 ): Promise<Account | null> {
-  const [person] = await db
-    .select({
-      name: users.name,
-      email: users.email,
-      language: users.language,
-      timeZone: users.timeZone,
-      productNews: users.emailProductNews,
-    })
-    .from(users)
-    .where(eq(users.id, userId))
+  const [[person], [social], live] = await Promise.all([
+    db
+      .select({
+        name: users.name,
+        email: users.email,
+        language: users.language,
+        timeZone: users.timeZone,
+        productNews: users.emailProductNews,
+      })
+      .from(users)
+      .where(eq(users.id, userId)),
+    db
+      .select({ providerId: accounts.providerId })
+      .from(accounts)
+      .where(and(eq(accounts.userId, userId), inArray(accounts.providerId, SOCIAL)))
+      .orderBy(desc(accounts.createdAt))
+      .limit(1),
+    db
+      .select({ id: sessions.id, userAgent: sessions.userAgent })
+      .from(sessions)
+      .where(and(eq(sessions.userId, userId), gt(sessions.expiresAt, sql`now()`)))
+      .orderBy(desc(sessions.createdAt)),
+  ])
   if (!person) return null
-  const [social] = await db
-    .select({ providerId: accounts.providerId })
-    .from(accounts)
-    .where(and(eq(accounts.userId, userId), inArray(accounts.providerId, SOCIAL)))
-    .orderBy(desc(accounts.createdAt))
-    .limit(1)
-  const live = await db
-    .select({ id: sessions.id, userAgent: sessions.userAgent })
-    .from(sessions)
-    .where(and(eq(sessions.userId, userId), gt(sessions.expiresAt, sql`now()`)))
-    .orderBy(desc(sessions.createdAt))
   return {
     user: {
       name: person.name,
@@ -85,25 +87,21 @@ export function accountData(ctx: DataContext) {
     account: (userId: string, currentSessionId: string) =>
       readAccount(ctx.db, userId, currentSessionId),
 
-    /** Writes only the keys given, then re-reads in the same transaction. */
     async updateAccount(
       userId: string,
       sessionId: string,
       changes: AccountChanges,
     ): Promise<Account | null> {
-      return ctx.db.transaction(async (rawTx) => {
-        const tx = rawTx as unknown as Database
-        const set = {
-          name: changes.name,
-          language: changes.language,
-          timeZone: changes.timeZone,
-          emailProductNews: changes.emails?.productNews,
-        }
-        if (Object.values(set).some((value) => value !== undefined)) {
-          await tx.update(users).set(set).where(eq(users.id, userId))
-        }
-        return readAccount(tx, userId, sessionId)
-      })
+      const set = {
+        name: changes.name,
+        language: changes.language,
+        timeZone: changes.timeZone,
+        emailProductNews: changes.emails?.productNews,
+      }
+      if (Object.values(set).some((value) => value !== undefined)) {
+        await ctx.db.update(users).set(set).where(eq(users.id, userId))
+      }
+      return readAccount(ctx.db, userId, sessionId)
     },
 
     /** Unknown people want every email. */
@@ -111,7 +109,7 @@ export function accountData(ctx: DataContext) {
       const [person] = await ctx.db
         .select({ wants: users.emailProductNews })
         .from(users)
-        .where(eq(sql`lower(${users.email})`, normalizeEmail(email)))
+        .where(eq(users.email, normalizeEmail(email)))
       return person?.wants ?? true
     },
 

@@ -120,5 +120,3 @@ export function urlSigner(signing: UrlSigning) {
 
   return { url, serve }
 }
-
-export type UrlSigner = ReturnType<typeof urlSigner>

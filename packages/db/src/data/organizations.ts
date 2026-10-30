@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 
 import type { Database } from '../connection'
 import type { DataContext } from '../context'
@@ -20,10 +20,16 @@ export async function revokeGrants(
   organizationId: string,
   userId?: string,
 ): Promise<void> {
-  for (const table of [oauthAccessTokens, oauthRefreshTokens, oauthConsents]) {
+  const granted = (
+    table: typeof oauthAccessTokens | typeof oauthRefreshTokens | typeof oauthConsents,
+  ) => {
     const own = eq(table.referenceId, organizationId)
-    await tx.delete(table).where(userId ? and(own, eq(table.userId, userId)) : own)
+    return userId ? and(own, eq(table.userId, userId)) : own
   }
+  await tx.execute(sql`
+    with access as (delete from ${oauthAccessTokens} where ${granted(oauthAccessTokens)}),
+      refresh as (delete from ${oauthRefreshTokens} where ${granted(oauthRefreshTokens)})
+    delete from ${oauthConsents} where ${granted(oauthConsents)}`)
 }
 
 export function organizationsData(ctx: DataContext) {

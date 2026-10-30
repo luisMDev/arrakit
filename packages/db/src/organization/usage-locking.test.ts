@@ -60,10 +60,15 @@ describe('usage row lock (emitted SQL)', () => {
     expect(query).toMatch(/for no key update\s*$/)
   }
 
-  it('locks the organization row before reading balances', async () => {
+  it('locks the organization row only to write a missing grant before reading balances', async () => {
     const usage = await scope()
-    locksOrganizationRow(await firstQueryOf(() => usage.summary()))
-    locksOrganizationRow(await firstQueryOf(() => usage.check('credits', 1)))
+    queries.length = 0
+    await usage.summary()
+    expect(queries.some((q) => /for no key update\s*$/.test(q))).toBe(true)
+    queries.length = 0
+    await usage.summary()
+    await usage.check('credits', 1)
+    expect(queries.some((q) => /for no key update/.test(q))).toBe(false)
   })
 
   it('locks the organization row before spending or setting a level', async () => {

@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm'
 
 import type { DataContext } from './context'
 
-export type ProbeState = 'up' | 'down'
+type ProbeState = 'up' | 'down'
 export interface HealthReport {
   status: 'ok' | 'error'
   postgres: ProbeState

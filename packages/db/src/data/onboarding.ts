@@ -25,7 +25,7 @@ async function lockPersonWithoutOrganization(tx: Database, userId: string): Prom
     .from(members)
     .where(eq(members.userId, userId))
     .limit(1)
-  if (membership) throw new PersonHasOrganizationError()
+  if (membership) throw new PersonHasOrganizationError('You already have an organization.')
 }
 
 async function claimSlug(tx: Database, name: string, candidates: string[]) {

@@ -14,7 +14,7 @@ import pg from 'pg'
 import type { DataLog } from './log'
 import * as schema from './schema/index'
 
-export type Schema = typeof schema
+type Schema = typeof schema
 
 /** Drizzle over node-postgres or PGlite; transactions are assignable to it too. */
 export type Database = PgDatabase<PgQueryResultHKT, Schema>

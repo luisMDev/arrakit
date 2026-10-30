@@ -56,7 +56,7 @@ export interface OrganizationUsage {
   topUps(): Promise<TopUp[]>
 }
 
-export interface ReverseOptions {
+interface ReverseOptions {
   idempotencyKey: string
   /**
    * The top-up payment being taken back. All reversals of one payment together never take back
@@ -111,21 +111,24 @@ interface Locked {
 export function usageScope(ctx: DataContext, organizationId: OrganizationId): OrganizationUsage {
   const own = eq(creditLedger.organizationId, organizationId)
 
+  async function billingPeriod(db: Database, lock: boolean) {
+    const query = db
+      .select({
+        plan: organizations.plan,
+        createdAt: organizations.createdAt,
+        usageAnchor: organizations.usageAnchor,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+    const [org] = await (lock ? query.for('no key update') : query)
+    if (!org) throw new Error(`[data] organization ${organizationId} is gone`)
+    return { plan: org.plan, period: usagePeriod(org.usageAnchor ?? org.createdAt, ctx.now()) }
+  }
+
   async function locked<R>(work: (locked: Locked) => Promise<R>): Promise<R> {
     return ctx.db.transaction(async (transaction) => {
       const tx = transaction as unknown as Database
-      const [org] = await tx
-        .select({
-          plan: organizations.plan,
-          createdAt: organizations.createdAt,
-          usageAnchor: organizations.usageAnchor,
-        })
-        .from(organizations)
-        .where(eq(organizations.id, organizationId))
-        .for('no key update')
-      if (!org) throw new Error(`[data] organization ${organizationId} is gone`)
-
-      const period = usagePeriod(org.usageAnchor ?? org.createdAt, ctx.now())
+      const { plan, period } = await billingPeriod(tx, true)
       const grantedRows = await tx
         .select({
           metric: creditLedger.metric,
@@ -141,7 +144,7 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
         )
         .groupBy(creditLedger.metric)
       const grantedSoFar = new Map(grantedRows.map((r) => [r.metric, Number(r.granted)]))
-      const grant = planGrant(org.plan)
+      const grant = planGrant(plan)
       const owed = METRIC_KEYS.map((metric) => ({
         metric,
         amount: grant[metric] - (grantedSoFar.get(metric) ?? 0),
@@ -157,7 +160,7 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
               reason: 'plan_grant' as const,
               amount,
               periodStart: period.start,
-              idempotencyKey: `grant:${period.start.toISOString()}:${org.plan}`,
+              idempotencyKey: `grant:${period.start.toISOString()}:${plan}`,
             })),
           )
           .onConflictDoNothing()
@@ -211,6 +214,15 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
     )
   }
 
+  /** Lock-free once this period's grant is written; otherwise writes it under the lock first. */
+  async function currentUsage(): Promise<Map<Metric, MetricUsage>> {
+    const { plan, period } = await billingPeriod(ctx.db, false)
+    const usage = await usageOf({ tx: ctx.db, period })
+    const grant = planGrant(plan)
+    if (METRIC_KEYS.every((metric) => usage.get(metric)!.granted >= grant[metric])) return usage
+    return locked(usageOf)
+  }
+
   async function addPurchased(
     rows: { metric: Metric; amount: number; reason: 'purchase' | 'adjustment'; cents?: number }[],
     idempotencyKey: string,
@@ -246,19 +258,16 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
   }
 
   return {
-    summary: () =>
-      locked(async (l) => {
-        const usage = await usageOf(l)
-        return METRIC_KEYS.map((metric) => usage.get(metric)!)
-      }),
+    async summary() {
+      const usage = await currentUsage()
+      return METRIC_KEYS.map((metric) => usage.get(metric)!)
+    },
 
     async check(metric, quantity = 1) {
       knownMetric(metric)
       wholeAtLeast(quantity, 0, 'a quantity')
-      return locked(async (l) => {
-        const { available } = (await usageOf(l)).get(metric)!
-        return { metric, allowed: quantity <= available, available, requested: quantity }
-      })
+      const { available } = (await currentUsage()).get(metric)!
+      return { metric, allowed: quantity <= available, available, requested: quantity }
     },
 
     async consume(metric, quantity, { idempotencyKey }) {

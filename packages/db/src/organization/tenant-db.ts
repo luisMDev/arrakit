@@ -22,14 +22,14 @@ import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core'
 import type { Database } from '../connection'
 import type { OrganizationId } from '../organization-id'
 
-export const operators = { and, or, not, eq, ne, gt, gte, lt, lte, inArray, isNull, isNotNull }
-export type Operators = typeof operators
-export const orderOperators = { asc, desc }
-export type OrderOperators = typeof orderOperators
+const operators = { and, or, not, eq, ne, gt, gte, lt, lte, inArray, isNull, isNotNull }
+type Operators = typeof operators
+const orderOperators = { asc, desc }
+type OrderOperators = typeof orderOperators
 
-export type TenantTable = PgTable & { organizationId: AnyPgColumn }
-export type Where<T> = (table: T, ops: Operators) => SQL | undefined
-export type OrderBy<T> = (table: T, ops: OrderOperators) => SQL | SQL[]
+type TenantTable = PgTable & { organizationId: AnyPgColumn }
+type Where<T> = (table: T, ops: Operators) => SQL | undefined
+type OrderBy<T> = (table: T, ops: OrderOperators) => SQL | SQL[]
 export type LockStrength = 'update' | 'no key update' | 'share' | 'key share'
 
 type Row<T extends TenantTable> = T['$inferSelect']

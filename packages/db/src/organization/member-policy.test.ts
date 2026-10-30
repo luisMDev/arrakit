@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { type MemberChange, type MemberChangeInput, checkMemberChange } from './members'
+import { MemberChangeRefusedError } from '../errors'
+import { type MemberChange, type MemberChangeInput, requireMemberChange } from './members'
 
 const ORGANIZATION = '0b6f1c3e-8d4a-4f7e-9a51-2c3d4e5f6a7b'
 const OTHER_ORGANIZATION = '7d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6'
@@ -27,7 +28,7 @@ const setRole = (target: MemberChangeInput['actor'], role: string): MemberChange
 })
 const remove = (target: MemberChangeInput['actor']): MemberChange => ({ kind: 'remove', target })
 
-describe('checkMemberChange', () => {
+describe('requireMemberChange', () => {
   it.each<[string, MemberChangeInput]>([
     ['the owner invites a member', input(owner, invite('member'))],
     ['the owner invites an admin', input(owner, invite('admin'))],
@@ -44,7 +45,7 @@ describe('checkMemberChange', () => {
       input(admin, setRole(admin, 'member'), { owners: 0, admins: 2 }),
     ],
   ])('allows: %s', (_label, change) => {
-    expect(checkMemberChange(change)).toEqual({ ok: true })
+    expect(() => requireMemberChange(change)).not.toThrow()
   })
 
   it.each<[string, MemberChangeInput, RegExp]>([
@@ -104,8 +105,7 @@ describe('checkMemberChange', () => {
       /Only an admin/,
     ],
   ])('refuses: %s', (_label, change, reason) => {
-    const verdict = checkMemberChange(change)
-    expect(verdict.ok).toBe(false)
-    if (!verdict.ok) expect(verdict.reason).toMatch(reason)
+    expect(() => requireMemberChange(change)).toThrow(MemberChangeRefusedError)
+    expect(() => requireMemberChange(change)).toThrow(reason)
   })
 })

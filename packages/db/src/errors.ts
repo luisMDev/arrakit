@@ -1,30 +1,7 @@
-export const UNIQUE_VIOLATION = '23505'
-export const FOREIGN_KEY_VIOLATION = '23503'
-
-/** True when `err` (or anything in its `cause` chain) carries SQLSTATE `code`. Works for pg and PGlite. */
-export function hasSqlState(err: unknown, code: string): boolean {
-  let current: unknown = err
-  for (let depth = 0; current && depth < 10; depth++) {
-    if (typeof current === 'object' && (current as { code?: unknown }).code === code) return true
-    current = (current as { cause?: unknown }).cause
-  }
-  return false
-}
-
-export const isUniqueViolation = (err: unknown) => hasSqlState(err, UNIQUE_VIOLATION)
-
-/** Thrown by data-layer stubs that a feature has not implemented yet. */
-export class NotImplementedError extends Error {
-  override name = 'NotImplementedError'
-  constructor(what: string) {
-    super(`[data] ${what} is not implemented yet`)
-  }
-}
-
 export class PersonHasOrganizationError extends Error {
   override name = 'PersonHasOrganizationError'
-  constructor() {
-    super('That person already belongs to an organization.')
+  constructor(message = 'You already belong to an organization.') {
+    super(message)
   }
 }
 

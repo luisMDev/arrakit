@@ -84,11 +84,7 @@ export const WORKER_RETRY_POLICY: RetryPolicy = {
 export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0]
 
 /** Sends a job as part of the transaction it came with; resolves to the job id. */
-export type SendInTransaction = (
-  name: string,
-  data: object,
-  options?: SendOptions,
-) => Promise<string>
+type SendInTransaction = (name: string, data: object, options?: SendOptions) => Promise<string>
 
 /**
  * Runs `work` in one transaction with a `send` bound to it: the rows `tx` writes and the jobs
