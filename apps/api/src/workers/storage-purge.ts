@@ -1,4 +1,4 @@
-import { type Data, type Jobs, WORKER_RETRY_POLICY } from '@arrakit/db'
+import { type ScopedData, type Jobs, WORKER_RETRY_POLICY } from '@arrakit/db'
 
 export const STORAGE_PURGE = 'storage-purge'
 
@@ -9,7 +9,7 @@ const target = (job: StoragePurgeJob) =>
     ? `files ${job.keys.join(', ')}`
     : `folder "${job.folder === '' ? '<all>' : job.folder}"`
 
-export async function registerStoragePurge(data: Data): Promise<void> {
+export async function registerStoragePurge(data: ScopedData): Promise<void> {
   await data.jobs.defineQueue(STORAGE_PURGE, WORKER_RETRY_POLICY)
   await data.jobs.work<StoragePurgeJob>(STORAGE_PURGE, async (job) => {
     try {

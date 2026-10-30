@@ -60,35 +60,7 @@ export async function connect(config: ConnectionConfig = {}): Promise<Connection
       connectionString: config.databaseUrl,
       connectionTimeoutMillis: 5000,
     })
-    // An idle client failing must not crash the process.
-    pool.on('error', (err) => console.error('[data] idle Postgres client failed:', err))
-    const db = drizzlePg({ client: pool, schema })
-    return {
-      db: db as unknown as Database,
-      driver: 'postgres',
-      migrate: async () => {
-        const client = await pool.connect()
-        let release: Error | undefined
-        try {
-          await client.query('select pg_advisory_lock($1)', [MIGRATION_LOCK])
-          try {
-            await migratePg(drizzlePg({ client, schema }), { migrationsFolder })
-          } finally {
-            try {
-              await client.query('select pg_advisory_unlock($1)', [MIGRATION_LOCK])
-            } catch (err) {
-              release = err as Error
-            }
-          }
-        } finally {
-          client.release(release)
-        }
-      },
-      ping: async () => {
-        await db.execute(sql`select 1`)
-      },
-      close: () => pool.end(),
-    }
+    return postgresConnection(pool, migrationsFolder)
   }
 
   const dir = config.pgliteDir && config.pgliteDir !== 'memory://' ? config.pgliteDir : undefined
@@ -105,5 +77,38 @@ export async function connect(config: ConnectionConfig = {}): Promise<Connection
       await db.execute(sql`select 1`)
     },
     close: () => client.close(),
+  }
+}
+
+/** Drizzle over a node-postgres pool; migrations run on one client under MIGRATION_LOCK. */
+export function postgresConnection(pool: pg.Pool, migrationsFolder: string): Connection {
+  // An idle client failing must not crash the process.
+  pool.on('error', (err) => console.error('[data] idle Postgres client failed:', err))
+  const db = drizzlePg({ client: pool, schema })
+  return {
+    db: db as unknown as Database,
+    driver: 'postgres',
+    migrate: async () => {
+      const client = await pool.connect()
+      let release: Error | undefined
+      try {
+        await client.query('select pg_advisory_lock($1)', [MIGRATION_LOCK])
+        try {
+          await migratePg(drizzlePg({ client, schema }), { migrationsFolder })
+        } finally {
+          try {
+            await client.query('select pg_advisory_unlock($1)', [MIGRATION_LOCK])
+          } catch (err) {
+            release = err as Error
+          }
+        }
+      } finally {
+        client.release(release)
+      }
+    },
+    ping: async () => {
+      await db.execute(sql`select 1`)
+    },
+    close: () => pool.end(),
   }
 }

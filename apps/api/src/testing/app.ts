@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 
 import { mcpResourceURL } from '@arrakit/auth'
 import type { Contract } from '@arrakit/contract'
+import type { Storage } from '@arrakit/db'
 import { type TestData, openTestData } from '@arrakit/db/testing'
 import type { Mail } from '@arrakit/emails'
 import { createORPCClient } from '@orpc/client'
@@ -101,7 +102,7 @@ export async function rpcResult(
 }
 
 export async function createTestApp(
-  options: { env?: Record<string, string>; stripe?: StripeGateway | null } = {},
+  options: { env?: Record<string, string>; stripe?: StripeGateway | null; storage?: Storage } = {},
 ): Promise<TestApp> {
   const rawEnv = {
     NODE_ENV: 'test',
@@ -110,7 +111,7 @@ export async function createTestApp(
     WEB_URL: TEST_WEB_ORIGIN,
     ...options.env,
   }
-  const data = await openTestData()
+  const data = await openTestData(options.storage ? { storage: options.storage } : {})
   const recording = recordingMailer()
   const sent = recording.sent
   const outbox = createOutbox()

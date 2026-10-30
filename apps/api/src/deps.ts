@@ -1,5 +1,5 @@
 import type { Auth, AuthConfig } from '@arrakit/auth'
-import type { Data } from '@arrakit/db'
+import type { ScopedData } from '@arrakit/db'
 import type { Mailer } from '@arrakit/emails'
 
 import type { StripeGateway } from './billing/stripe-gateway'
@@ -9,7 +9,7 @@ import type { Outbox } from './mail/mailer'
 /** Everything the Hono app and the oRPC procedures depend on. Built by main.ts or testing/app.ts. */
 export interface AppDeps {
   env: ApiEnv
-  data: Data
+  data: ScopedData
   auth: Auth
   authConfig: AuthConfig
   mailer: Mailer

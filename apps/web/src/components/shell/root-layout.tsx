@@ -29,7 +29,7 @@ export function RootFrame({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   return (
     <div className="relative flex min-h-svh flex-col">
-      <header className="flex h-14 items-center border-b px-4 sm:px-6">
+      <header className="flex h-14 items-center border-b px-4 [view-transition-name:site-header] sm:px-6">
         {isInApp(pathname) ? (
           <Link to="/app" aria-label={t('app.homeLabel')}>
             <Wordmark />

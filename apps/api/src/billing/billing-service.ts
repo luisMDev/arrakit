@@ -1,5 +1,5 @@
 import type { BillingView } from '@arrakit/contract'
-import type { Data, OrganizationRow } from '@arrakit/db'
+import type { ScopedData, OrganizationRow } from '@arrakit/db'
 import type { Mailer } from '@arrakit/emails'
 import { PLAN_LABELS } from '@arrakit/plans'
 import { ORPCError } from '@orpc/server'
@@ -59,7 +59,7 @@ export interface PaidOrganization {
 }
 
 export interface BillingDeps {
-  data: Data
+  data: ScopedData
   stripe: StripeGateway | null
   mailer: Mailer
   webUrl: string

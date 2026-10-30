@@ -1,4 +1,4 @@
-import type { Data } from '@arrakit/db'
+import type { ScopedData } from '@arrakit/db'
 import { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
@@ -32,7 +32,7 @@ const WHOAMI_OUTPUT = z.object({
 
 /** A fresh MCP server for one request, acting as `caller`. */
 export function createMcpServer(
-  data: Data,
+  data: ScopedData,
   caller: Pick<ConnectorCaller, 'userId' | 'organizationId' | 'role'>,
 ): McpServer {
   const server = new McpServer(

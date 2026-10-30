@@ -93,6 +93,26 @@ describe('usage', () => {
     ])
   })
 
+  it('keeps showing usage after refunds and disputes take back more than a top-up bought', async () => {
+    const { headers, organizationId: id } = await organizationWithOwner('Disputed')
+    const usage = t.data.forOrganization(id).usage
+    await usage.credit(1_000, { idempotencyKey: 'checkout:disputed' })
+    const payment = { key: 'pi_disputed', cents: 1_000 }
+    await usage.reverse(500, { idempotencyKey: 'refund:disputed', payment })
+    await usage.reverse(1_000, { idempotencyKey: 'dispute:disputed', payment })
+    await usage.adjust('storage_gb', -500, { idempotencyKey: 'clawback:disputed' })
+    const view = await t.client(headers).usage.get()
+    expect(view.metrics.find((m) => m.metric === 'credits')).toMatchObject({
+      purchased: 0,
+      available: 100,
+    })
+    expect(view.metrics.find((m) => m.metric === 'storage_gb')).toMatchObject({
+      purchased: -500,
+      available: 0,
+      limit: 0,
+    })
+  })
+
   it('refuses signed-out callers', async () => {
     await expect(t.client().usage.get()).rejects.toMatchObject({ status: 401 })
   })

@@ -20,7 +20,7 @@ import { reportError, toastError } from '#/lib/api-errors'
 import { useCurrentUser } from '#/lib/current-user'
 import { orpc } from '#/lib/orpc'
 
-import { billingRefusal } from './api-refusal'
+import { paymentRefusal } from './api-refusal'
 import { BillingCycleSwitch } from './billing-cycle-switch'
 import { isPaying, plansAbove } from './plan-access'
 import { FeatureList, PlanCard } from './plan-card'
@@ -56,7 +56,11 @@ export function PlansPage() {
   const wantsBilling = isAdmin && isPaying(current)
   const billingQuery = orpc.billing.get.queryOptions()
   const billing = useQuery({ ...billingQuery, enabled: wantsBilling })
-  const paying = wantsBilling && billing.data ? billing.data : null
+  // Only a known cycle on a paid plan counts as paying (as saas-base): otherwise no switch is offered.
+  const paying =
+    wantsBilling && billing.data?.cycle && isPaying(billing.data.plan)
+      ? { ...billing.data, cycle: billing.data.cycle }
+      : null
   const cycle: BillingCycle = chosenCycle ?? paying?.cycle ?? 'yearly'
 
   useEffect(() => {
@@ -84,7 +88,7 @@ export function PlansPage() {
     },
     onError: (err) => {
       reportError('[plans] switch failed', err)
-      toastError(billingRefusal(err) ?? t('plans.switchFailed'))
+      toastError(paymentRefusal(err) ?? t('plans.switchFailed'))
     },
   })
 

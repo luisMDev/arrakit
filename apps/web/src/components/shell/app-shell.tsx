@@ -14,7 +14,7 @@ export function AppShell() {
       {user?.organization ? (
         <nav
           aria-label={t('shell.account')}
-          className="absolute top-0 right-4 z-20 flex h-14 items-center gap-4 sm:right-6"
+          className="absolute top-0 right-4 z-20 flex h-14 items-center gap-4 [view-transition-name:app-bar] sm:right-6"
         >
           <span className="hidden text-sm text-muted-foreground lg:inline">
             {t('shell.usage', { organization: user.organization.name, plan: planLabel })}

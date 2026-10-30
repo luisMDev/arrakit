@@ -25,4 +25,9 @@ export interface Storage {
   /** HeadBucket (S3) or a directory access check; throws when storage is down. */
   probe(signal?: AbortSignal): Promise<void>
   close(): Promise<void>
+  /**
+   * Local and in-memory storages only, when built with URL signing: answers the presigned URLs
+   * they hand out (served by the API at SIGNED_FILES_PATH). S3 serves its own.
+   */
+  serveSigned?(request: Request): Promise<Response>
 }

@@ -116,7 +116,7 @@ export function metricBalance(metric: Metric, sums: MetricSums, level = 0): Metr
   const purchased = sums.purchased ?? 0
   const used = sums.used ?? 0
   if (kind === 'capacity') {
-    const limit = granted + purchased
+    const limit = Math.max(0, granted + purchased)
     return {
       metric,
       kind,

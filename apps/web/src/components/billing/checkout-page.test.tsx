@@ -95,6 +95,21 @@ describe('CheckoutPage', () => {
     expect(stripe.mount).not.toHaveBeenCalled()
   })
 
+  it.each([
+    [503, 'Payments are not set up yet.'],
+    [502, 'Stripe refused the session: the price is archived.'],
+  ])("shows the API's own words for a %i", async (status, message) => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    answer('plans/list', OFFERS)
+    answer('billing/checkout', [status, message])
+    renderAt(<CheckoutPage choice={{ plan: 'team', cycle: 'yearly' }} />, {
+      me: meOn('free'),
+      url: '/app/checkout?plan=team&cycle=yearly',
+    })
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+    expect(stripe.mount).not.toHaveBeenCalled()
+  })
+
   it('says it could not open the form when Stripe fails', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     answer('plans/list', OFFERS)

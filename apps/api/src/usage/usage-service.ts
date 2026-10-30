@@ -1,4 +1,4 @@
-import { type Data, type MetricUsage, UsageLimitError, type UsageVerdict } from '@arrakit/db'
+import { type ScopedData, type MetricUsage, UsageLimitError, type UsageVerdict } from '@arrakit/db'
 import type { Metric } from '@arrakit/plans'
 import { ORPCError } from '@orpc/server'
 
@@ -33,7 +33,7 @@ export interface UsageService {
   set(organizationId: string, metric: Metric, value: number): Promise<MetricUsage>
 }
 
-export function usageService(data: Data): UsageService {
+export function usageService(data: ScopedData): UsageService {
   const usageOf = (organizationId: string) => data.forOrganization(organizationId).usage
   const check = (organizationId: string, metric: Metric, quantity = 1) =>
     usageOf(organizationId).check(metric, quantity)

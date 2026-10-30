@@ -1,4 +1,7 @@
+import { createHmac } from 'node:crypto'
+
 import type { ConnectionConfig } from './connection'
+import type { UrlSigning } from './storage/signed-url'
 
 export interface S3Config {
   endpoint: string
@@ -13,6 +16,8 @@ export interface DataConfig extends ConnectionConfig {
   s3?: S3Config
   /** Local storage fallback directory; absent means in-memory. */
   storageDir?: string
+  /** Presigned URLs of the local fallback (absent: putUrl/getUrl throw). */
+  storageSigning?: UrlSigning
 }
 
 type Env = Record<string, string | undefined>
@@ -39,8 +44,17 @@ export function loadDataConfig(env: Env): DataConfig {
   if (production || r2Set.length > 0) missing.push(...R2_REQUIRED.filter((name) => !value(name)))
   if (missing.length > 0) throw new Error(`[data] missing env: ${missing.join(', ')}`)
 
+  const secret = value('BETTER_AUTH_SECRET')
+  const baseUrl = value('WEB_URL') ?? value('BETTER_AUTH_URL')
   return {
     databaseUrl: value('DATABASE_URL'),
+    storageSigning:
+      secret && baseUrl
+        ? {
+            secret: createHmac('sha256', secret).update('local-storage-url').digest('base64url'),
+            baseUrl: new URL(baseUrl).origin,
+          }
+        : undefined,
     pgliteDir: value('PGLITE_DIR') ?? '.data/pglite',
     pgliteReset: value('PGLITE_RESET') === '1',
     storageDir: value('STORAGE_DIR') ?? '.data/storage',

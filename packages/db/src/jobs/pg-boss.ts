@@ -1,9 +1,14 @@
-import { PgBoss } from 'pg-boss'
+import { type ConstructorOptions, PgBoss } from 'pg-boss'
 
 import { DEFAULT_EXPIRE_IN_SECONDS, type JobRecord, type JobsRuntime, deadLetterOf } from './types'
 
-export async function pgBossJobs(connectionString: string): Promise<JobsRuntime> {
-  const boss = new PgBoss({ connectionString, schema: 'pgboss' })
+/**
+ * pg-boss in its own `pgboss` schema. `source` is a Postgres URL, or pg-boss constructor options
+ * (tests run the same code on PGlite through `{ db: fromPglite(pg), backend: 'pglite' }`).
+ */
+export async function pgBossJobs(source: string | ConstructorOptions): Promise<JobsRuntime> {
+  const options = typeof source === 'string' ? { connectionString: source } : source
+  const boss = new PgBoss({ schema: 'pgboss', ...options })
   boss.on('error', (err) => console.error('[data] pg-boss:', err))
   await boss.start()
   await boss.createQueue('health')
@@ -29,12 +34,13 @@ export async function pgBossJobs(connectionString: string): Promise<JobsRuntime>
         })
         return
       }
+      // An existing queue keeps the policy it was created with (pg-boss createQueue semantics):
+      // another process defining it with other numbers must not rewrite its retries.
       if (opts.exclusive && existing.policy !== 'exclusive') {
         throw new Error(
           `[data] queue ${name} exists with policy ${existing.policy}, not exclusive; pg-boss cannot change it`,
         )
       }
-      await boss.updateQueue(name, options)
     },
     async send(name, data, opts = {}) {
       const id = await boss.send(name, data, { startAfter: opts.startAfter })
@@ -46,7 +52,8 @@ export async function pgBossJobs(connectionString: string): Promise<JobsRuntime>
       return id !== null
     },
     async schedule(name, cron, data) {
-      await boss.schedule(name, cron, data, { tz: 'UTC' })
+      // pg-boss skips missed ticks by default; the contract (types.ts) is "missed ticks run once".
+      await boss.schedule(name, cron, data, { tz: 'UTC', missed: 'once' })
     },
     async work(name, handler, opts = {}) {
       await boss.work<object>(

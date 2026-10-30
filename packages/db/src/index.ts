@@ -1,6 +1,6 @@
 // @arrakit/db: the only workspace allowed to import drizzle-orm, pg, pg-boss, PGlite and the S3 SDK.
 // Exposes openData() / forOrganization() (docs/spec/platform.md section 3) to the rest of the monorepo.
-export { openData, type Data, type OpenDataOptions } from './open-data'
+export { openData, type Data, type OpenDataOptions, type ScopedData } from './open-data'
 export { loadDataConfig, type DataConfig, type S3Config } from './config'
 export {
   connect,

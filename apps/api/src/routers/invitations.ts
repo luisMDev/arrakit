@@ -1,5 +1,7 @@
 import { ORPCError } from '@orpc/server'
 
+import type { OrganizationMembers, PendingInvitation } from '@arrakit/db'
+
 import { authed, member } from '../orpc/base'
 import { requireTrustedOrigin } from '../orpc/context'
 import { sendInviteMail } from '../organizations/invite-mail'
@@ -10,6 +12,38 @@ const admin = member('admin')
 const fromApp = admin.use(requireTrustedOrigin('Invite from the app.'))
 
 const NO_SUCH_INVITATION = 'No such invitation in your organization.'
+
+type MarkSentContext = {
+  activeOrganization: { id: string }
+  scope: { members: Pick<OrganizationMembers, 'markEmailSent'> }
+}
+
+/**
+ * Records that an invite email went out. The email is already sent, so a failed
+ * write is logged and never fails the request: failing it would make the admin
+ * press Resend again and send a second email.
+ */
+async function markSent(
+  context: MarkSentContext,
+  invitationId: string,
+): Promise<PendingInvitation | undefined> {
+  const organizationId = context.activeOrganization.id
+  try {
+    const marked = await context.scope.members.markEmailSent(invitationId)
+    if (!marked) {
+      console.error(
+        `organization ${organizationId} invitation ${invitationId}: sent, but no longer pending to mark`,
+      )
+    }
+    return marked
+  } catch (err) {
+    console.error(
+      `organization ${organizationId} invitation ${invitationId}: sent, but not marked sent`,
+      err,
+    )
+    return undefined
+  }
+}
 
 export const invitationsRouter = {
   list: admin.invitations.list.handler(async ({ context }) =>
@@ -34,20 +68,8 @@ export const invitationsRouter = {
       )
       return invitationView(invitation)
     }
-    try {
-      const marked = await context.scope.members.markEmailSent(invitation.id)
-      if (!marked) {
-        console.error(
-          `organization ${organizationId} invitation ${invitation.id}: sent, but no longer pending to mark`,
-        )
-      }
-    } catch (err) {
-      console.error(
-        `organization ${organizationId} invitation ${invitation.id}: sent, but not marked sent`,
-        err,
-      )
-    }
-    return invitationView({ ...invitation, emailSent: true })
+    const marked = await markSent(context, invitation.id)
+    return invitationView(marked ?? { ...invitation, emailSent: true })
   }),
 
   resend: fromApp.invitations.resend.handler(async ({ context, input }) => {
@@ -64,7 +86,7 @@ export const invitationsRouter = {
         message: `The invite to ${invitation.email} is saved, but its email did not go out. Press Resend to send it again.`,
       })
     }
-    const marked = await context.scope.members.markEmailSent(invitation.id)
+    const marked = await markSent(context, invitation.id)
     return invitationView(marked ?? { ...invitation, emailSent: true })
   }),
 

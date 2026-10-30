@@ -44,5 +44,13 @@ export async function depsFromEnv(rawEnv: Record<string, string | undefined>): P
   loadAuthConfig(rawEnv) // fail the boot, not the first sign-in
   const { mailer, outbox } = createMailer(rawEnv)
   const data = await openData(loadDataConfig(rawEnv))
-  return buildDeps({ env, rawEnv, data, mailer, outbox, stripe: createStripeGateway(env) })
+  return buildDeps({
+    env,
+    rawEnv,
+    data,
+    mailer,
+    // The outbox keeps sign-in links in memory; only keep it when the dev outbox route is on.
+    outbox: env.DEV_OUTBOX === '1' ? outbox : undefined,
+    stripe: createStripeGateway(env),
+  })
 }

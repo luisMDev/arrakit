@@ -266,6 +266,44 @@ describe('members and invitations', () => {
     expect((await api.invitations.list())[0]).toMatchObject({ id: invite.id, emailSent: true })
   })
 
+  it('answers the resend when its email went out but marking it sent failed', async () => {
+    const owner = await ownerOf(t, 'owner@rowan.vc')
+    const api = t.client(owner.headers)
+    const invite = await api.invitations.invite({ email: 'sol@rowan.vc', role: 'member' })
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const real = t.data.forOrganization.bind(t.data)
+    vi.spyOn(t.data, 'forOrganization').mockImplementation((id) => {
+      const scope = real(id)
+      vi.spyOn(scope.members, 'markEmailSent').mockRejectedValue(new Error('db down'))
+      return scope
+    })
+    const sent = t.sent.length
+    await expect(api.invitations.resend({ id: invite.id })).resolves.toMatchObject({
+      id: invite.id,
+      email: 'sol@rowan.vc',
+      emailSent: true,
+    })
+    expect(t.sent.length).toBe(sent + 1)
+    expect(errors.mock.calls.map((call) => String(call[0]))).toContain(
+      `organization ${owner.organization.id} invitation ${invite.id}: sent, but not marked sent`,
+    )
+  })
+
+  it('answers the invite when its email went out but marking it sent failed', async () => {
+    const owner = await ownerOf(t, 'owner@sorrel.vc')
+    const api = t.client(owner.headers)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const real = t.data.forOrganization.bind(t.data)
+    vi.spyOn(t.data, 'forOrganization').mockImplementation((id) => {
+      const scope = real(id)
+      vi.spyOn(scope.members, 'markEmailSent').mockRejectedValue(new Error('db down'))
+      return scope
+    })
+    await expect(
+      api.invitations.invite({ email: 'tam@sorrel.vc', role: 'member' }),
+    ).resolves.toMatchObject({ email: 'tam@sorrel.vc', emailSent: true })
+  })
+
   it('re-invites the same address in place: same id, new role, no extra seat', async () => {
     const owner = await ownerOf(t, 'owner@quill.vc', 'pro')
     const api = t.client(owner.headers)

@@ -17,7 +17,10 @@ export interface SendOptions {
 }
 
 export interface Jobs {
-  /** Creates `<name>__dead`, then `<name>` dead-lettering into it. */
+  /**
+   * Creates `<name>__dead`, then `<name>` dead-lettering into it. A queue that already exists
+   * keeps the policy it was created with; redefining it as exclusive when it is not throws.
+   */
   defineQueue(name: string, policy: RetryPolicy, options?: { exclusive?: boolean }): Promise<void>
   /** Throws if the job was not queued. */
   send(name: string, data: object, options?: SendOptions): Promise<string>

@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest'
 
 import { connect } from './connection'
+import type { ScopedData } from './open-data'
 import { organizations, users, members } from './schema/index'
 import { type TestData, openTestData } from './testing'
 
@@ -54,5 +55,13 @@ describe('openTestData', () => {
     await connection.migrate()
     await connection.migrate()
     await connection.close()
+  })
+})
+
+describe('ScopedData, the type app code is given', () => {
+  it('has no raw database or bucket handle, only forOrganization()', () => {
+    expectTypeOf<ScopedData>().not.toHaveProperty('db')
+    expectTypeOf<ScopedData>().not.toHaveProperty('storage')
+    expectTypeOf<ScopedData>().toHaveProperty('forOrganization')
   })
 })

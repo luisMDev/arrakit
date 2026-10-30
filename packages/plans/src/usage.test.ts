@@ -143,4 +143,13 @@ describe('metricBalance', () => {
   it('lets a negative purchased lower a capacity limit', () => {
     expect(metricBalance('storage_gb', { granted: 10, purchased: -5 }).limit).toBe(5)
   })
+
+  it('never lets a capacity limit go below 0', () => {
+    expect(metricBalance('storage_gb', { granted: 10, purchased: -250 }, 3)).toMatchObject({
+      purchased: -250,
+      used: 3,
+      available: 0,
+      limit: 0,
+    })
+  })
 })

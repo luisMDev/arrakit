@@ -15,7 +15,7 @@ import { APP_NAME } from '#/config'
 import { reportError, toastError } from '#/lib/api-errors'
 import { client, orpc } from '#/lib/orpc'
 
-import { billingRefusal } from './api-refusal'
+import { paymentRefusal } from './api-refusal'
 import { money, planLabel } from './plan-copy'
 
 type Mounted = { destroy(): void }
@@ -47,7 +47,7 @@ function useEmbeddedCheckout({ plan, cycle }: PaidChoice) {
       } catch (err) {
         if (cancelled) return
         reportError('[checkout] could not open Embedded Checkout', err)
-        setState({ opening: false, failed: true, refusal: billingRefusal(err) })
+        setState({ opening: false, failed: true, refusal: paymentRefusal(err) })
       }
     })()
     return () => {

@@ -1,4 +1,4 @@
-import type { Data } from '@arrakit/db'
+import type { ScopedData } from '@arrakit/db'
 import type { Mail, Mailer } from '@arrakit/emails'
 import { PLAN_LABELS } from '@arrakit/plans'
 
@@ -30,7 +30,7 @@ type Applied = Extract<BillingOutcome, { kind: 'applied' }>
 type EventOf<K extends BillingEvent['kind']> = Extract<BillingEvent, { kind: K }>
 
 export interface SettleDeps {
-  data: Data
+  data: ScopedData
   stripe: StripeGateway
   mailer: Mailer
   webUrl: string
@@ -87,10 +87,15 @@ export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promi
       Math.round((reversal.amount * topUp.cents) / Math.max(topUp.total, 1)),
     )
     if (cents === 0) return
-    await found.scope.usage.reverse(cents, { idempotencyKey: `reversal:${reversal.reversalId}` })
-    console.info(
-      `[billing] organization ${found.organizationId}: ${cents} cents of top-up taken back (${reversal.reversalId})`,
-    )
+    const reversed = await found.scope.usage.reverse(cents, {
+      idempotencyKey: `reversal:${reversal.reversalId}`,
+      payment: { key: reversal.paymentIntentId, cents: topUp.cents },
+    })
+    if (reversed) {
+      console.info(
+        `[billing] organization ${found.organizationId}: ${cents} cents of top-up taken back (${reversal.reversalId})`,
+      )
+    }
   }
 
   async function settleRenewal(upcoming: EventOf<'invoice-upcoming'>) {

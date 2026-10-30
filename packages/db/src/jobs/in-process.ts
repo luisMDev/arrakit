@@ -96,14 +96,16 @@ export function inProcessJobs(options: { now?: () => number } = {}): JobsRuntime
     async defineQueue(name, policy, opts = {}) {
       assertRunning()
       const full = { expireInSeconds: DEFAULT_EXPIRE_IN_SECONDS, ...policy }
-      queues.set(deadLetterOf(name), { policy: DEFAULT_POLICY, exclusive: false })
+      if (!queues.has(deadLetterOf(name)))
+        queues.set(deadLetterOf(name), { policy: DEFAULT_POLICY, exclusive: false })
       const existing = queues.get(name)
       if (opts.exclusive && existing && !existing.exclusive) {
         throw new Error(
           `[data] queue ${name} exists with policy standard, not exclusive; pg-boss cannot change it`,
         )
       }
-      queues.set(name, { policy: full, exclusive: opts.exclusive ?? existing?.exclusive ?? false })
+      // Like pg-boss: an existing queue keeps the policy it was created with.
+      if (!existing) queues.set(name, { policy: full, exclusive: opts.exclusive ?? false })
     },
     async send(name, data, opts) {
       assertRunning()

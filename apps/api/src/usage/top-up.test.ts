@@ -209,6 +209,17 @@ describe('top-ups', () => {
       })
     })
 
+    it('caps a refund followed by a dispute of the same payment at the top-up', async () => {
+      const id = await newOrganization('ria@refund-dispute.io', 'Refund then dispute')
+      await deliver(t, paid('cs_split', { organizationId: id }))
+      await deliver(t, paid('cs_other', { organizationId: id }))
+      stripe.topUpPayments.set('pi_split', { organizationId: id, cents: 2_000, total: 2_420 })
+      await deliver(t, reversal('re_split', 'pi_split', 1_210))
+      expect(await purchased(id)).toEqual({ credits: 3_000, storage_gb: 300 })
+      await deliver(t, reversal('du_split', 'pi_split', 2_420))
+      expect(await purchased(id)).toEqual({ credits: 2_000, storage_gb: 200 })
+    })
+
     it('ignores the reversal of a payment that is not a top-up', async () => {
       const before = await purchased()
       expect((await deliver(t, reversal('re_2', 'pi_plan', 2_000))).status).toBe(204)

@@ -576,7 +576,10 @@ describe('POST /api/webhooks/stripe: emails', () => {
         amount: 1_210,
       }
       expect((await deliver(t, body)).status).toBe(204)
-      expect(reverse).toHaveBeenCalledWith(1_000, { idempotencyKey: 'reversal:re_1' })
+      expect(reverse).toHaveBeenCalledWith(1_000, {
+        idempotencyKey: 'reversal:re_1',
+        payment: { key: 'pi_1', cents: 2_000 },
+      })
     })
   })
 })

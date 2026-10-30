@@ -1,6 +1,6 @@
 import type { Auth } from '@arrakit/auth'
 import { isTrustedOrigin } from '@arrakit/auth'
-import type { Data, OrganizationRow, OrganizationScope } from '@arrakit/db'
+import type { OrganizationRow, OrganizationScope, ScopedData } from '@arrakit/db'
 import { ORPCError, os } from '@orpc/server'
 
 import type { AppDeps } from '../deps'
@@ -8,7 +8,7 @@ import type { AppDeps } from '../deps'
 /** What every procedure receives (built per request in app.ts). */
 export interface BaseContext {
   deps: AppDeps
-  data: Data
+  data: ScopedData
   headers: Headers
 }
 

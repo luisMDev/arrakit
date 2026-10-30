@@ -1,4 +1,5 @@
 import type { BillingView, Me, PlanOfferView } from '@arrakit/contract'
+import { fallbackORPCErrorMessage } from '@orpc/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   RouterProvider,
@@ -123,13 +124,15 @@ const CODES: Record<number, string> = {
 }
 
 export function rpcError(status: number, message?: string) {
+  const code = CODES[status] ?? 'INTERNAL_SERVER_ERROR'
   return HttpResponse.json(
     {
       json: {
         defined: false,
-        code: CODES[status] ?? 'INTERNAL_SERVER_ERROR',
+        code,
         status,
-        message: message ?? CODES[status] ?? 'error',
+        // Without its own message the API sends oRPC's fallback text for the code.
+        message: message ?? fallbackORPCErrorMessage(code, undefined),
       },
     },
     { status },

@@ -33,6 +33,7 @@ export default defineConfig({
         BETTER_AUTH_SECRET: 'e2e-secret-e2e-secret-e2e-secret-0000',
         BETTER_AUTH_URL: webOrigin,
         WEB_URL: webOrigin,
+        DEV_OUTBOX: '1',
       },
     },
     {

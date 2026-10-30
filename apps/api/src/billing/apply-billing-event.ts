@@ -1,4 +1,4 @@
-import type { Data, OrganizationRow, OrganizationScope } from '@arrakit/db'
+import type { ScopedData, OrganizationRow, OrganizationScope } from '@arrakit/db'
 import type { Plan } from '@arrakit/plans'
 
 import type { StripeGateway, SubscriptionEvent, SubscriptionState } from './stripe-gateway'
@@ -29,7 +29,7 @@ export type BillingOutcome =
       subscription: SubscriptionState
     }
 
-type DataLike = Pick<Data, 'forOrganization'>
+type DataLike = Pick<ScopedData, 'forOrganization'>
 
 export async function findOrganization(
   data: DataLike,

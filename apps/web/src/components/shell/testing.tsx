@@ -21,6 +21,7 @@ import { HomePage } from './home-page'
 import { onPaidPlan } from './on-paid-plan'
 import { RootLayout } from './root-layout'
 import { UnavailablePage } from './unavailable-page'
+import { viewTransitionRouterOptions } from './view-transitions'
 import { WelcomePage } from './welcome-page'
 
 if (typeof window !== 'undefined' && !window.matchMedia) {
@@ -188,6 +189,7 @@ export function renderApp(url: string, { queryClient = new QueryClient() } = {})
     routeTree,
     history: createMemoryHistory({ initialEntries: [url] }),
     context: { queryClient },
+    ...viewTransitionRouterOptions,
   })
   const view = render(
     <QueryClientProvider client={queryClient}>

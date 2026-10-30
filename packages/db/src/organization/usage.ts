@@ -51,9 +51,18 @@ export interface OrganizationUsage {
   ): Promise<MetricUsage>
   set(metric: Metric, value: number): Promise<MetricUsage>
   credit(cents: number, options: { idempotencyKey: string }): Promise<boolean>
-  reverse(cents: number, options: { idempotencyKey: string }): Promise<boolean>
+  reverse(cents: number, options: ReverseOptions): Promise<boolean>
   adjust(metric: Metric, amount: number, options: { idempotencyKey: string }): Promise<boolean>
   topUps(): Promise<TopUp[]>
+}
+
+export interface ReverseOptions {
+  idempotencyKey: string
+  /**
+   * The top-up payment being taken back. All reversals of one payment together never take back
+   * more than `cents`: a partial refund followed by a full dispute reverses only what is left.
+   */
+  payment?: { key: string; cents: number }
 }
 
 /** Thrown when a use would exceed what the organization has (mapped to HTTP 402). */
@@ -205,9 +214,10 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
   async function addPurchased(
     rows: { metric: Metric; amount: number; reason: 'purchase' | 'adjustment'; cents?: number }[],
     idempotencyKey: string,
+    db: Database = ctx.db,
   ): Promise<boolean> {
     if (rows.length === 0) return false
-    const written = await ctx.db
+    const written = await db
       .insert(creditLedger)
       .values(
         rows.map((row) => ({
@@ -223,6 +233,16 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
       .onConflictDoNothing()
       .returning({ id: creditLedger.id })
     return written.length > 0
+  }
+
+  function reversalRows(cents: number) {
+    const amounts = metricAmounts(cents)
+    return METRIC_KEYS.filter((metric) => amounts[metric] > 0).map((metric) => ({
+      metric,
+      amount: -amounts[metric],
+      reason: 'adjustment' as const,
+      cents,
+    }))
   }
 
   return {
@@ -328,18 +348,32 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
       )
     },
 
-    async reverse(cents, { idempotencyKey }) {
+    async reverse(cents, { idempotencyKey, payment }) {
       wholeAtLeast(cents, 1, 'an amount of cents')
       const key = keyOf(idempotencyKey)
-      const amounts = metricAmounts(cents)
-      return addPurchased(
-        METRIC_KEYS.filter((metric) => amounts[metric] > 0).map((metric) => ({
-          metric,
-          amount: -amounts[metric],
-          reason: 'adjustment' as const,
-        })),
-        key,
-      )
+      if (!payment) return addPurchased(reversalRows(cents), key)
+
+      const paymentKey = keyOf(payment.key)
+      const paid = wholeAtLeast(payment.cents, 1, 'a payment amount of cents')
+      const prefix = `reversal-of:${encodeURIComponent(paymentKey)}:`
+      const storedKey = `${prefix}${key}`
+      return locked(async ({ tx }) => {
+        const earlier = await tx
+          .selectDistinct({ key: creditLedger.idempotencyKey, cents: creditLedger.cents })
+          .from(creditLedger)
+          .where(
+            and(
+              own,
+              eq(creditLedger.reason, 'adjustment'),
+              sql`starts_with(${creditLedger.idempotencyKey}, ${prefix})`,
+            ),
+          )
+        if (earlier.some((row) => row.key === storedKey)) return false
+        const reversed = earlier.reduce((total, row) => total + (row.cents ?? 0), 0)
+        const take = Math.min(cents, paid - reversed)
+        if (take <= 0) return false
+        return addPurchased(reversalRows(take), storedKey, tx)
+      })
     },
 
     async adjust(metric, amount, { idempotencyKey }) {

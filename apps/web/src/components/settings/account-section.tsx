@@ -20,7 +20,7 @@ import { Switch } from '#/components/ui/switch'
 import { type Language, isLanguage, loadLanguage } from '#/i18n'
 import { reportError, statusOf, toastError, toastInfo } from '#/lib/api-errors'
 import { authClient } from '#/lib/auth-client'
-import { initialOf, useCurrentUser } from '#/lib/current-user'
+import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
 import { client, orpc } from '#/lib/orpc'
 
 import { apiMessage } from './api-message'
@@ -89,17 +89,16 @@ export function AccountSection({ open }: SectionProps) {
 
   const reload = () => queryClient.invalidateQueries({ queryKey: accountQuery.queryKey })
 
-  const saveRef = useRef(save)
-  useEffect(() => {
-    saveRef.current = save
-  })
+  async function apply(changes: Parameters<typeof client.me.account.update>[0]) {
+    const saved = await client.me.account.update(changes)
+    queryClient.setQueryData<AccountView>(accountQuery.queryKey, saved)
+    me.patch((current) => ({ ...current, name: saved.name, language: saved.language }))
+    if (isLanguage(saved.language)) await loadLanguage(saved.language)
+  }
 
   async function save(changes: Parameters<typeof client.me.account.update>[0]) {
     try {
-      const saved = await client.me.account.update(changes)
-      queryClient.setQueryData<AccountView>(accountQuery.queryKey, saved)
-      me.patch((current) => ({ ...current, name: saved.name, language: saved.language }))
-      if (isLanguage(saved.language)) await loadLanguage(saved.language)
+      await apply(changes)
     } catch (err) {
       reportError('[account] saving the account failed', err)
       toastError(t(`${K}.notSaved`))
@@ -107,12 +106,26 @@ export function AccountSection({ open }: SectionProps) {
     }
   }
 
+  /** Saves the browser's zone the person never chose: a failure is only reported, never toasted. */
+  async function fillZone(timeZone: string) {
+    try {
+      await apply({ timeZone })
+    } catch (err) {
+      reportError('[account] saving the browser time zone failed', err)
+    }
+  }
+
+  const fillZoneRef = useRef(fillZone)
+  useEffect(() => {
+    fillZoneRef.current = fillZone
+  })
+
   const needsZone = account?.timeZone === null
   useEffect(() => {
     if (!needsZone || zoneFilled.current) return
     zoneFilled.current = true
     const zone = browserTimeZone()
-    if (zone) void saveRef.current({ timeZone: zone })
+    if (zone) void fillZoneRef.current(zone)
   }, [needsZone])
 
   async function saveName() {
@@ -178,14 +191,14 @@ export function AccountSection({ open }: SectionProps) {
           <Card>
             <CardContent className="flex items-start gap-4">
               <Avatar className="size-12">
-                <AvatarFallback>{initialOf(account.name || account.email)}</AvatarFallback>
+                <AvatarFallback>{initialOf(displayName(account))}</AvatarFallback>
               </Avatar>
               <Field data-invalid={nameError || undefined} className="flex-1">
                 <FieldLabel htmlFor="account-name">{t(`${K}.yourName`)}</FieldLabel>
                 <Input
                   id="account-name"
                   autoComplete="name"
-                  value={draftName ?? account.name}
+                  value={draftName ?? displayName(account)}
                   aria-invalid={nameError || undefined}
                   onChange={(event) => {
                     setDraftName(event.target.value)

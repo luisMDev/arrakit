@@ -213,7 +213,15 @@ install is repaired, call the Turbo binary directly: `./node_modules/.bin/turbo 
 - Web and API must be **one site** so the Better Auth cookie is first-party (`BETTER_AUTH_URL` =
   web origin). The web server (Nitro route rules in `apps/web/vite.config.ts`) proxies `/api/**`
   and `/.well-known/oauth-*/**` to `API_ORIGIN` in dev and in the production build. Vite's
-  `server.proxy` is NOT used (the TanStack Start/Nitro middleware answers first).
+  `server.proxy` is NOT used (the TanStack Start/Nitro middleware answers first). The rules come
+  from `apps/web/src/lib/api-proxy.ts`: they set `xfwd` and drop the incoming `x-forwarded-for`,
+  so the API sees exactly one client IP; `x-real-ip` from a platform edge passes through.
+- The contract procedures are also served REST-style under `/api` (the paths in
+  `/api/openapi.json`; health only at `/health`).
+- The fallback storages' presigned URLs are served at `/api/files/local/*`, with a sandbox CSP
+  and `nosniff`.
+- `/api/dev/outbox` requires `DEV_OUTBOX=1`, which is on by default only under `NODE_ENV=test`
+  (and refused with `NODE_ENV=production`).
 
 ## Testing strategy
 

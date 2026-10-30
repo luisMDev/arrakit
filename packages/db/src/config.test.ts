@@ -60,4 +60,15 @@ describe('loadDataConfig', () => {
       loadDataConfig({ NODE_ENV: 'production', DATABASE_URL: 'postgres://db/a', ...R2 }).s3,
     ).toBeDefined()
   })
+
+  it('signs local storage URLs with a secret derived from BETTER_AUTH_SECRET, at the web origin', () => {
+    const config = loadDataConfig({
+      BETTER_AUTH_SECRET: 'x'.repeat(40),
+      BETTER_AUTH_URL: 'http://localhost:4200/path',
+    })
+    expect(config.storageSigning?.baseUrl).toBe('http://localhost:4200')
+    expect(config.storageSigning?.secret).toMatch(/^[\w-]{43}$/)
+    expect(config.storageSigning?.secret).not.toContain('x'.repeat(40))
+    expect(loadDataConfig({}).storageSigning).toBeUndefined()
+  })
 })

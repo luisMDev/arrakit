@@ -3,6 +3,8 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { orpc } from '#/lib/orpc'
+
 import { PlansPage } from './plans-page'
 import { OFFERS, answer, api, billingOf, meOn, renderAt } from './testing'
 
@@ -125,6 +127,51 @@ describe('PlansPage', () => {
     expect(
       await screen.findByText('Your card was declined. Update it under Payment, then try again.'),
     ).toBeInTheDocument()
+  })
+
+  it.each([
+    [503, 'Payments are not set up yet.'],
+    [502, 'Stripe refused the switch: the price is archived.'],
+  ])('shows the API’s own words when the switch fails with %i', async (status, message) => {
+    quiet()
+    answer('billing/get', billingOf({ plan: 'pro', cycle: 'yearly' }))
+    answer('billing/previewChange', PREVIEW_NOW)
+    answer('billing/change', [status, message])
+    await setup(meOn('pro'))
+    await userEvent.click(
+      await within(card('Team')).findByRole('button', { name: 'Switch to Team' }),
+    )
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Switch to Team' }))
+    expect(await screen.findByText(message)).toBeInTheDocument()
+  })
+
+  it('falls back to its own text when a failed switch carries no message', async () => {
+    quiet()
+    answer('billing/get', billingOf({ plan: 'pro', cycle: 'yearly' }))
+    answer('billing/previewChange', PREVIEW_NOW)
+    answer('billing/change', 502)
+    await setup(meOn('pro'))
+    await userEvent.click(
+      await within(card('Team')).findByRole('button', { name: 'Switch to Team' }),
+    )
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Switch to Team' }))
+    expect(await screen.findByText(/Couldn.t switch/)).toBeInTheDocument()
+  })
+
+  it('offers no switch while the organization’s billing has no known cycle', async () => {
+    answer('billing/get', billingOf({ plan: 'pro', cycle: null }))
+    const view = await setup(meOn('pro'))
+    await waitFor(() =>
+      expect(view.queryClient.getQueryData(orpc.billing.get.queryOptions().queryKey)).toBeDefined(),
+    )
+    expect(within(card('Team')).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(card('Free')).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(card('Pro')).getByRole('button', { name: 'Your current plan' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Monthly' }))
+    expect(within(card('Pro')).getByRole('button', { name: 'Your current plan' })).toBeDisabled()
+    expect(within(card('Team')).queryByRole('button')).not.toBeInTheDocument()
   })
 
   it('never sends a paying organization to Checkout when its billing fails to load', async () => {

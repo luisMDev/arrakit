@@ -28,7 +28,6 @@ export interface OpenDataOptions {
 function buildData(ctx: DataContext, close: () => Promise<void>, driver: 'postgres' | 'pglite') {
   return {
     driver,
-    db: ctx.db,
     ...membershipData(ctx),
     ...onboardingData(ctx),
     ...organizationsData(ctx),
@@ -36,14 +35,22 @@ function buildData(ctx: DataContext, close: () => Promise<void>, driver: 'postgr
     ...accountData(ctx),
     forOrganization: (id: string) => forOrganization(ctx, id),
     jobs: ctx.jobs as JobsRuntime,
-    storage: ctx.storage,
+    /** The storage fallback's presigned URLs (undefined on S3, which serves its own). */
+    serveSignedFile: ctx.storage.serveSigned?.bind(ctx.storage),
     authDatabase: authDatabase(ctx.db),
     health: () => health(ctx),
     close,
   }
 }
 
-export type Data = ReturnType<typeof buildData>
+/**
+ * The data layer app code should be typed against: organization data only through
+ * forOrganization(id), no raw database or bucket handle.
+ */
+export type ScopedData = ReturnType<typeof buildData>
+
+/** What openData() opens: ScopedData plus the raw handles, for packages/db and test set-up. */
+export type Data = ScopedData & { db: DataContext['db']; storage: Storage }
 
 export async function openData(config: DataConfig, options: OpenDataOptions = {}): Promise<Data> {
   const connection = await connect(config)
@@ -59,7 +66,7 @@ export async function openData(config: DataConfig, options: OpenDataOptions = {}
     (config.s3
       ? s3Storage(config.s3)
       : config.storageDir
-        ? localStorage(config.storageDir)
+        ? localStorage(config.storageDir, { signing: config.storageSigning })
         : memoryStorage())
 
   let jobs: JobsRuntime
@@ -88,9 +95,10 @@ export async function openData(config: DataConfig, options: OpenDataOptions = {}
     return closing
   }
 
-  return buildData(
+  const data = buildData(
     { db: connection.db, jobs, storage, now: options.now ?? (() => new Date()) },
     close,
     connection.driver,
   )
+  return { ...data, db: connection.db, storage }
 }

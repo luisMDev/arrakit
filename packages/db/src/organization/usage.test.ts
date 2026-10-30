@@ -226,6 +226,61 @@ describe('forOrganization().usage', () => {
     expect((await metric(usage, 'credits')).purchased).toBe(1_000)
   })
 
+  it('never reverses more than a payment bought, across refunds and disputes', async () => {
+    const { usage } = await newOrganization()
+    await usage.credit(1_000, { idempotencyKey: 'checkout:cs_10' })
+    const payment = { key: 'pi_1', cents: 1_000 }
+    expect(await usage.reverse(500, { idempotencyKey: 'refund:re_4', payment })).toBe(true)
+    expect(await usage.reverse(500, { idempotencyKey: 'refund:re_4', payment })).toBe(false)
+    expect(await usage.reverse(1_000, { idempotencyKey: 'dispute:dp_1', payment })).toBe(true)
+    expect(await usage.reverse(1_000, { idempotencyKey: 'dispute:dp_2', payment })).toBe(false)
+    expect(await metric(usage, 'credits')).toMatchObject({ purchased: 0, available: 100 })
+    expect(await metric(usage, 'storage_gb')).toMatchObject({ purchased: 0, limit: 10 })
+  })
+
+  it('caps concurrent reversals of one payment at what it bought', async () => {
+    const { usage } = await newOrganization()
+    await usage.credit(1_000, { idempotencyKey: 'checkout:cs_11' })
+    const payment = { key: 'pi_2', cents: 1_000 }
+    const results = await Promise.all(
+      [1, 2, 3].map((n) => usage.reverse(600, { idempotencyKey: `re_c${n}`, payment })),
+    )
+    expect(results.filter(Boolean)).toHaveLength(2)
+    expect((await metric(usage, 'credits')).purchased).toBe(0)
+  })
+
+  it('caps reversals per payment, not across payments', async () => {
+    const { usage } = await newOrganization()
+    await usage.credit(1_000, { idempotencyKey: 'checkout:cs_12' })
+    await usage.credit(1_000, { idempotencyKey: 'checkout:cs_13' })
+    await usage.reverse(1_000, { idempotencyKey: 're_p1', payment: { key: 'pi_3', cents: 1_000 } })
+    await usage.reverse(1_000, { idempotencyKey: 're_p2', payment: { key: 'pi_4', cents: 1_000 } })
+    expect((await metric(usage, 'credits')).purchased).toBe(0)
+  })
+
+  it('keeps the caps of payments apart when one payment key starts with another', async () => {
+    const { usage } = await newOrganization()
+    await usage.credit(1_000, { idempotencyKey: 'checkout:cs_14' })
+    await usage.credit(1_000, { idempotencyKey: 'checkout:cs_15' })
+    const first = { key: 'pi_5', cents: 1_000 }
+    const second = { key: 'pi_5:x', cents: 1_000 }
+    expect(await usage.reverse(1_000, { idempotencyKey: 're_x', payment: second })).toBe(true)
+    expect(await usage.reverse(1_000, { idempotencyKey: 're_y', payment: first })).toBe(true)
+    expect((await metric(usage, 'credits')).purchased).toBe(0)
+  })
+
+  it('keeps a capacity limit at 0 when adjustments take back more than it had', async () => {
+    const { usage } = await newOrganization()
+    await usage.adjust('storage_gb', -50, { idempotencyKey: 'clawback' })
+    expect(await metric(usage, 'storage_gb')).toMatchObject({
+      purchased: -50,
+      available: 0,
+      limit: 0,
+    })
+    await expect(usage.set('storage_gb', 1)).rejects.toBeInstanceOf(UsageLimitError)
+    expect(await usage.set('storage_gb', 0)).toMatchObject({ used: 0, limit: 0 })
+  })
+
   it('adjusts by hand once per key', async () => {
     const { usage } = await newOrganization()
     expect(await usage.adjust('credits', 50, { idempotencyKey: 'goodwill' })).toBe(true)

@@ -180,3 +180,18 @@ describe('memoryJobs', () => {
     await expect(jobs.probe()).rejects.toThrow('stopped')
   })
 })
+
+describe('inProcessJobs queue definitions', () => {
+  it('keeps the policy a queue was created with when it is defined again, like pg-boss', async () => {
+    const jobs = inProcessJobs()
+    await jobs.defineQueue('kept', { retryLimit: 5, retryDelay: 30, retryBackoff: true })
+    await jobs.defineQueue('kept', { retryLimit: 1, retryDelay: 2, retryBackoff: false })
+    expect(await jobs.queuePolicy('kept')).toEqual({
+      retryLimit: 5,
+      retryDelay: 30,
+      retryBackoff: true,
+      expireInSeconds: 900,
+    })
+    await jobs.stop()
+  })
+})

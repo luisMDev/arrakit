@@ -6,6 +6,7 @@ export { memoryJobs, sentJobs, type MemoryJobs, type SentJob } from './jobs/memo
 export { memoryStorage } from './storage/memory'
 export { inProcessJobs } from './jobs/in-process'
 
+/** Data plus the raw `db` and `storage` handles test set-up needs. */
 export type TestData = Data & { jobs: MemoryJobs }
 
 /** Opens a fresh in-memory database with migrations applied. Remember `await data.close()`. */

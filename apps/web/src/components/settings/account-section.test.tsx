@@ -81,6 +81,30 @@ describe('AccountSection', () => {
     await waitFor(() => expect(calls).toEqual([{ input: { timeZone: zone } }]))
   })
 
+  it('only reports a failed save of the browser zone: no toast, account kept', async () => {
+    const errors = quiet()
+    const calls = answer('me/account/update', 500)
+    setup({ timeZone: null })
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    await waitFor(() => expect(calls).toEqual([{ input: { timeZone: zone } }]))
+    await waitFor(() => expect(errors).toHaveBeenCalled())
+    expect(String(errors.mock.calls[0]?.[0])).toContain('[account]')
+    expect(screen.queryByText("Couldn't save your settings. Try again.")).toBeNull()
+    expect(screen.getByLabelText('Your name')).toHaveValue('Ana')
+    expect(calls).toHaveLength(1)
+  })
+
+  it('shows the email local part as the name of a person without one', async () => {
+    const calls = answer('me/account/update', ACCOUNT)
+    setup({ name: '  ', email: 'lucia.gomez@acme.com' })
+    const input = await screen.findByLabelText('Your name')
+    expect(input).toHaveValue('lucia.gomez')
+    expect(screen.getByText('L')).toBeInTheDocument()
+    await userEvent.click(input)
+    await userEvent.tab()
+    expect(calls).toHaveLength(0)
+  })
+
   it('lists a saved zone missing from the picker under its own name', async () => {
     setup({ timeZone: 'Asia/Kolkata' })
     expect(await screen.findByRole('combobox', { name: 'Time zone' })).toHaveTextContent(
