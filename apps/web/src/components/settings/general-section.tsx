@@ -2,7 +2,6 @@ import { updateOrganizationSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -11,7 +10,7 @@ import { Field, FieldDescription, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { reportError } from '#/lib/api-errors'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
-import { registerClearing } from '#/lib/form'
+import { registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import { client, orpc } from '#/lib/orpc'
 
@@ -25,10 +24,9 @@ export function GeneralSection() {
   const { t } = useTranslation()
   const me = useCurrentUser()
   const organization = me.user?.organization ?? null
-  const form = useForm({
+  const form = useClearingForm({
     resolver: zodResolver(nameSchema),
     values: { name: organization?.name ?? '' },
-    reValidateMode: 'onSubmit',
   })
   const invalid = form.formState.errors.name !== undefined
   const queryClient = useQueryClient()

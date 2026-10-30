@@ -55,7 +55,8 @@ apps/
     src/lib/orpc.ts               typed oRPC client + TanStack Query utils (`orpc.x.y.queryOptions()`)
     src/lib/auth-client.ts        Better Auth React client (`@arrakit/auth/client`)
     src/lib/guards/               route guards: require-user, require-account, skip-when-signed-in
-    src/lib/                      session(), statusOf()/reportError()/apiMessage(), notify, useCurrentUser(), titled(), checkoutChoice()
+    src/lib/                      session(), statusOf()/reportError()/apiMessage(), notify, useCurrentUser(), titled(), checkoutChoice(),
+                                  useClearingForm()/registerClearing() (form errors hide while a field is edited)
     src/i18n/                     i18next setup, `tr()`, `loadLanguage()`;
                                   locales/{en,es}/<module>.json deep-merged into one namespace
     src/start.ts                  createStart({ defaultSsr: false }): screens render in the browser
@@ -129,7 +130,7 @@ dialog, alert-dialog, dropdown-menu, select, tabs, table, badge, avatar, sonner,
 skeleton, switch, radio-group, tooltip, sheet, sidebar, progress, alert, popover, command,
 checkbox, textarea, scroll-area, breadcrumb, collapsible, hover-card, toggle, toggle-group,
 pagination, input-otp, spinner, empty, item, button-group, kbd, navigation-menu). Forms use
-`react-hook-form` + `@hookform/resolvers/zod`. Theme: shadcn default (`src/styles.css`); do not restyle.
+`react-hook-form` + `@hookform/resolvers/zod` (`#/lib/form` for errors that clear while editing). Theme: shadcn default (`src/styles.css`); do not restyle.
 `<TooltipProvider>` and `<Toaster />` are mounted in `src/routes/__root.tsx`.
 
 If you ever need another component: `cd apps/web && pnpm dlx shadcn@latest add <name>`, then

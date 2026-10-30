@@ -1,11 +1,11 @@
-import { isWorkEmail } from '@arrakit/address'
+import { isWorkEmail, normalizeEmail } from '@arrakit/address'
 import type { AssignableRole } from '@arrakit/auth/roles'
 import { type InvitationView, assignableRoleSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import { useRef, useState } from 'react'
-import { Controller, useForm } from 'react-hook-form'
+import { Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -24,7 +24,7 @@ import {
 import { Separator } from '#/components/ui/separator'
 import { apiFailed, apiMessage } from '#/lib/api-errors'
 import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
-import { registerClearing } from '#/lib/form'
+import { registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import { client, orpc } from '#/lib/orpc'
 import { useFailureToast } from '#/lib/use-failure-toast'
@@ -58,13 +58,13 @@ function inviteForm(
   invites: readonly { email: string }[],
 ) {
   const listed = (list: readonly { email: string }[], lower: string) =>
-    list.some((entry) => entry.email.toLowerCase() === lower)
+    list.some((entry) => normalizeEmail(entry.email) === lower)
   return z.object({
     email: z
       .string()
       .trim()
       .superRefine((address, ctx) => {
-        const lower = address.toLowerCase()
+        const lower = normalizeEmail(address)
         const fail = (message: string) => ctx.addIssue({ code: 'custom', message })
         if (!isWorkEmail(address)) return fail(t(`${K}.enterWorkEmail`, { example: placeholder }))
         if (listed(members, lower)) return fail(t(`${K}.alreadyInOrganization`, { email: lower }))
@@ -83,13 +83,13 @@ export function MembersSection({ open }: SectionProps) {
   const members = useQuery({ ...membersQuery, enabled: me.isAdmin })
   const invites = useQuery({ ...invitesQuery, enabled: me.isAdmin })
 
-  const placeholder = `name@${emailDomain(me.user?.email ?? '')}`
+  const myEmail = me.user?.email ?? ''
+  const placeholder = `name@${emailDomain(myEmail)}`
   const memberList = members.data ?? []
   const inviteList = invites.data ?? []
-  const form = useForm({
+  const form = useClearingForm({
     resolver: zodResolver(inviteForm(t, placeholder, memberList, inviteList)),
     defaultValues: { email: '', role: 'member' as const },
-    reValidateMode: 'onSubmit',
   })
   const emailError = form.formState.errors.email?.message
   const [busy, setBusy] = useState(false)
@@ -99,7 +99,6 @@ export function MembersSection({ open }: SectionProps) {
   useFailureToast(loadError, '[members] loading members failed', t(`${K}.notLoaded`))
 
   if (!me.isAdmin || !me.user) return <></>
-  const myEmail = me.user.email
 
   const setMembers = (fn: (list: Member[]) => Member[]) =>
     queryClient.setQueryData<Member[]>(membersQuery.queryKey, (list) => fn(list ?? []))
@@ -246,11 +245,7 @@ export function MembersSection({ open }: SectionProps) {
                   control={form.control}
                   name="role"
                   render={({ field }) => (
-                    <Select
-                      name={field.name}
-                      value={field.value}
-                      onValueChange={(value) => field.onChange(value as AssignableRole)}
-                    >
+                    <Select name={field.name} value={field.value} onValueChange={field.onChange}>
                       <SelectTrigger ref={field.ref} aria-label={t(`${K}.role`)} className="w-32">
                         <SelectValue />
                       </SelectTrigger>

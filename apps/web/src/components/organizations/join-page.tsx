@@ -2,7 +2,6 @@ import { isWorkEmail } from '@arrakit/address'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -13,7 +12,7 @@ import { Field, FieldError, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { Spinner } from '#/components/ui/spinner'
 import { apiMessage, reportError, statusOf } from '#/lib/api-errors'
-import { registerClearing } from '#/lib/form'
+import { registerClearing, useClearingForm } from '#/lib/form'
 import { client } from '#/lib/orpc'
 
 const joinForm = (workEmailError: string) =>
@@ -42,10 +41,9 @@ export function JoinPage({ invitationId }: { invitationId: string }) {
   const navigate = useNavigate()
   const auth = useAuthApi()
   const [state, setState] = useState<JoinState>('joining')
-  const form = useForm({
+  const form = useClearingForm({
     resolver: zodResolver(joinForm(t('join.workEmail'))),
     defaultValues: { email: '' },
-    reValidateMode: 'onSubmit',
   })
   const emailError = form.formState.errors.email?.message
   const [pending, setPending] = useState(false)

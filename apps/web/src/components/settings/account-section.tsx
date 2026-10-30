@@ -3,7 +3,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -24,7 +23,7 @@ import { type Language, isLanguage, loadLanguage } from '#/i18n'
 import { apiMessage, reportError, type SaveOnChange, saveOnChange } from '#/lib/api-errors'
 import { authClient } from '#/lib/auth-client'
 import { displayName, initialOf, useCurrentUser } from '#/lib/current-user'
-import { registerClearing } from '#/lib/form'
+import { registerClearing, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import { client, orpc } from '#/lib/orpc'
 import { useFailureToast } from '#/lib/use-failure-toast'
@@ -102,10 +101,9 @@ export function AccountSection({ open }: SectionProps) {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
-  const form = useForm({
+  const form = useClearingForm({
     resolver: zodResolver(nameSchema),
     values: { name: account ? displayName(account) : '' },
-    reValidateMode: 'onSubmit',
   })
   const nameError = form.formState.errors.name !== undefined
   const [signingOut, setSigningOut] = useState(false)
