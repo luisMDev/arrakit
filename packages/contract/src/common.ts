@@ -22,8 +22,8 @@ export const organizationSummarySchema = z.object({
 })
 
 /**
- * Base contract builder. Every procedure may answer 402 when it spends usage
- * (docs/spec/usage-credits.md 4.2); other errors use ORPCError codes (401/403/404/409/400/502/503).
+ * Base contract builder. Every procedure may answer 402 when it spends usage; other errors
+ * use ORPCError codes (401/403/404/409/400/502/503).
  */
 export const base = oc.errors({
   PAYMENT_REQUIRED: {

@@ -65,7 +65,7 @@ function betterAuthLogger(log: Logger): NonNullable<AuthDeps['logger']> {
 }
 
 /**
- * Boot order (docs/spec/platform.md 4.1): env and auth config, error reporter, mailer,
+ * Boot order: env and auth config, error reporter, mailer,
  * data (migrations).
  */
 export async function depsFromEnv(

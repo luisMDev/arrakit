@@ -54,7 +54,7 @@ export function PlansPage() {
     meta: { failure: t('plans.billingLoadFailed') },
   })
   const billing = useQuery({ ...billingQuery, enabled: wantsBilling })
-  // Only a known cycle on a paid plan counts as paying (as saas-base): otherwise no switch is offered.
+  // Only a known cycle on a paid plan counts as paying: otherwise no switch is offered.
   const paying =
     wantsBilling && billing.data?.cycle && isPaidPlan(billing.data.plan)
       ? { ...billing.data, cycle: billing.data.cycle }

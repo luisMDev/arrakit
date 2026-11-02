@@ -17,7 +17,7 @@ export function apiTargetOf(url: URL, apiOrigin = 'http://localhost:5000'): stri
  * Proxies one request for an API path (see `apiProxiedPaths`) to the API.
  *
  * API_ORIGIN is read on every request, not at build time, so one build can be pointed at any
- * API (saas-base's Pages Function read `env.API_ORIGIN` per request too).
+ * API.
  *
  * Path, query, method, the streamed body, cookies and Origin pass through; `xfwd` sets
  * x-forwarded-host/-proto/-port; redirects reach the browser unfollowed. The incoming

@@ -3,7 +3,6 @@ export * from './oauth'
 export * from './organizations'
 export * from './usage'
 
-/** Tables allowed without `organization_id` (docs/spec/platform.md 2.10). */
 export const TENANCY_EXCEPTIONS = [
   'organizations',
   'users',

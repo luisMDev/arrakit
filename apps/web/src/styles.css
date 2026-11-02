@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
-/* shadcn/ui default theme. Do not restyle: arrakit ports features, not saas-base styles. */
+/* shadcn/ui default theme. Do not restyle. */
 @custom-variant dark (&:is(.dark *));
 
 :root {
