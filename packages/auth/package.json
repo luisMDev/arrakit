@@ -16,6 +16,7 @@
   "dependencies": {
     "@arrakit/address": "workspace:*",
     "@arrakit/emails": "workspace:*",
+    "@better-auth/core": "^1.7.14",
     "@better-auth/oauth-provider": "^1.7.14",
     "better-auth": "^1.7.14"
   },
