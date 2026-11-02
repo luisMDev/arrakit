@@ -1,13 +1,19 @@
 import { ORPCError } from '@orpc/client'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { testQueryClient, withQueries } from '#/test/rpc'
+import { testQueryClient } from '#/test/rpc'
 
 import { useApiMutation } from './use-api-mutation'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
+
+function wrapper({ children }: { children: ReactNode }) {
+  return <QueryClientProvider client={testQueryClient()}>{children}</QueryClientProvider>
+}
 
 const toasts = () => vi.mocked(toast.error).mock.calls.map(([message]) => message)
 
@@ -26,7 +32,7 @@ describe('useApiMutation', () => {
           onSuccess,
           meta: { failure: 'Failed' },
         }),
-      { wrapper: withQueries() },
+      { wrapper },
     )
     let value: number | undefined
     await act(async () => {
@@ -48,7 +54,7 @@ describe('useApiMutation', () => {
           onError,
           meta: { failure: 'Failed' },
         }),
-      { wrapper: withQueries() },
+      { wrapper },
     )
     let value: unknown = 'unset'
     await act(async () => {
@@ -71,7 +77,7 @@ describe('useApiMutation', () => {
           mutationFn: (_email: string) => Promise.reject(failures.shift()),
           meta: { failure: (email: string) => `${email} not invited` },
         }),
-      { wrapper: withQueries() },
+      { wrapper },
     )
     await act(async () => {
       await result.current.run('ana@acme.com')
@@ -84,7 +90,7 @@ describe('useApiMutation', () => {
     const err = new ORPCError('CONFLICT', { status: 409, message: 'Already a member.' })
     const { result } = renderHook(
       () => useApiMutation({ mutationFn: () => Promise.reject(err), meta: { failure: 'Failed' } }),
-      { wrapper: withQueries() },
+      { wrapper },
     )
     await act(async () => {
       await result.current.run()
@@ -95,7 +101,7 @@ describe('useApiMutation', () => {
   it('sends one request for a double run', async () => {
     const pending: (() => void)[] = []
     const mutationFn = vi.fn(() => new Promise<void>((resolve) => pending.push(resolve)))
-    const { result } = renderHook(() => useApiMutation({ mutationFn }), { wrapper: withQueries() })
+    const { result } = renderHook(() => useApiMutation({ mutationFn }), { wrapper })
     let first: Promise<void | undefined> = Promise.resolve()
     let second: Promise<void | undefined> = Promise.resolve()
     act(() => {
@@ -124,7 +130,7 @@ describe('useApiMutation', () => {
 
   it('is busy while running and once it succeeded', async () => {
     const { result } = renderHook(() => useApiMutation({ mutationFn: () => Promise.resolve() }), {
-      wrapper: withQueries(),
+      wrapper,
     })
     expect(result.current.busy).toBe(false)
     await act(async () => {

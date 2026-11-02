@@ -1,12 +1,12 @@
 import type { BillingView, ChangePreview, PaidChoice, PlanOfferView } from '@arrakit/contract'
 import { type BillingCycle, type Plan, soldOffers } from '@arrakit/plans'
 
-import { tr } from '#/i18n'
+import { i18n } from '#/i18n'
 import { fullDay, type Money, money } from '#/lib/format'
 
-export const planLabel = (plan: Plan): string => tr(`pricing.plan.${plan}`)
+export const planLabel = (plan: Plan): string => i18n.t(`pricing.plan.${plan}`)
 
-const features = (keys: readonly string[]) => keys.map((key) => tr(`pricing.feature.${key}`))
+const features = (keys: readonly string[]) => keys.map((key) => i18n.t(`pricing.feature.${key}`))
 
 const PLAN_FEATURES: Record<Plan, string[]> = {
   free: ['coreFeatures'],
@@ -28,13 +28,13 @@ export function pricingCopy({ plan, seats }: Pick<PlanOfferView, 'plan' | 'seats
   const { lead, features: keys } = PRICING_FEATURES[plan]
   return {
     usage: [seatsLine(seats)],
-    lead: lead && tr(`pricing.feature.${lead}`),
+    lead: lead && i18n.t(`pricing.feature.${lead}`),
     features: features(keys),
   }
 }
 
-export function seatsLine(seats: number, upTo = tr('pricing.upTo')): string {
-  return seats === 1 ? tr('pricing.oneSeat') : tr('pricing.seatsUpTo', { upTo, seats })
+export function seatsLine(seats: number, upTo = i18n.t('pricing.upTo')): string {
+  return seats === 1 ? i18n.t('pricing.oneSeat') : i18n.t('pricing.seatsUpTo', { upTo, seats })
 }
 
 interface PlanPrice {
@@ -57,8 +57,8 @@ export function planPrice(offer: PlanOfferView, cycle: BillingCycle): PlanPrice 
     return {
       was: null,
       price: money(offer.monthly, { whole: true }),
-      billed: tr('pricing.billedLower.monthly'),
-      billedNote: tr('pricing.billed.monthly'),
+      billed: i18n.t('pricing.billedLower.monthly'),
+      billedNote: i18n.t('pricing.billed.monthly'),
     }
   }
   return {
@@ -67,8 +67,8 @@ export function planPrice(offer: PlanOfferView, cycle: BillingCycle): PlanPrice 
       { ...offer.yearly, amount: Math.round(offer.yearly.amount / 12) },
       { whole: true },
     ),
-    billed: tr('pricing.billedLower.yearly'),
-    billedNote: tr('pricing.billedYearlyTotal', { total: money(offer.yearly) }),
+    billed: i18n.t('pricing.billedLower.yearly'),
+    billedNote: i18n.t('pricing.billedYearlyTotal', { total: money(offer.yearly) }),
   }
 }
 
@@ -89,35 +89,35 @@ export const twelveMonths = ({ monthly }: PlanOfferView): Money => ({
 
 export function switchLines(from: Plan, to: PaidChoice, preview: ChangePreview): string[] {
   const label = planLabel(to.plan)
-  const after = tr(`plans.per.${to.cycle}`, { amount: money(preview.nextInvoice) })
+  const after = i18n.t(`plans.per.${to.cycle}`, { amount: money(preview.nextInvoice) })
   if (preview.applies === 'now') {
     return [
-      tr('plans.dueToday', { amount: money(preview.dueToday) }),
-      tr('plans.movesNow', { plan: label }),
-      tr('plans.then', { after }),
+      i18n.t('plans.dueToday', { amount: money(preview.dueToday) }),
+      i18n.t('plans.movesNow', { plan: label }),
+      i18n.t('plans.then', { after }),
     ]
   }
   const on = fullDay(preview.on)
   return [
-    tr('plans.nothingToday'),
+    i18n.t('plans.nothingToday'),
     from === to.plan
-      ? tr(`plans.staysOn.${to.cycle}`, { plan: label, on, after })
-      : tr('plans.keepsUntil', { from: planLabel(from), on, plan: label, after }),
+      ? i18n.t(`plans.staysOn.${to.cycle}`, { plan: label, on, after })
+      : i18n.t('plans.keepsUntil', { from: planLabel(from), on, plan: label, after }),
   ]
 }
 
 export function planLine({ plan, cycle }: { plan: Plan; cycle: BillingCycle | null }): string {
   return cycle
-    ? tr('settings.billingSettings.planCycle', {
+    ? i18n.t('settings.billingSettings.planCycle', {
         plan: planLabel(plan),
-        cycle: tr(`settings.billingSettings.cycle.${cycle}`),
+        cycle: i18n.t(`settings.billingSettings.cycle.${cycle}`),
       })
     : planLabel(plan)
 }
 
 export function scheduledLine({ scheduledChange }: BillingView): string | null {
   return scheduledChange
-    ? tr('settings.billingSettings.scheduled', {
+    ? i18n.t('settings.billingSettings.scheduled', {
         plan: planLine(scheduledChange),
         day: fullDay(scheduledChange.on),
       })
@@ -126,8 +126,11 @@ export function scheduledLine({ scheduledChange }: BillingView): string | null {
 
 export function cancelLine({ plan, renewsOn }: BillingView): string {
   return renewsOn
-    ? tr('settings.billingSettings.cancelUntil', { plan: planLabel(plan), day: fullDay(renewsOn) })
-    : tr('settings.billingSettings.cancelNoDate', { plan: planLabel(plan) })
+    ? i18n.t('settings.billingSettings.cancelUntil', {
+        plan: planLabel(plan),
+        day: fullDay(renewsOn),
+      })
+    : i18n.t('settings.billingSettings.cancelNoDate', { plan: planLabel(plan) })
 }
 
 const CARD_BRANDS: Record<string, string> = {
@@ -138,10 +141,10 @@ const CARD_BRANDS: Record<string, string> = {
 }
 
 export function cardLine({ card }: Pick<BillingView, 'card'>): string {
-  if (!card) return tr('settings.billingSettings.noCard')
+  if (!card) return i18n.t('settings.billingSettings.noCard')
   const brand = CARD_BRANDS[card.brand] ?? card.brand.charAt(0).toUpperCase() + card.brand.slice(1)
-  return tr('settings.billingSettings.cardEnding', { brand, last4: card.last4 })
+  return i18n.t('settings.billingSettings.cardEnding', { brand, last4: card.last4 })
 }
 
 export const invoiceLine = (invoice: BillingView['invoices'][number]): string =>
-  `${money(invoice.total)} · ${tr(`settings.billingSettings.invoiceStatus.${invoice.status}`)}`
+  `${money(invoice.total)} · ${i18n.t(`settings.billingSettings.invoiceStatus.${invoice.status}`)}`

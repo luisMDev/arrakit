@@ -46,6 +46,7 @@
     }
   },
   "orgErrors": {
+    "SESSION_EXPIRED": "For your security, sign out and sign in again, then delete your account.",
     "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED": "The organization has no free seat. Its owner can upgrade to add more people.",
     "USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION": "They're already in the organization.",
     "USER_IS_ALREADY_INVITED_TO_THIS_ORGANIZATION": "They're already invited.",
@@ -53,7 +54,8 @@
     "YOU_ARE_NOT_ALLOWED_TO_INVITE_USER_WITH_THIS_ROLE": "You can't invite someone with that role.",
     "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_MEMBER": "You can't change this person's role.",
     "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_MEMBER": "You can't remove this person.",
-    "YOU_CANNOT_LEAVE_THE_ORGANIZATION_AS_THE_ONLY_OWNER": "You're the organization's only owner, so you can't leave it.",
+    "YOU_CANNOT_LEAVE_THE_ORGANIZATION_AS_THE_ONLY_OWNER": "The organization's only owner can't leave it or be removed from it.",
+    "YOU_CANNOT_LEAVE_THE_ORGANIZATION_WITHOUT_AN_OWNER": "The organization needs an owner, so you can't change your own role.",
     "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_ORGANIZATION": "You can't rename this organization.",
     "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_ORGANIZATION": "Only the owner deletes the organization.",
     "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_TEAM": "You can't create teams.",

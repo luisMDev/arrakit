@@ -1,7 +1,7 @@
 import type { UsageView } from '@arrakit/contract'
 import { CURRENCY, type Metric } from '@arrakit/plans'
 
-import { tr } from '#/i18n'
+import { i18n } from '#/i18n'
 import { fullDay, listing, money, quantity } from '#/lib/format'
 
 export type MetricUsage = UsageView['metrics'][number]
@@ -10,21 +10,21 @@ type MetricAmount = TopUpRecord['amounts'][number]
 
 const KEY = 'settings.usageSettings'
 export function metricLabel(metric: Metric | string): string {
-  return tr(`${KEY}.metric.${metric}`)
+  return i18n.t(`${KEY}.metric.${metric}`)
 }
 
 function amountText(metric: Metric | string, amount: number): string {
-  return tr(`${KEY}.amount.${metric}`, { n: quantity(amount) })
+  return i18n.t(`${KEY}.amount.${metric}`, { n: quantity(amount) })
 }
 
 /** "1,750 credits left", "38 GB free" */
 export function availableLine({ metric, kind, available }: MetricUsage): string {
-  return tr(`${KEY}.available.${kind}`, { amount: amountText(metric, available) })
+  return i18n.t(`${KEY}.available.${kind}`, { amount: amountText(metric, available) })
 }
 
 /** "750 credits from your plan · 1,000 credits purchased" */
 export function splitLine({ metric, plan, purchased }: MetricUsage): string {
-  return tr(`${KEY}.split`, {
+  return i18n.t(`${KEY}.split`, {
     plan: amountText(metric, plan),
     purchased: amountText(metric, purchased),
   })
@@ -33,11 +33,11 @@ export function splitLine({ metric, plan, purchased }: MetricUsage): string {
 /** "250 credits used this month", "12 GB of 50 GB used" */
 export function usedLine({ metric, kind, used, limit }: MetricUsage): string {
   return kind === 'capacity'
-    ? tr(`${KEY}.usedOf`, {
+    ? i18n.t(`${KEY}.usedOf`, {
         used: amountText(metric, used),
         limit: amountText(metric, limit ?? 0),
       })
-    : tr(`${KEY}.usedThisMonth`, { amount: amountText(metric, used) })
+    : i18n.t(`${KEY}.usedThisMonth`, { amount: amountText(metric, used) })
 }
 
 /** How full the bar is, 0 to 100. */
@@ -48,7 +48,7 @@ export function usedPercent({ kind, used, available, limit }: MetricUsage): numb
 
 /** "Your plan's part resets on Nov 4, 2026" */
 export function resetLine({ resetsOn }: MetricUsage): string {
-  return tr(`${KEY}.resets`, { day: fullDay(resetsOn) })
+  return i18n.t(`${KEY}.resets`, { day: fullDay(resetsOn) })
 }
 
 /** "2,000 credits and 200 GB" */

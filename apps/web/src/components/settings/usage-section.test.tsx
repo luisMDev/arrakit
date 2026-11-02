@@ -1,10 +1,10 @@
 import type { Me } from '@arrakit/contract'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { usageFixture } from '#/components/usage/fixtures'
 import { orpc } from '#/lib/orpc'
-import { meAs, testQueryClient, withQueries } from '#/test/rpc'
+import { meAs, renderAt, testQueryClient } from '#/test/rpc'
 
 import { UsageSection } from './usage-section'
 
@@ -14,11 +14,12 @@ vi.mock('sonner', async (original) => {
   return { ...sonner, toast: Object.assign(vi.fn(), sonner.toast, { error: toastError }) }
 })
 
-function renderAs(role: Me['role'], { withUsage = true } = {}) {
+async function renderAs(role: Me['role'], { withUsage = true } = {}) {
   const queryClient = testQueryClient()
-  queryClient.setQueryData(orpc.me.get.queryOptions().queryKey, meAs({ role, plan: 'pro' }))
   if (withUsage) queryClient.setQueryData(orpc.usage.get.queryOptions().queryKey, usageFixture())
-  return render(<UsageSection />, { wrapper: withQueries(queryClient) })
+  const view = renderAt(<UsageSection />, { me: meAs({ role, plan: 'pro' }), queryClient })
+  await act(() => view.router.load())
+  return view
 }
 
 describe('Settings > Usage', () => {
@@ -27,8 +28,8 @@ describe('Settings > Usage', () => {
     toastError.mockReset()
   })
 
-  it('shows members the cards and who can add credits, with no buttons', () => {
-    renderAs('member')
+  it('shows members the cards and who can add credits, with no buttons', async () => {
+    await renderAs('member')
     const section = screen.getByRole('region', { name: 'Usage' })
     const credits = section.querySelector('[data-metric="credits"]') as HTMLElement
     expect(within(credits).getByText('750 credits left')).toBeInTheDocument()
@@ -45,8 +46,8 @@ describe('Settings > Usage', () => {
     expect(within(section).queryByText(/Add credits$/)).not.toBeInTheDocument()
   })
 
-  it('points admins to Billing', () => {
-    renderAs('admin')
+  it('points admins to Billing', async () => {
+    await renderAs('admin')
     expect(document.querySelector('[data-hint]')).toHaveTextContent('Add credits in Billing.')
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
@@ -56,7 +57,7 @@ describe('Settings > Usage', () => {
       'fetch',
       vi.fn(async () => new Response('down', { status: 500 })),
     )
-    renderAs('member', { withUsage: false })
+    await renderAs('member', { withUsage: false })
     await waitFor(() =>
       expect(toastError).toHaveBeenCalledWith(
         "Couldn't load usage. Reload the page.",

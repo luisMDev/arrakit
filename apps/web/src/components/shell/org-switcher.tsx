@@ -27,7 +27,8 @@ export function OrgSwitcher() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { organization: current, plan } = useMember()
+  const { user } = useMember()
+  const current = user.organization
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const organizations = useQuery({
@@ -52,7 +53,7 @@ export function OrgSwitcher() {
             aria-label={t('orgSwitcher.label', { organization: current.name })}
           >
             <span className="truncate">
-              {t('shell.usage', { organization: current.name, plan: planLabel(plan) })}
+              {t('shell.usage', { organization: current.name, plan: planLabel(user.plan) })}
             </span>
             <ChevronsUpDown aria-hidden="true" />
           </Button>

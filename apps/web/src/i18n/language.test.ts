@@ -1,13 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  i18n,
-  initialLanguage,
-  languageSettled,
-  loadLanguage,
-  STORED_LANGUAGE_KEY,
-  tr,
-} from './index'
+import { i18n, initialLanguage, languageSettled, loadLanguage, STORED_LANGUAGE_KEY } from './index'
 
 function browser(language: string, stored: string | null = null, blocked = false) {
   return {
@@ -28,10 +21,10 @@ describe('language', () => {
   })
 
   it('switches every text, sets <html lang> and remembers the choice', async () => {
-    expect(tr('home.settings')).toBe('Settings')
+    expect(i18n.t('home.settings')).toBe('Settings')
     await loadLanguage('es')
     expect(i18n.language).toBe('es')
-    expect(tr('home.settings')).toBe('Ajustes')
+    expect(i18n.t('home.settings')).toBe('Ajustes')
     expect(document.documentElement.lang).toBe('es')
     expect(window.localStorage.getItem(STORED_LANGUAGE_KEY)).toBe('es')
   })
@@ -59,7 +52,7 @@ describe('language', () => {
   it('falls back to English for a key Spanish lacks', async () => {
     i18n.addResource('en', 'translation', 'only.inEnglish', 'English only')
     await loadLanguage('es')
-    expect(tr('only.inEnglish')).toBe('English only')
+    expect(i18n.t('only.inEnglish')).toBe('English only')
   })
 
   it.each([

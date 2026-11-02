@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { authFetch, refusedLanding, sendMagicLink, socialSignInUrl } from './auth-api'
+import { refusedLanding, sendMagicLink, socialSignInUrl } from './auth-api'
 
 const ORIGIN = window.location.origin
 
@@ -8,7 +8,8 @@ function stubFetch(answer: (url: string, init?: RequestInit) => Response | Promi
   const calls: { url: string; body: unknown }[] = []
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string, init?: RequestInit) => {
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), ORIGIN).pathname
       calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined })
       return answer(url, init)
     }),
@@ -64,7 +65,7 @@ describe('auth calls', () => {
 
   it("keeps Better Auth's message on a refusal", async () => {
     stubFetch(() => Response.json({ message: 'Sign in from the app.' }, { status: 403 }))
-    await expect(authFetch('/x', {})).rejects.toMatchObject({
+    await expect(sendMagicLink('x@y.co', '/profile')).rejects.toMatchObject({
       status: 403,
       message: 'Sign in from the app.',
     })
@@ -75,8 +76,10 @@ describe('auth calls', () => {
     expect(await socialSignInUrl('google', '/api/auth/oauth2/authorize?a=1')).toBe(
       'https://accounts.google.com/x',
     )
+    expect(calls[0]?.url).toBe('/api/auth/sign-in/social')
     expect(calls[0]?.body).toEqual({
       provider: 'google',
+      disableRedirect: true,
       callbackURL: `${ORIGIN}/api/auth/oauth2/authorize?a=1`,
       errorCallbackURL: `${ORIGIN}/oauth/signin?a=1&via=google`,
     })

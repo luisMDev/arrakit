@@ -1,11 +1,5 @@
 import { domainOf, isWorkEmail, normalizeEmail, personName } from '@arrakit/address'
-import {
-  type Permissions,
-  allows,
-  isOwnerRole,
-  permissionsOf,
-  rolesOf,
-} from '@arrakit/auth/permissions'
+import { type Permissions, memberChangeRefusal } from '@arrakit/auth/permissions'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
@@ -30,10 +24,9 @@ import { Separator } from '#/components/ui/separator'
 import { authCall } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
 import { initialOf, roleLabel, useMember } from '#/lib/current-user'
-import { registerClearing, useClearingForm } from '#/lib/form'
+import { useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import {
-  type CustomRole,
   type OrganizationMember,
   type PendingInvitation,
   organizationQueries,
@@ -93,12 +86,17 @@ function inviteForm(
 export function assignableRoles(
   actorRole: string,
   granted: Permissions,
-  custom: readonly CustomRole[],
+  custom: Record<string, Permissions>,
 ): string[] {
-  const owner = isOwnerRole(actorRole)
-  const customMap = Object.fromEntries(custom.map((r) => [r.role, r.permission]))
-  return ['member', ...(owner ? ['admin'] : []), ...custom.map((r) => r.role)].filter(
-    (role) => owner || allows(granted, permissionsOf(role, customMap)),
+  return ['member', 'admin', ...Object.keys(custom)].filter(
+    (newRole) =>
+      memberChangeRefusal({
+        actorRole,
+        newRole,
+        self: false,
+        custom,
+        actorPermissions: granted,
+      }) === null,
   )
 }
 
@@ -106,7 +104,7 @@ export function MembersSection() {
   const { t } = useTranslation()
   const me = useMember()
   const queryClient = useQueryClient()
-  const organizationId = me.organization.id
+  const organizationId = me.user.organization.id
   const meta = { failure: t(`${K}.notLoaded`) }
   const enabled = me.managesMembers
   const membersQuery = organizationQueries.members(organizationId)
@@ -123,10 +121,9 @@ export function MembersSection() {
   const placeholder = `name@${domainOf(myEmail)}`
   const memberList = members.data ?? []
   const inviteList = invites.data ?? []
-  const customRoles = roles.data ?? []
-  const customMap = Object.fromEntries(customRoles.map((r) => [r.role, r.permission]))
+  const customMap = Object.fromEntries((roles.data ?? []).map((r) => [r.role, r.permission]))
   const granted = me.user.permissions as Permissions
-  const assignable = assignableRoles(me.role, granted, customRoles)
+  const assignable = assignableRoles(me.user.role, granted, customMap)
   const form = useClearingForm({
     resolver: zodResolver(
       inviteForm(
@@ -179,7 +176,7 @@ export function MembersSection() {
     onSuccess: async (_, member) => {
       await reloadMembers()
       notify.success(
-        t(`${K}.removed`, { name: displayName(member), organization: me.organization.name }),
+        t(`${K}.removed`, { name: displayName(member), organization: me.user.organization.name }),
       )
     },
     meta: {
@@ -216,13 +213,15 @@ export function MembersSection() {
 
   if (!me.managesMembers) return <></>
 
-  const outranks = (member: OrganizationMember) =>
-    me.isOwner || allows(granted, permissionsOf(member.role, customMap))
   const manages = (member: OrganizationMember) =>
     member.user.email !== myEmail &&
-    !isOwnerRole(member.role) &&
-    (!rolesOf(member.role).includes('admin') || me.isOwner) &&
-    outranks(member)
+    memberChangeRefusal({
+      actorRole: me.user.role,
+      targetRole: member.role,
+      self: false,
+      custom: customMap,
+      actorPermissions: granted,
+    }) === null
   const canChangeRoles = me.can({ member: ['update'] })
   const canRemove = me.can({ member: ['delete'] })
   const canInvite = me.can({ invitation: ['create'] })
@@ -242,7 +241,7 @@ export function MembersSection() {
       </SelectItem>
     ))
 
-  const moreSeats = MORE_SEATS[me.plan]
+  const moreSeats = MORE_SEATS[me.user.plan]
   const count = memberList.length
 
   return (
@@ -285,7 +284,7 @@ export function MembersSection() {
                     placeholder={placeholder}
                     className="min-w-56 flex-1"
                     aria-invalid={emailError ? true : undefined}
-                    {...registerClearing(form, 'email')}
+                    {...form.register('email')}
                   />
                   <Controller
                     control={form.control}

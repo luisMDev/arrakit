@@ -10,7 +10,7 @@ import { OrgSwitcher } from './org-switcher'
 export function AppShell() {
   const { t } = useTranslation()
   const { user } = useCurrentUser()
-  // Signing out or switching organizations drops the person for a moment: nothing renders then.
+  // Signing out, or leaving the last organization on the way to Profile: nothing renders then.
   if (!user?.organization) return null
   return (
     <>

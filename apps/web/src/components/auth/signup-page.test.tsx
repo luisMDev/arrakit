@@ -8,7 +8,7 @@ import { answer } from '#/test/rpc'
 import { sendMagicLink, socialSignInUrl } from './auth-api'
 import { refusalSearch } from './sign-in-options'
 import { SignupPage, type SignupSearch } from './signup-page'
-import { renderWithQueries, setupAuthTestApi } from '#/test/rpc'
+import { renderAt, setupAuthTestApi } from '#/test/rpc'
 
 vi.mock('./auth-api', async (original) => ({
   ...(await original<typeof import('./auth-api')>()),
@@ -36,11 +36,13 @@ beforeEach(() => {
   startSocial.mockReset().mockReturnValue(new Promise(() => undefined))
 })
 
-function renderPage({
+async function renderPage({
   mode = 'new',
   search = {},
 }: { mode?: 'new' | 'returning'; search?: SignupSearch } = {}) {
-  return renderWithQueries(<SignupPage mode={mode} search={search} />)
+  const view = renderAt(<SignupPage mode={mode} search={search} />, { me: null, url: '/signup' })
+  await act(() => view.router.load())
+  return view
 }
 
 const emailInput = () => screen.getByRole('textbox', { name: 'Work email' })
@@ -54,7 +56,7 @@ async function typeAndContinue(email: string) {
 
 describe('SignupPage', () => {
   it('shows the copy and the form', async () => {
-    renderPage()
+    await renderPage()
     expect(
       screen.getByRole('heading', { level: 1, name: 'Where should we write to you?' }),
     ).toBeInTheDocument()
@@ -73,7 +75,7 @@ describe('SignupPage', () => {
     [{ google: false, microsoft: false }, [], false],
   ])('shows the providers %j', async (providers, shown, divider) => {
     const calls = answer('authProviders/get', providers)
-    renderPage()
+    await renderPage()
     await waitFor(() => expect(calls).toHaveLength(1))
     await waitFor(() => {
       for (const name of ['Google', 'Microsoft']) {
@@ -86,9 +88,9 @@ describe('SignupPage', () => {
     else expect(screen.queryByText('OR')).not.toBeInTheDocument()
   })
 
-  it('shows Google until the providers answer', () => {
+  it('shows Google until the providers answer', async () => {
     answer('authProviders/get', () => new Promise(() => undefined))
-    renderPage()
+    await renderPage()
     expect(googleButton()).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Continue with Microsoft' })).toBeNull()
   })
@@ -98,7 +100,7 @@ describe('SignupPage', () => {
     ['microsoft', 'microsoft', 'Microsoft'],
   ] as const)('starts %s with landing /profile and disables every button', async (via, _, name) => {
     answer('authProviders/get', { google: true, microsoft: true })
-    renderPage()
+    await renderPage()
     const button = await screen.findByRole('button', { name: `Continue with ${name}` })
     await userEvent.click(button)
     expect(startSocial).toHaveBeenCalledWith(via, '/profile')
@@ -118,14 +120,14 @@ describe('SignupPage', () => {
       { error: 'INVALID_TOKEN' },
       'That link was already used or has expired. Enter your email for a new one.',
     ],
-  ])('shows the refusal for %j', (search, message) => {
-    renderPage({ search })
+  ])('shows the refusal for %j', async (search, message) => {
+    await renderPage({ search })
     expect(screen.getAllByRole('alert')).toHaveLength(1)
     expect(screen.getByRole('alert')).toHaveTextContent(message)
   })
 
   it('refuses an unwritable email on the client and sends nothing', async () => {
-    renderPage()
+    await renderPage()
     await typeAndContinue('ana@acme')
     expect(emailInput()).toHaveAttribute('aria-invalid', 'true')
     expect(screen.getByText('Enter your work email, like name@company.com.')).toBeInTheDocument()
@@ -133,7 +135,7 @@ describe('SignupPage', () => {
   })
 
   it('sends the normalized email and says check your email, without the input', async () => {
-    renderPage()
+    await renderPage()
     await typeAndContinue('  Ana@Acme.COM ')
     expect(sendLink).toHaveBeenCalledWith('ana@acme.com', '/profile')
     expect(
@@ -151,17 +153,17 @@ describe('SignupPage', () => {
   })
 
   it('carries a paid plan to the landing and drops an invalid one', async () => {
-    const { unmount } = renderPage({ search: { plan: 'team', cycle: 'monthly' } })
+    const { unmount } = await renderPage({ search: { plan: 'team', cycle: 'monthly' } })
     await typeAndContinue('ana@acme.com')
     expect(sendLink).toHaveBeenLastCalledWith('ana@acme.com', '/profile?plan=team&cycle=monthly')
     unmount()
-    renderPage({ search: { plan: 'enterprise', cycle: 'monthly' } })
+    await renderPage({ search: { plan: 'enterprise', cycle: 'monthly' } })
     await typeAndContinue('ana@acme.com')
     expect(sendLink).toHaveBeenLastCalledWith('ana@acme.com', '/profile')
   })
 
   it('goes back with the last email on Use a different email', async () => {
-    renderPage()
+    await renderPage()
     await typeAndContinue('ana@acme.com')
     await userEvent.click(await screen.findByRole('button', { name: 'Use a different email' }))
     expect(emailInput()).toHaveValue('ana@acme.com')
@@ -170,16 +172,27 @@ describe('SignupPage', () => {
 
   it('shows the field error on an API 400 and re-enables the button', async () => {
     sendLink.mockResolvedValueOnce(false)
-    renderPage()
+    await renderPage()
     await typeAndContinue('iñigo@mesalia.es')
     expect(await screen.findByText('Enter your work email, like name@company.com.')).toBeVisible()
     expect(emailInput()).toHaveAttribute('aria-invalid', 'true')
     expect(continueButton()).toBeEnabled()
   })
 
+  it('hides the API refusal while the email is edited', async () => {
+    sendLink.mockResolvedValueOnce(false)
+    await renderPage()
+    await typeAndContinue('iñigo@mesalia.es')
+    const error = 'Enter your work email, like name@company.com.'
+    expect(await screen.findByText(error)).toBeVisible()
+    await userEvent.type(emailInput(), '{Backspace}s')
+    expect(screen.queryByText(error)).not.toBeInTheDocument()
+    expect(emailInput()).not.toHaveAttribute('aria-invalid')
+  })
+
   it('toasts another failure and lets the person retry', async () => {
     sendLink.mockRejectedValueOnce(new Error('500'))
-    renderPage()
+    await renderPage()
     await typeAndContinue('ana@acme.com')
     expect(await screen.findByText("Couldn't send your link. Try again.")).toBeInTheDocument()
     expect(continueButton()).toBeEnabled()
@@ -191,7 +204,7 @@ describe('SignupPage', () => {
   it('sends one link while one is pending', async () => {
     const pending = deferred<boolean>()
     sendLink.mockReturnValue(pending.promise)
-    renderPage()
+    await renderPage()
     await userEvent.type(emailInput(), 'ana@acme.com')
     await userEvent.click(continueButton())
     expect(continueButton()).toBeDisabled()
@@ -204,7 +217,7 @@ describe('SignupPage', () => {
   it('starts Google once while pending and retries after a failure', async () => {
     const start = deferred<string>()
     startSocial.mockReturnValueOnce(start.promise)
-    renderPage()
+    await renderPage()
     await userEvent.click(googleButton())
     await userEvent.click(googleButton())
     expect(startSocial).toHaveBeenCalledTimes(1)
@@ -216,7 +229,7 @@ describe('SignupPage', () => {
   })
 
   it('re-enables the buttons when the page comes back from the bfcache', async () => {
-    renderPage()
+    await renderPage()
     await userEvent.click(googleButton())
     expect(googleButton()).toBeDisabled()
     const notPersisted = new Event('pageshow') as PageTransitionEvent
@@ -231,7 +244,7 @@ describe('SignupPage', () => {
   })
 
   it('lands back on /signin in sign-in mode, for the link and for Google', async () => {
-    renderPage({ mode: 'returning', search: { plan: 'team', cycle: 'monthly' } })
+    await renderPage({ mode: 'returning', search: { plan: 'team', cycle: 'monthly' } })
     await userEvent.click(googleButton())
     expect(startSocial).toHaveBeenCalledWith('google', '/signin')
     act(() => {
@@ -254,10 +267,12 @@ describe('refusalSearch', () => {
     ],
     [{ error: '' }, { error: '' }],
     [{ error: null, via: undefined }, {}],
-  ])('reads %j as %j', (search, expected) => expect(refusalSearch(search)).toEqual(expected))
+  ])('reads %j as %j', async (search, expected) =>
+    expect(refusalSearch.parse(search)).toEqual(expected),
+  )
 
-  it('shows the link refusal for an error the router parsed as a number', () => {
-    renderPage({ search: refusalSearch({ error: 1 }) })
+  it('shows the link refusal for an error the router parsed as a number', async () => {
+    await renderPage({ search: refusalSearch.parse({ error: 1 }) })
     expect(screen.getByRole('alert')).toHaveTextContent('That link was already used or has expired')
   })
 })

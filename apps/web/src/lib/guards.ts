@@ -3,12 +3,14 @@ import type { Me, PaidChoice } from '@arrakit/contract'
 import { isPaidPlan } from '@arrakit/plans'
 import type { QueryClient } from '@tanstack/react-query'
 import { redirect } from '@tanstack/react-router'
+import { z } from 'zod'
 
 import { loadLanguage } from '#/i18n'
-import { reportError } from '#/lib/api-errors'
+import { statusOf } from '#/lib/api-errors'
 import { type ChoiceSearch, appLanding, checkoutChoice } from '#/lib/checkout-choice'
-import { grants, loadMe } from '#/lib/current-user'
+import { grants } from '#/lib/current-user'
 import { orpc } from '#/lib/orpc'
+import { searchText } from '#/lib/search-params'
 
 interface GuardArgs<TSearch = ChoiceSearch> {
   context: { queryClient: QueryClient }
@@ -19,8 +21,9 @@ interface GuardArgs<TSearch = ChoiceSearch> {
 /** The signed-in person or `null`; any failure but a 401 goes to Unavailable, then back to `next`. */
 async function guardedMe(queryClient: QueryClient, next: string): Promise<Me | null> {
   try {
-    return await loadMe(queryClient)
-  } catch {
+    return await queryClient.fetchQuery(orpc.me.get.queryOptions())
+  } catch (err) {
+    if (statusOf(err) === 401) return null
     throw redirect({ to: '/unavailable', search: { next } })
   }
 }
@@ -40,7 +43,7 @@ export async function requireUser({ context, location }: Omit<GuardArgs, 'search
     // Always queued, even when the account language looks active: an earlier switch may still be
     // loading and would win otherwise. A language file that will not load keeps the current one.
     await loadLanguage(me.language).catch((err: unknown) =>
-      reportError('[requireUser] loading the account language failed', err),
+      console.error('[requireUser] loading the account language failed', err),
     )
   }
 }
@@ -74,8 +77,7 @@ export function canCheckout({ context, search }: Omit<GuardArgs, 'location'>): {
 export const PAID_WAIT_TRIES = 15
 const PAID_WAIT_INTERVAL_MS = 1000
 
-export const welcomeSearch = (search: Record<string, unknown>): { session_id?: string } =>
-  typeof search.session_id === 'string' ? { session_id: search.session_id } : {}
+export const welcomeSearch = z.object({ session_id: searchText })
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
@@ -87,7 +89,7 @@ async function waitForPaidPlan(queryClient: QueryClient): Promise<boolean> {
     try {
       if (isPaidPlan((await queryClient.fetchQuery(options)).plan)) return true
     } catch (err) {
-      reportError('[onPaidPlan] reading the plan failed', err)
+      console.error('[onPaidPlan] reading the plan failed', err)
       return false
     }
   }
@@ -101,7 +103,7 @@ async function waitForPaidPlan(queryClient: QueryClient): Promise<boolean> {
 export async function onPaidPlan({
   context,
   search,
-}: Omit<GuardArgs<{ session_id?: string }>, 'location'>) {
+}: Omit<GuardArgs<z.infer<typeof welcomeSearch>>, 'location'>) {
   if (isPaidPlan(cachedMe(context.queryClient)?.plan)) return
   if (search.session_id && (await waitForPaidPlan(context.queryClient))) return
   throw redirect({ to: '/app/plans' })

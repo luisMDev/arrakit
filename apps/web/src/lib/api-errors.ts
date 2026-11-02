@@ -7,10 +7,6 @@ export function statusOf(err: unknown): number {
   return 0
 }
 
-export function reportError(context: string, err: unknown): void {
-  console.error(context, err)
-}
-
 /**
  * The API's own message for an error it answered, else `null`. A 500 is an unexpected failure,
  * and oRPC's fallback text for a code or the generic validation text are not the API's words.

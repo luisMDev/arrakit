@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { sendMagicLink } from '#/components/auth/auth-api'
-import { answerAuth, quiet, renderAt, setupTestApi } from '#/test/rpc'
+import { answer, answerAuth, meAs, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
 import { JoinPage } from './join-page'
 
@@ -35,6 +35,7 @@ describe('JoinPage', () => {
       return { invitation: { id: 'inv/1' }, member: { id: 'm-1', organizationId: ORG_ID } }
     })
     const activated = answerAuth('organization/set-active', { id: ORG_ID })
+    answer('me/get', meAs())
     const { location } = setup()
     expect(await screen.findByRole('status')).toHaveTextContent('Joining your organization…')
     await waitFor(() => expect(location()).toBe('/app'))

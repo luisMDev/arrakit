@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import '#/i18n'
-import { renderWithQueries } from '#/test/rpc'
+import { renderAt } from '#/test/rpc'
 import { answer, answerAuth, meAs, quiet, setupTestApi } from '#/test/rpc'
 import type { ChoiceSearch } from '#/lib/checkout-choice'
 
@@ -26,9 +26,13 @@ beforeEach(() => {
   activated = answerAuth('organization/set-active', ORG)
 })
 
-function renderPage(search: ChoiceSearch = {}) {
+async function renderPage(search: ChoiceSearch = {}) {
   const onDone = vi.fn()
-  renderWithQueries(<ProfilePage search={search} onDone={onDone} />)
+  const { router } = renderAt(<ProfilePage search={search} onDone={onDone} />, {
+    me: null,
+    url: '/profile',
+  })
+  await act(() => router.load())
   return onDone
 }
 
@@ -37,8 +41,8 @@ const skip = () => screen.getByRole('button', { name: 'Skip' })
 const terms = (hidden = false) => screen.getByRole('checkbox', { name: 'I agree to the', hidden })
 
 describe('ProfilePage', () => {
-  it('asks only for a name, an organization and the terms', () => {
-    renderPage()
+  it('asks only for a name, an organization and the terms', async () => {
+    await renderPage()
     expect(
       screen.getByRole('heading', { level: 1, name: 'Tell us about your organization.' }),
     ).toBeInTheDocument()
@@ -57,52 +61,69 @@ describe('ProfilePage', () => {
   })
 
   it('keeps Next disabled until the terms are ticked', async () => {
-    renderPage()
+    await renderPage()
     expect(next()).toBeDisabled()
     expect(skip()).toBeEnabled()
     await userEvent.click(terms())
     expect(next()).toBeEnabled()
   })
 
-  it('sends the trimmed name and organization on Next and goes to /app', async () => {
-    const created = answer('onboarding/create', ORG)
-    const onDone = renderPage()
+  it('names the person, creates the organization with the terms on Next and goes to /app', async () => {
+    const named = answerAuth('update-user', { status: true })
+    const created = answerAuth('organization/create', ORG)
+    const onDone = await renderPage()
     await userEvent.type(screen.getByRole('textbox', { name: 'Your name' }), '  Ana Ibarra ')
     await userEvent.type(screen.getByRole('textbox', { name: 'Organization' }), ' Seaya ')
     await userEvent.click(terms())
     await userEvent.click(next())
     await waitFor(() =>
-      expect(created).toEqual([
-        { input: { name: 'Seaya', personName: 'Ana Ibarra', termsAccepted: true } },
-      ]),
+      expect(created).toEqual([{ input: { name: 'Seaya', slug: 'pending', termsAccepted: true } }]),
     )
+    expect(named).toEqual([{ input: { name: 'Ana Ibarra' } }])
     await waitFor(() => expect(onDone).toHaveBeenCalledWith({ to: '/app' }))
-    expect(activated).toEqual([{ input: { organizationId: ORG.id } }])
+    expect(activated).toEqual([])
   })
 
-  it('allows blank fields', async () => {
-    const created = answer('onboarding/create', ORG)
-    renderPage()
+  it('allows blank fields, keeping the person name', async () => {
+    const named = answerAuth('update-user', { status: true })
+    const created = answerAuth('organization/create', ORG)
+    await renderPage()
     await userEvent.click(terms())
     await userEvent.click(next())
     await waitFor(() =>
-      expect(created).toEqual([{ input: { name: '', personName: '', termsAccepted: true } }]),
+      expect(created).toEqual([{ input: { name: '', slug: 'pending', termsAccepted: true } }]),
     )
+    expect(named).toEqual([])
   })
 
-  it('skips without asking anything and goes to /app', async () => {
-    const skipped = answer('onboarding/skip', ORG)
-    const created = answer('onboarding/create', ORG)
-    const onDone = renderPage()
-    await userEvent.click(skip())
-    await waitFor(() => expect(onDone).toHaveBeenCalledWith({ to: '/app' }))
-    expect(skipped).toHaveLength(1)
+  it('sends nothing for a name past 100 characters', async () => {
+    const created = answerAuth('organization/create', ORG)
+    await renderPage()
+    await userEvent.click(screen.getByRole('textbox', { name: 'Your name' }))
+    await userEvent.paste('a'.repeat(101))
+    await userEvent.click(terms())
+    await userEvent.click(next())
+    expect(
+      await screen.findByText("Couldn't save your organization. Check its name and try again."),
+    ).toBeInTheDocument()
     expect(created).toEqual([])
   })
 
+  it('skips without asking anything or recording terms, and goes to /app', async () => {
+    const named = answerAuth('update-user', { status: true })
+    const created = answerAuth('organization/create', ORG)
+    const onDone = await renderPage()
+    await userEvent.type(screen.getByRole('textbox', { name: 'Your name' }), 'Ana')
+    await userEvent.click(terms())
+    await userEvent.click(skip())
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith({ to: '/app' }))
+    expect(created).toEqual([{ input: { name: '', slug: 'pending' } }])
+    expect(named).toEqual([])
+  })
+
   it('goes to checkout with a paid plan', async () => {
-    answer('onboarding/skip', ORG)
-    const onDone = renderPage({ plan: 'team', cycle: 'monthly' })
+    answerAuth('organization/create', ORG)
+    const onDone = await renderPage({ plan: 'team', cycle: 'monthly' })
     await userEvent.click(skip())
     await waitFor(() =>
       expect(onDone).toHaveBeenCalledWith({
@@ -113,19 +134,19 @@ describe('ProfilePage', () => {
   })
 
   it('continues after a lost answer when the person now has an organization', async () => {
-    answer('onboarding/create', 502)
+    answerAuth('organization/create', 502)
     answer('me/get', meAs())
-    const onDone = renderPage()
+    const onDone = await renderPage()
     await userEvent.click(terms())
     await userEvent.click(next())
     await waitFor(() => expect(onDone).toHaveBeenCalledWith({ to: '/app' }))
-    expect(activated).toEqual([{ input: { organizationId: meAs().organization!.id } }])
+    expect(activated).toEqual([])
     expect(console.error).not.toHaveBeenCalled()
   })
 
   it('toasts a failed Next and lets the person retry', async () => {
-    answer('onboarding/create', 500)
-    const onDone = renderPage()
+    answerAuth('organization/create', 500)
+    const onDone = await renderPage()
     await userEvent.click(terms())
     await userEvent.click(next())
     expect(
@@ -136,8 +157,8 @@ describe('ProfilePage', () => {
   })
 
   it('toasts a failed Skip and lets the person retry', async () => {
-    const skipped = answer('onboarding/skip', 500, ORG)
-    const onDone = renderPage()
+    const skipped = answerAuth('organization/create', 500, ORG)
+    const onDone = await renderPage()
     await userEvent.click(skip())
     expect(await screen.findByText("Couldn't skip this step. Try again.")).toBeInTheDocument()
     expect(skip()).toBeEnabled()
@@ -148,8 +169,11 @@ describe('ProfilePage', () => {
 
   it('sends one request at a time', async () => {
     let finish!: (org: typeof ORG) => void
-    const skipped = answer('onboarding/skip', () => new Promise((resolve) => (finish = resolve)))
-    const onDone = renderPage()
+    const skipped = answerAuth(
+      'organization/create',
+      () => new Promise((resolve) => (finish = resolve)),
+    )
+    const onDone = await renderPage()
     await userEvent.click(terms())
     await userEvent.click(skip())
     expect(skip()).toBeDisabled()
@@ -163,8 +187,8 @@ describe('ProfilePage', () => {
   it.each([
     ['Terms', 'https://example.com/terms'],
     ['Privacy Policy', 'https://example.com/privacy'],
-  ])('links %s to the published page in a new tab', (name, href) => {
-    renderPage()
+  ])('links %s to the published page in a new tab', async (name, href) => {
+    await renderPage()
     const link = screen.getByRole('link', { name })
     expect(link).toHaveAttribute('href', href)
     expect(link).toHaveAttribute('target', '_blank')

@@ -2,6 +2,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { planLabel } from '#/components/billing/plan-copy'
 import type { SettingsSearch } from '#/components/settings/settings-page'
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
 import { Button } from '#/components/ui/button'
@@ -18,7 +19,7 @@ import { ThemeSwitcher } from './theme-switcher'
 export function AppMenu() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { user, name, can, managesMembers, planLabel, signedOut } = useCurrentUser()
+  const { user, name, can, managesMembers, signedOut } = useCurrentUser()
   const [open, setOpen] = useState(false)
   const signOutMutation = useApiMutation({
     mutationKey: ['auth', 'signOut'],
@@ -80,7 +81,10 @@ export function AppMenu() {
         <div className="px-2 py-1.5">
           <p className="text-sm font-medium">{name}</p>
           <p className="text-xs text-muted-foreground">
-            {t('shell.usage', { organization: user.organization?.name, plan: planLabel })}
+            {t('shell.usage', {
+              organization: user.organization?.name,
+              plan: user.plan ? planLabel(user.plan) : '',
+            })}
           </p>
         </div>
         <Separator className="my-1" />

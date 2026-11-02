@@ -1,4 +1,4 @@
-import { type AccountView, accountUpdateSchema } from '@arrakit/contract'
+import type { AccountView } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { type AccountLanguage, isAccountLanguage, personName } from '@arrakit/address'
 import {
@@ -30,9 +30,9 @@ import { authCall } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
 import { initialOf, useCurrentUser } from '#/lib/current-user'
 import { listing } from '#/lib/format'
-import { registerClearing, useClearingForm } from '#/lib/form'
+import { personNameField, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
-import { client, orpc } from '#/lib/orpc'
+import { orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
 import { ConfirmDialog } from './confirm-dialog'
@@ -53,9 +53,20 @@ const K = 'settings.accountSettings'
 
 const SAVE_KEY = ['account']
 
-const nameSchema = z.object({ name: accountUpdateSchema.shape.name.unwrap() })
+const nameSchema = z.object({ name: personNameField })
 
-type AccountUpdate = Parameters<typeof client.me.account.update>[0]
+interface AccountUpdate {
+  name?: string
+  language?: AccountLanguage
+  timeZone?: string
+  emails?: { productNews: boolean }
+}
+
+/** What Better Auth's `update-user` takes for the changes. */
+const userChanges = ({ emails, ...changes }: AccountUpdate) => ({
+  ...changes,
+  ...(emails ? { emailProductNews: emails.productNews } : {}),
+})
 
 type Translate = (key: string, params?: Record<string, unknown>) => string
 
@@ -98,9 +109,9 @@ export function AccountSection() {
   const nameError = form.formState.errors.name !== undefined
   const [confirming, setConfirming] = useState(false)
 
-  const update: UseMutationOptions<AccountView, Error, AccountUpdate> = {
+  const update: UseMutationOptions<unknown, Error, AccountUpdate> = {
     mutationKey: SAVE_KEY,
-    mutationFn: (changes) => client.me.account.update(changes),
+    mutationFn: (changes) => authCall(authClient.updateUser(userChanges(changes))),
     scope: { id: 'account' },
     onMutate: async (changes) => {
       await queryClient.cancelQueries({ queryKey })
@@ -108,12 +119,16 @@ export function AccountSection() {
         current ? withChanges(current, changes) : current,
       )
     },
-    onSuccess: async (saved) => {
+    onSuccess: async (_, changes) => {
       if (queryClient.isMutating({ mutationKey: SAVE_KEY }) === 1) {
-        queryClient.setQueryData(queryKey, saved)
+        void queryClient.invalidateQueries({ queryKey })
       }
-      me.patch((current) => ({ ...current, name: saved.name, language: saved.language }))
-      if (isAccountLanguage(saved.language)) await loadLanguage(saved.language)
+      me.patch((current) => ({
+        ...current,
+        name: changes.name ?? current.name,
+        language: changes.language ?? current.language,
+      }))
+      if (changes.language) await loadLanguage(changes.language)
     },
     onError: () => queryClient.invalidateQueries({ queryKey }),
   }
@@ -137,7 +152,7 @@ export function AccountSection() {
     form.reset({ name: trimmed })
   }
 
-  const nameField = registerClearing(form, 'name')
+  const nameField = form.register('name')
 
   const signOutEverywhere = useApiMutation({
     mutationFn: () => authCall(authClient.revokeOtherSessions()),
@@ -149,9 +164,9 @@ export function AccountSection() {
   })
 
   const deleteAccount = useApiMutation({
-    ...orpc.me.delete.mutationOptions(),
-    onSuccess: async () => {
-      await authClient.signOut().catch(() => undefined)
+    mutationKey: ['account', 'delete'],
+    mutationFn: () => authCall(authClient.deleteUser({})),
+    onSuccess: () => {
       setConfirming(false)
       notify.success(t(`${K}.deleted`))
       me.signedOut()
@@ -317,7 +332,7 @@ export function AccountSection() {
             onOpenChange={setConfirming}
             title={t(`${K}.confirmTitle`)}
             confirmLabel={t(`${K}.deleteAccount`)}
-            pending={deleteAccount.isPending}
+            pending={deleteAccount.busy}
             onConfirm={() => void deleteAccount.run()}
           />
         </>

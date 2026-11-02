@@ -22,7 +22,7 @@ import { Separator } from '#/components/ui/separator'
 import { authCall } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
 import { useMember } from '#/lib/current-user'
-import { nameForm, registerClearing, useClearingForm } from '#/lib/form'
+import { nameForm, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import { type Team, organizationQueries } from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
@@ -40,7 +40,7 @@ export function TeamsSection() {
   const { t } = useTranslation()
   const me = useMember()
   const queryClient = useQueryClient()
-  const organizationId = me.organization.id
+  const organizationId = me.user.organization.id
   const teamsQuery = organizationQueries.teams(organizationId)
   const teams = useQuery({ ...teamsQuery, meta: { failure: t(`${K}.notLoaded`) } })
   const form = useClearingForm({
@@ -78,7 +78,7 @@ export function TeamsSection() {
                     autoComplete="off"
                     className="min-w-56 flex-1"
                     aria-invalid={nameError ? true : undefined}
-                    {...registerClearing(form, 'name')}
+                    {...form.register('name')}
                   />
                   <Button type="submit" disabled={create.isPending}>
                     {t(`${K}.create`)}
@@ -193,7 +193,7 @@ function TeamCard({ team, organizationId }: { team: Team; organizationId: string
               aria-label={t(`${K}.nameOf`, { team: team.name })}
               aria-invalid={form.formState.errors.name ? true : undefined}
               className="max-w-xs"
-              {...registerClearing(form, 'name')}
+              {...form.register('name')}
             />
             <Button type="submit" variant="outline" disabled={rename.isPending}>
               {t(`${K}.save`)}

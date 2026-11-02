@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 
 import { Card, CardContent, CardHeader, CardTitle } from '#/components/ui/card'
 import { Progress } from '#/components/ui/progress'
-import { tr } from '#/i18n'
 import { useCurrentUser } from '#/lib/current-user'
 import { orpc } from '#/lib/orpc'
 
@@ -18,9 +18,10 @@ import {
 
 /** `usage.get` when the person's role reads usage, with the "couldn't load" toast when it fails. */
 export function useUsage() {
+  const { t } = useTranslation()
   const { can } = useCurrentUser()
   return useQuery({
-    ...orpc.usage.get.queryOptions({ meta: { failure: tr('settings.usageSettings.notLoaded') } }),
+    ...orpc.usage.get.queryOptions({ meta: { failure: t('settings.usageSettings.notLoaded') } }),
     enabled: can({ usage: ['read'] }),
   })
 }

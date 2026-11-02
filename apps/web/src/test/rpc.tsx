@@ -1,13 +1,14 @@
 import { permissionsOf } from '@arrakit/auth/permissions'
 import type { AuthProviders, BillingView, Me } from '@arrakit/contract'
 import { COMMON_ORPC_ERROR_DEFS, fallbackORPCErrorMessage } from '@orpc/client'
-import { QueryClientProvider } from '@tanstack/react-query'
+import { type QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   RouterProvider,
   createMemoryHistory,
   createRootRoute,
   createRoute,
   createRouter,
+  useSearch,
 } from '@tanstack/react-router'
 import { render } from '@testing-library/react'
 import { HttpResponse, http } from 'msw'
@@ -153,12 +154,6 @@ export function meAs(overrides: Partial<Me> = {}): Me {
 export const testQueryClient = () =>
   createQueryClient({ queries: { retry: false }, mutations: { retry: false } })
 
-export function withQueries(client = testQueryClient()) {
-  return function QueriesWrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
-  }
-}
-
 const STUBS: [string, string][] = [
   ['/app', 'Home'],
   ['/app/plans', 'Plans'],
@@ -170,16 +165,34 @@ const STUBS: [string, string][] = [
   ['/signin', 'Sign in'],
 ]
 
-/** Renders `ui` at `url` inside a router with stand-in pages for where screens navigate. */
+type Screen = ReactNode | ((search: Record<string, unknown>) => ReactNode)
+
+function ScreenAt({ ui }: { ui: Screen }) {
+  const search = useSearch({ strict: false })
+  return <>{typeof ui === 'function' ? ui(search) : ui}</>
+}
+
+/**
+ * Renders `ui` at `url` inside a router with stand-in pages for where screens navigate. `ui` may
+ * be a function of the URL's search, as a route component reads it. `me` is seeded into
+ * `queryClient` (`null`: no one signed in).
+ */
 export function renderAt(
-  ui: ReactNode,
-  { me = meAs(), url = '/app/settings' }: { me?: Me | null; url?: string } = {},
+  ui: Screen,
+  {
+    me = meAs(),
+    url = '/app/settings',
+    queryClient = testQueryClient(),
+  }: { me?: Me | null; url?: string; queryClient?: QueryClient } = {},
 ) {
-  const queryClient = testQueryClient()
   if (me) queryClient.setQueryData(orpc.me.get.queryOptions().queryKey, me)
   const rootRoute = createRootRoute()
   const path = url.split('?')[0]!
-  const screen = createRoute({ getParentRoute: () => rootRoute, path, component: () => <>{ui}</> })
+  const screen = createRoute({
+    getParentRoute: () => rootRoute,
+    path,
+    component: () => <ScreenAt ui={ui} />,
+  })
   const stubs = STUBS.filter(([stubPath]) => stubPath !== path).map(([stubPath, title]) =>
     createRoute({
       getParentRoute: () => rootRoute,
@@ -192,11 +205,10 @@ export function renderAt(
     history: createMemoryHistory({ initialEntries: [url] }),
   })
   const view = render(
-    <>
+    <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
       <Toaster />
-    </>,
-    { wrapper: withQueries(queryClient) },
+    </QueryClientProvider>,
   )
   return { ...view, router, queryClient, location: () => router.state.location.pathname }
 }
@@ -208,16 +220,6 @@ export function setupAuthTestApi(providers: AuthProviders = { google: true, micr
     quiet()
     answer('authProviders/get', providers)
   })
-}
-
-export function renderWithQueries(ui: ReactNode) {
-  return render(
-    <>
-      {ui}
-      <Toaster />
-    </>,
-    { wrapper: withQueries() },
-  )
 }
 
 export function billingOf(overrides: Partial<BillingView> = {}): BillingView {

@@ -1,9 +1,9 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import '#/i18n'
-import { renderWithQueries, setupAuthTestApi } from '#/test/rpc'
+import { renderAt, setupAuthTestApi } from '#/test/rpc'
 import { answer, answerAuth, meAs } from '#/test/rpc'
 
 import { OAuthConsentPage } from './oauth-consent-page'
@@ -37,15 +37,19 @@ beforeEach(() => {
   answerAuth('organization/list', [ARDENT])
 })
 
-const renderPage = (search = `?${QUERY}`) => renderWithQueries(<OAuthConsentPage search={search} />)
+async function renderPage(search = `?${QUERY}`) {
+  const view = renderAt(<OAuthConsentPage search={search} />, { me: null, url: '/oauth/consent' })
+  await act(() => view.router.load())
+  return view
+}
 
 const FAILED = "Couldn't finish connecting. Try again."
 
 describe('OAuthConsentPage', () => {
   it('lets a person in several organizations pick the one to connect', async () => {
-    answerAuth('organization/list', [ARDENT, BIRCH])
+    const lists = answerAuth('organization/list', [ARDENT, BIRCH])
     const chosen = answerAuth('organization/set-active', BIRCH)
-    renderPage()
+    await renderPage()
     const picker = await screen.findByRole('combobox', { name: 'Organization' })
     expect(picker).toHaveTextContent('Ardent Ventures')
     answer('me/get', meAs({ organization: BIRCH as never }))
@@ -54,11 +58,13 @@ describe('OAuthConsentPage', () => {
     expect(await screen.findByText('Claude will act as you in Birch.')).toBeInTheDocument()
     expect(chosen).toEqual([{ input: { organizationId: BIRCH.id } }])
     expect(chosen[0]!.input).not.toHaveProperty('oauth_query')
+    expect(lists).toHaveLength(1)
+    expect(clients).toHaveLength(1)
   })
 
   it('shows no picker to a person in one organization', async () => {
     const lists = answerAuth('organization/list', [ARDENT])
-    renderPage()
+    await renderPage()
     expect(
       await screen.findByText('Claude will act as you in Ardent Ventures.'),
     ).toBeInTheDocument()
@@ -67,7 +73,7 @@ describe('OAuthConsentPage', () => {
   })
 
   it('loads the client and the organization, then asks with Allow and Deny only', async () => {
-    renderPage()
+    await renderPage()
     expect(screen.getByRole('status')).toHaveTextContent('Loading…')
 
     expect(
@@ -80,7 +86,7 @@ describe('OAuthConsentPage', () => {
 
   it('names the client by its id when it gave no name', async () => {
     answerAuth('oauth2/public-client', { client_id: 'claude-id' })
-    renderPage()
+    await renderPage()
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Connect claude-id' }),
     ).toBeInTheDocument()
@@ -88,7 +94,7 @@ describe('OAuthConsentPage', () => {
 
   it('sends the same query, exactly as received, for Allow and for Deny', async () => {
     consents = answerAuth('oauth2/consent', 500, pending)
-    renderPage()
+    await renderPage()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Allow' }))
     expect(await screen.findByText(FAILED)).toBeInTheDocument()
@@ -98,7 +104,7 @@ describe('OAuthConsentPage', () => {
   })
 
   it('disables both buttons while an answer is pending', async () => {
-    renderPage()
+    await renderPage()
     await userEvent.click(await screen.findByRole('button', { name: 'Allow' }))
     expect(screen.getByRole('button', { name: 'Allow' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Deny' })).toBeDisabled()
@@ -108,14 +114,14 @@ describe('OAuthConsentPage', () => {
 
   it('treats a consent answer without a url as a failure', async () => {
     answerAuth('oauth2/consent', { error: 'access_denied' })
-    renderPage()
+    await renderPage()
     await userEvent.click(await screen.findByRole('button', { name: 'Allow' }))
     expect(await screen.findByText(FAILED)).toBeInTheDocument()
   })
 
   it('retries after a failure: a second click records a second consent', async () => {
     consents = answerAuth('oauth2/consent', 500, { url: '#connected' })
-    renderPage()
+    await renderPage()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Allow' }))
     expect(await screen.findByText(FAILED)).toBeVisible()
@@ -127,7 +133,7 @@ describe('OAuthConsentPage', () => {
 
   it('offers only a way back, which denies, to a person in no organization', async () => {
     answer('me/get', meAs({ organization: null, role: null, plan: null }))
-    renderPage()
+    await renderPage()
     expect(
       await screen.findByRole('heading', { level: 1, name: "You're not in an organization yet." }),
     ).toBeInTheDocument()
@@ -144,7 +150,7 @@ describe('OAuthConsentPage', () => {
 
   it('says the request is unavailable when loading fails, and reports it', async () => {
     answerAuth('oauth2/public-client', 404)
-    renderPage()
+    await renderPage()
     expect(
       await screen.findByRole('heading', { level: 1, name: "Couldn't open this request." }),
     ).toBeInTheDocument()
@@ -156,7 +162,7 @@ describe('OAuthConsentPage', () => {
     ['without a signature', '?client_id=claude-id&state=s'],
     ['without a client', '?state=s&sig=abc'],
   ])('says the link is incomplete %s, and calls nothing', async (_label, search) => {
-    renderPage(search)
+    await renderPage(search)
     expect(
       screen.getByRole('heading', { level: 1, name: 'This link is incomplete.' }),
     ).toBeInTheDocument()

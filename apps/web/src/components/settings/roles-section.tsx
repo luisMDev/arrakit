@@ -23,7 +23,7 @@ import { Separator } from '#/components/ui/separator'
 import { authCall } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
 import { roleLabel, useMember } from '#/lib/current-user'
-import { registerClearing, useClearingForm } from '#/lib/form'
+import { useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
 import { type CustomRole, organizationQueries } from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
@@ -66,7 +66,7 @@ export function RolesSection() {
   const { t } = useTranslation()
   const me = useMember()
   const queryClient = useQueryClient()
-  const organizationId = me.organization.id
+  const organizationId = me.user.organization.id
   const rolesQuery = organizationQueries.roles(organizationId)
   const roles = useQuery({
     ...rolesQuery,
@@ -246,7 +246,7 @@ function RoleDialog({
                 id="role-name"
                 autoComplete="off"
                 aria-invalid={nameError ? true : undefined}
-                {...registerClearing(form, 'name')}
+                {...form.register('name')}
               />
               {nameError ? <FieldError>{nameError}</FieldError> : null}
             </Field>

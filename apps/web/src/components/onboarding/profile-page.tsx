@@ -1,4 +1,3 @@
-import { createOrganizationSchema } from '@arrakit/contract'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { Controller, useWatch } from 'react-hook-form'
@@ -11,15 +10,17 @@ import { Field, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { PRIVACY_URL, TERMS_URL } from '#/config'
 import { type ChoiceSearch, appLanding, checkoutChoice } from '#/lib/checkout-choice'
-import { useClearingForm } from '#/lib/form'
+import { personNameField, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
+import { authCall } from '#/lib/auth-call'
+import { authClient } from '#/lib/auth-client'
 import { client } from '#/lib/orpc'
-import { switchOrganization } from '#/lib/organization-queries'
+import { createOrganization, reloadForOrganization } from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
 const profileForm = z.object({
-  personName: createOrganizationSchema.shape.personName.unwrap(),
-  organization: createOrganizationSchema.shape.name,
+  personName: z.string().trim().pipe(z.literal('').or(personNameField)),
+  organization: z.string().trim().max(200),
   termsAccepted: z.boolean(),
 })
 
@@ -27,21 +28,24 @@ type ProfileTarget = ReturnType<typeof appLanding>
 
 type ProfileStep = { name: string; personName: string } | 'skip'
 
-/** The organization made; a step whose answer was lost still counts once the person has one. */
-async function created(step: ProfileStep): Promise<string> {
+/**
+ * Next names the person (when typed) and creates the organization with the terms accepted; Skip
+ * creates one named after the person. A step whose answer was lost still counts once they have one.
+ */
+async function create(step: ProfileStep): Promise<void> {
   try {
-    const organization =
-      step === 'skip'
-        ? await client.onboarding.skip()
-        : await client.onboarding.create({ ...step, termsAccepted: true })
-    return organization.id
+    if (step === 'skip') {
+      await createOrganization({ name: '' })
+      return
+    }
+    if (step.personName) await authCall(authClient.updateUser({ name: step.personName }))
+    await createOrganization({ name: step.name, termsAccepted: true })
   } catch (err) {
     const saved = await client.me.get().then(
       (me) => me.organization?.id,
       () => undefined,
     )
     if (!saved) throw err
-    return saved
   }
 }
 
@@ -61,8 +65,10 @@ export function ProfilePage({
   const termsAccepted = useWatch({ control: form.control, name: 'termsAccepted' })
   const step = useApiMutation({
     mutationKey: ['profile'],
-    mutationFn: async (variables: ProfileStep) =>
-      switchOrganization(queryClient, await created(variables)),
+    mutationFn: async (variables: ProfileStep) => {
+      await create(variables)
+      await reloadForOrganization(queryClient)
+    },
     onSuccess: () => onDone(appLanding(checkoutChoice(search))),
     meta: {
       failure: (variables: ProfileStep) =>

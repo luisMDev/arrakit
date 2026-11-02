@@ -100,11 +100,6 @@ export function initialLanguage(
   return isAccountLanguage(browser) ? browser : 'en'
 }
 
-/** Translate outside React (toasts, titles); reads the active language at call time. */
-export function tr(key: string, params?: Record<string, unknown>): string {
-  return i18n.t(key, params)
-}
-
 if (typeof window !== 'undefined') {
   loadLanguage(initialLanguage()).catch((err: unknown) =>
     console.error('[i18n] loading the initial language failed', err),

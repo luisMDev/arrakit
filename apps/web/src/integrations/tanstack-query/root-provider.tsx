@@ -6,7 +6,7 @@ import {
   type QueryKey,
 } from '@tanstack/react-query'
 
-import { apiMessage, reportError, statusOf } from '#/lib/api-errors'
+import { apiMessage, statusOf } from '#/lib/api-errors'
 import { notify } from '#/lib/notify'
 
 declare module '@tanstack/react-query' {
@@ -26,7 +26,7 @@ function procedureOf(key: QueryKey | undefined): string {
 /** A 401 is a signed-out visitor, never a failure; `failure` is the toast when the API gives none. */
 function failed(key: QueryKey | undefined, err: unknown, failure: string | undefined): void {
   if (statusOf(err) === 401) return
-  reportError(`[${procedureOf(key)}] failed`, err)
+  console.error(`[${procedureOf(key)}] failed`, err)
   if (failure !== undefined) notify.error(apiMessage(err) ?? failure)
 }
 

@@ -57,6 +57,39 @@ describe('OrgSwitcher', () => {
     )
   })
 
+  it('keeps the person loaded while the switch reloads them', async () => {
+    answerAuth('organization/list', [ACME, BIRCH])
+    answerAuth('organization/set-active', BIRCH)
+    answer('me/get', async () => {
+      await new Promise((r) => setTimeout(r, 30))
+      return meAs({ organization: BIRCH, plan: 'free' })
+    })
+    const { queryClient } = renderAt(<OrgSwitcher />, { url: '/app/settings' })
+    const { queryKey } = orpc.me.get.queryOptions()
+    const missing: unknown[] = []
+    queryClient.getQueryCache().subscribe(() => {
+      if (queryClient.getQueryData(queryKey) === undefined) missing.push(queryKey)
+    })
+    const menu = await open()
+    await userEvent.click(await within(menu).findByRole('menuitemradio', { name: /Birch/ }))
+    await waitFor(() =>
+      expect(queryClient.getQueryData(queryKey)).toMatchObject({ organization: { name: 'Birch' } }),
+    )
+    expect(missing).toEqual([])
+  })
+
+  it('keeps the screen and toasts when the person does not reload after a switch', async () => {
+    quiet()
+    answerAuth('organization/list', [ACME, BIRCH])
+    answerAuth('organization/set-active', BIRCH)
+    answer('me/get', 500)
+    renderAt(<OrgSwitcher />, { url: '/app/settings' })
+    const menu = await open()
+    await userEvent.click(await within(menu).findByRole('menuitemradio', { name: /Birch/ }))
+    expect(await screen.findByText("Couldn't switch organizations. Try again.")).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Organization: Acme' })).toBeInTheDocument()
+  })
+
   it('toasts a failed switch', async () => {
     quiet()
     answerAuth('organization/list', [ACME, BIRCH])
@@ -67,7 +100,7 @@ describe('OrgSwitcher', () => {
     expect(await screen.findByText("Couldn't switch organizations. Try again.")).toBeInTheDocument()
   })
 
-  it('creates an organization, makes it active and opens the app', async () => {
+  it('creates an organization, which Better Auth makes active, and opens the app', async () => {
     answerAuth('organization/list', [ACME])
     const created = answerAuth('organization/create', async () => {
       await new Promise((r) => setTimeout(r, 30))
@@ -85,8 +118,8 @@ describe('OrgSwitcher', () => {
     await userEvent.dblClick(within(form).getByRole('button', { name: 'Create' }))
     expect(await screen.findByText('Birch Labs is ready.')).toBeInTheDocument()
     await waitFor(() => expect(location()).toBe('/app'))
-    expect(created).toEqual([{ input: { name: 'Birch Labs', slug: 'birch-labs' } }])
-    expect(activated).toEqual([{ input: { organizationId: BIRCH.id } }])
+    expect(created).toEqual([{ input: { name: 'Birch Labs', slug: 'pending' } }])
+    expect(activated).toEqual([])
   })
 
   it('toasts a failed create and keeps the dialog open', async () => {

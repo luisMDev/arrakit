@@ -43,7 +43,8 @@ export function PlansPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { plan: current, managesBilling, patch } = useMember()
+  const { user, managesBilling, patch } = useMember()
+  const current = user.plan
   const [chosenCycle, setCycle] = useState<BillingCycle | null>(null)
   const [annualOffer, setAnnualOffer] = useState<PaidOffer | null>(null)
   const [pending, setPending] = useState<PendingSwitch | null>(null)
@@ -89,7 +90,7 @@ export function PlansPage() {
     else setAnnualOffer(offer)
   }
 
-  const busy = preview.isPending || change.isPending
+  const busy = preview.isPending || change.busy
 
   function actionFor(offer: PlanOfferView, isCurrent: boolean) {
     if (isCurrent) {
@@ -226,7 +227,15 @@ export function PlansPage() {
                 <Button variant="outline" onClick={() => setPending(null)}>
                   {t('plans.notNow')}
                 </Button>
-                <Button disabled={change.isPending} onClick={() => void change.run(pending.choice)}>
+                <Button
+                  disabled={change.busy}
+                  onClick={() =>
+                    void change.run({
+                      ...pending.choice,
+                      prorationDate: pending.preview.prorationDate,
+                    })
+                  }
+                >
                   {t('plans.switchTo', { plan: planLabel(pending.choice.plan) })}
                 </Button>
               </DialogFooter>

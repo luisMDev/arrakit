@@ -12,10 +12,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/com
 import { Field, FieldError, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { Spinner } from '#/components/ui/spinner'
-import { apiMessage, reportError, statusOf } from '#/lib/api-errors'
+import { apiMessage, statusOf } from '#/lib/api-errors'
 import { authCall, codeOf } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
-import { registerClearing, useClearingForm } from '#/lib/form'
+import { useClearingForm } from '#/lib/form'
 import { switchOrganization } from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
@@ -74,7 +74,7 @@ export function JoinPage({ invitationId }: { invitationId: string }) {
     if (statusOf(err) === 429) return t('join.tooManyLinks')
     const message = apiMessage(err)
     if (message) return message
-    reportError('[join] sending a new link failed', err)
+    console.error('[join] sending a new link failed', err)
     return t('join.linkNotSent')
   }
 
@@ -123,7 +123,7 @@ export function JoinPage({ invitationId }: { invitationId: string }) {
                     autoComplete="email"
                     placeholder="name@organization.com"
                     aria-invalid={emailError ? true : undefined}
-                    {...registerClearing(form, 'email')}
+                    {...form.register('email')}
                   />
                   {emailError ? <FieldError>{emailError}</FieldError> : null}
                 </Field>

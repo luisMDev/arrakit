@@ -101,6 +101,7 @@ describe('TeamsSection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(await screen.findByText('Team renamed to Operations.')).toBeInTheDocument()
     expect(renamed).toEqual([{ input: { teamId: OPS.id, data: { name: 'Operations' } } }])
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
 
     await userEvent.click(
       await screen.findByRole('combobox', { name: 'Add someone to Operations' }),
@@ -115,6 +116,7 @@ describe('TeamsSection', () => {
     )
     expect(await screen.findByText('Lucía Gómez taken out of Operations.')).toBeInTheDocument()
     expect(removed).toEqual([{ input: { teamId: OPS.id, userId: 'u-1' } }])
+    expect(screen.getByRole('button', { name: 'Take Marta out of Operations' })).toBeEnabled()
 
     await userEvent.click(screen.getByRole('button', { name: 'Delete Operations' }))
     const dialog = await screen.findByRole('alertdialog', { name: 'Delete Operations?' })

@@ -29,9 +29,9 @@ export async function signIn(page: Page, email: string, callbackURL = '/app') {
   await page.goto(await magicLinkFor(page.request, email))
 }
 
-/** Calls Better Auth's `/api/auth/organization/<path>` as the user signed in on `page`. */
-async function organizationApi<T>(page: Page, path: string, body: unknown): Promise<T> {
-  const res = await page.request.post(`/api/auth/organization/${path}`, {
+/** Calls Better Auth's `/api/auth/<path>` as the user signed in on `page`. */
+async function authApi<T>(page: Page, path: string, body: unknown): Promise<T> {
+  const res = await page.request.post(`/api/auth/${path}`, {
     data: body,
     headers: { origin: WEB_ORIGIN },
   })
@@ -39,19 +39,18 @@ async function organizationApi<T>(page: Page, path: string, body: unknown): Prom
   return (await res.json()) as T
 }
 
-/** Creates the person's organization as the profile step does, and makes it the active one. */
+/** Creates the person's organization as the profile step does; it becomes the active one. */
 async function createOrganization(page: Page, name: string, personName?: string) {
-  const created = await rpc<{ id: string }>(page, 'onboarding/create', {
+  if (personName) await authApi(page, 'update-user', { name: personName })
+  return authApi<{ id: string }>(page, 'organization/create', {
     name,
-    personName,
+    slug: 'pending',
     termsAccepted: true,
   })
-  await organizationApi(page, 'set-active', { organizationId: created.id })
-  return created
 }
 
 export const inviteMember = (page: Page, organizationId: string, email: string, role = 'member') =>
-  organizationApi<{ id: string }>(page, 'invite-member', { email, role, organizationId })
+  authApi<{ id: string }>(page, 'organization/invite-member', { email, role, organizationId })
 
 /** Posts `body` to the Stripe webhook as the API's fake gateway signs it. */
 export async function stripeWebhook(page: Page, body: unknown) {

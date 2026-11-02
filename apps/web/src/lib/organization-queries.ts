@@ -1,5 +1,5 @@
 import type { Permissions } from '@arrakit/auth/permissions'
-import { type QueryClient, queryOptions } from '@tanstack/react-query'
+import { type QueryClient, hashKey, queryOptions } from '@tanstack/react-query'
 
 import { authCall } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
@@ -78,11 +78,38 @@ export const organizationQueries = {
   teamMembers: (teamId: string) => orpc.teams.members.queryOptions({ input: { teamId } }),
 }
 
+/**
+ * Creates an organization, which Better Auth makes the session's (the API names its slug).
+ * `termsAccepted` records that the creator accepted the Terms and the Privacy Policy.
+ */
+export function createOrganization({
+  name,
+  termsAccepted,
+}: {
+  name: string
+  termsAccepted?: true
+}) {
+  // A variable, not a literal: the client types only the organization's own fields.
+  const body = { name, slug: 'pending', termsAccepted }
+  return authCall(org.create(body))
+}
+
 /** Makes `organizationId` the session's organization (none for `null`) and reloads every screen. */
 export async function switchOrganization(
   queryClient: QueryClient,
   organizationId: string | null,
 ): Promise<void> {
   await authCall(org.setActive({ organizationId }))
-  await queryClient.resetQueries()
+  await reloadForOrganization(queryClient)
+}
+
+/**
+ * Reloads every screen for the session's organization. The person is re-read in place rather
+ * than reset: the signed-in screens need them at all times.
+ */
+export async function reloadForOrganization(queryClient: QueryClient): Promise<void> {
+  const me = orpc.me.get.queryOptions()
+  await queryClient.fetchQuery({ ...me, staleTime: 0 })
+  const meHash = hashKey(me.queryKey)
+  await queryClient.resetQueries({ predicate: (query) => query.queryHash !== meHash })
 }

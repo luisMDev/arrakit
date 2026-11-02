@@ -24,6 +24,7 @@ const PREVIEW_NOW = {
   on: '2026-10-30',
   dueToday: { amount: 120_000, currency: 'usd' },
   nextInvoice: { amount: 48_000, currency: 'usd' },
+  prorationDate: 1_793_318_400,
 }
 
 describe('PlansPage', () => {
@@ -67,7 +68,11 @@ describe('PlansPage', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Switch to Team' }))
     await waitFor(() => expect(view.location()).toBe('/app/settings'))
     expect(view.router.state.location.search).toEqual({ section: 'billing' })
-    expect(changes[0]?.input).toEqual({ plan: 'team', cycle: 'yearly' })
+    expect(changes[0]?.input).toEqual({
+      plan: 'team',
+      cycle: 'yearly',
+      prorationDate: PREVIEW_NOW.prorationDate,
+    })
     expect(view.queryClient.getQueryData(orpc.me.get.queryOptions().queryKey)).toMatchObject({
       plan: 'team',
       organization: { plan: 'team' },
@@ -81,6 +86,7 @@ describe('PlansPage', () => {
       on: '2027-10-04',
       dueToday: { amount: 0, currency: 'usd' },
       nextInvoice: { amount: 19_200, currency: 'usd' },
+      prorationDate: null,
     })
     await setup(meAs({ plan: 'team' }))
     await userEvent.click(await within(card('Pro')).findByRole('button', { name: 'Switch to Pro' }))

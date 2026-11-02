@@ -32,7 +32,7 @@ export function SecuritySection() {
   const queryClient = useQueryClient()
   const me = useMember()
   const [confirming, setConfirming] = useState(false)
-  const { organization } = me
+  const { organization } = me.user
   const organizationId = organization.id
 
   const done = async (message: string) => {
@@ -46,7 +46,6 @@ export function SecuritySection() {
     mutationKey: ['org', 'delete'],
     mutationFn: () => authCall(org.delete({ organizationId })),
     onSuccess: () => done(t(`${K}.deleted`)),
-    onError: () => switchOrganization(queryClient, organizationId).catch(() => undefined),
     meta: { failure: t(`${K}.notDeleted`) },
   })
 

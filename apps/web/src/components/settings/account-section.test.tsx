@@ -1,27 +1,21 @@
 import type { AccountView } from '@arrakit/contract'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { i18n, loadLanguage } from '#/i18n'
 import { orpc } from '#/lib/orpc'
-import { answer, meAs, quiet, renderAt, setupTestApi } from '#/test/rpc'
+import { answer, answerAuth, meAs, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
 import { AccountSection, devicesLine } from './account-section'
-import { RoutedSettings } from './testing'
-
-const auth = vi.hoisted(() => ({
-  revokeOtherSessions: vi.fn(),
-  signOut: vi.fn(),
-}))
-vi.mock('#/lib/auth-client', () => ({ authClient: auth }))
+import { SettingsPage, settingsSearch } from './settings-page'
 
 setupTestApi()
 afterEach(async () => {
-  auth.revokeOtherSessions.mockReset()
-  auth.signOut.mockReset()
   await loadLanguage('en')
 })
+
+const SAVED = { status: true }
 
 const ACCOUNT: AccountView = {
   name: 'Ana',
@@ -67,10 +61,7 @@ describe('AccountSection', () => {
   })
 
   it('fills a missing time zone from the browser', async () => {
-    const calls = answer('me/account/update', (input: unknown) => ({
-      ...ACCOUNT,
-      ...(input as object),
-    }))
+    const calls = answerAuth('update-user', SAVED)
     setup({ timeZone: null })
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
     await waitFor(() => expect(calls).toEqual([{ input: { timeZone: zone } }]))
@@ -78,7 +69,7 @@ describe('AccountSection', () => {
 
   it('only reports a failed save of the browser zone: no toast, account kept', async () => {
     const errors = quiet()
-    const calls = answer('me/account/update', 500)
+    const calls = answerAuth('update-user', 500)
     setup({ timeZone: null })
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
     await waitFor(() => expect(calls).toEqual([{ input: { timeZone: zone } }]))
@@ -90,7 +81,7 @@ describe('AccountSection', () => {
   })
 
   it('shows the email local part as the name of a person without one', async () => {
-    const calls = answer('me/account/update', ACCOUNT)
+    const calls = answerAuth('update-user', SAVED)
     setup({ name: '  ', email: 'lucia.gomez@acme.com' })
     const input = await screen.findByLabelText('Your name')
     expect(input).toHaveValue('lucia.gomez')
@@ -108,8 +99,9 @@ describe('AccountSection', () => {
   })
 
   it('saves the name on blur, trimmed, and patches me', async () => {
-    const calls = answer('me/account/update', { ...ACCOUNT, name: 'Ana Pérez' })
+    const calls = answerAuth('update-user', SAVED)
     const { queryClient } = setup()
+    answer('me/account/get', ACCOUNT, { ...ACCOUNT, name: 'Ana Pérez' })
     const input = await screen.findByLabelText('Your name')
     await userEvent.clear(input)
     await userEvent.type(input, '  Ana Pérez ')
@@ -124,7 +116,7 @@ describe('AccountSection', () => {
   })
 
   it('refuses a blank name without saving', async () => {
-    const calls = answer('me/account/update', ACCOUNT)
+    const calls = answerAuth('update-user', SAVED)
     setup()
     const input = await screen.findByLabelText('Your name')
     await userEvent.clear(input)
@@ -135,7 +127,7 @@ describe('AccountSection', () => {
   })
 
   it('does not save an unchanged name', async () => {
-    const calls = answer('me/account/update', ACCOUNT)
+    const calls = answerAuth('update-user', SAVED)
     setup()
     await userEvent.click(await screen.findByLabelText('Your name'))
     await userEvent.tab()
@@ -143,7 +135,7 @@ describe('AccountSection', () => {
   })
 
   it('switches the language without a reload', async () => {
-    const calls = answer('me/account/update', { ...ACCOUNT, language: 'es' })
+    const calls = answerAuth('update-user', SAVED)
     setup()
     await userEvent.click(await screen.findByRole('combobox', { name: 'Language' }))
     await userEvent.click(await screen.findByRole('option', { name: 'Español' }))
@@ -152,10 +144,7 @@ describe('AccountSection', () => {
   })
 
   it('saves the time zone and the product news choice', async () => {
-    const calls = answer('me/account/update', (input: unknown) => ({
-      ...ACCOUNT,
-      ...(input as object),
-    }))
+    const calls = answerAuth('update-user', SAVED)
     setup()
     await userEvent.click(await screen.findByRole('combobox', { name: 'Time zone' }))
     await userEvent.click(await screen.findByRole('option', { name: 'UK Time (London)' }))
@@ -163,14 +152,14 @@ describe('AccountSection', () => {
     await waitFor(() =>
       expect(calls).toEqual([
         { input: { timeZone: 'Europe/London' } },
-        { input: { emails: { productNews: true } } },
+        { input: { emailProductNews: true } },
       ]),
     )
   })
 
   it('puts the setting back when a save fails', async () => {
     quiet()
-    answer('me/account/update', 500)
+    answerAuth('update-user', 500)
     setup()
     await userEvent.click(await screen.findByRole('switch', { name: /Product news/ }))
     expect(await screen.findByText("Couldn't save your settings. Try again.")).toBeInTheDocument()
@@ -181,13 +170,19 @@ describe('AccountSection', () => {
 
   it('saves one change at a time, in order, showing each choice at once', async () => {
     const gates: Array<() => void> = []
-    const calls = answer(
-      'me/account/update',
-      (input: unknown) =>
-        new Promise((resolve) => gates.push(() => resolve({ ...ACCOUNT, ...(input as object) }))),
-      (input: unknown) => ({ ...ACCOUNT, timeZone: 'Europe/London', ...(input as object) }),
+    const calls = answerAuth(
+      'update-user',
+      () => new Promise((resolve) => gates.push(() => resolve(SAVED))),
+      SAVED,
     )
-    setup()
+    answer('me/account/get', ACCOUNT, {
+      ...ACCOUNT,
+      timeZone: 'Europe/London',
+      emails: { productNews: true },
+    })
+    renderAt(<AccountSection />, {
+      me: meAs({ role: 'member', email: 'ana@acme.com', name: 'Ana' }),
+    })
     await userEvent.click(await screen.findByRole('combobox', { name: 'Time zone' }))
     await userEvent.click(await screen.findByRole('option', { name: 'UK Time (London)' }))
     await userEvent.click(screen.getByRole('switch', { name: /Product news/ }))
@@ -200,7 +195,7 @@ describe('AccountSection', () => {
     await waitFor(() =>
       expect(calls).toEqual([
         { input: { timeZone: 'Europe/London' } },
-        { input: { emails: { productNews: true } } },
+        { input: { emailProductNews: true } },
       ]),
     )
     await new Promise((r) => setTimeout(r, 50))
@@ -211,10 +206,10 @@ describe('AccountSection', () => {
   it('saves the change queued behind a failed one, then shows what the server kept', async () => {
     quiet()
     let fail: () => void = () => undefined
-    const calls = answer(
-      'me/account/update',
+    const calls = answerAuth(
+      'update-user',
       () => new Promise((resolve) => (fail = () => resolve(new Response(null, { status: 500 })))),
-      (input: unknown) => ({ ...ACCOUNT, ...(input as object) }),
+      SAVED,
     )
     answer('me/account/get', ACCOUNT, { ...ACCOUNT, timeZone: 'Europe/London' })
     renderAt(<AccountSection />, {
@@ -228,7 +223,7 @@ describe('AccountSection', () => {
     expect(await screen.findByText("Couldn't save your settings. Try again.")).toBeInTheDocument()
     await waitFor(() =>
       expect(calls).toEqual([
-        { input: { emails: { productNews: true } } },
+        { input: { emailProductNews: true } },
         { input: { timeZone: 'Europe/London' } },
       ]),
     )
@@ -249,21 +244,22 @@ describe('AccountSection', () => {
 
   it('signs out everywhere once and reloads the devices', async () => {
     let resolve: (value: unknown) => void = () => undefined
-    auth.revokeOtherSessions.mockReturnValue(new Promise((r) => (resolve = r)))
+    const revoked = answerAuth('revoke-other-sessions', () => new Promise((r) => (resolve = r)))
     answer('me/account/get', ACCOUNT, { ...ACCOUNT, devices: ['Mac'] })
     renderAt(<AccountSection />)
     const button = await screen.findByRole('button', { name: 'Sign out everywhere' })
     await userEvent.dblClick(button)
     expect(button).toBeDisabled()
-    resolve({ data: { status: true }, error: null })
+    await waitFor(() => expect(revoked).toHaveLength(1))
+    resolve(SAVED)
     expect(await screen.findByText('Signed out on your other devices.')).toBeInTheDocument()
     expect(await screen.findByText('This Mac')).toBeInTheDocument()
-    expect(auth.revokeOtherSessions).toHaveBeenCalledTimes(1)
+    expect(revoked).toHaveLength(1)
   })
 
   it('says so when the account does not reload after signing out everywhere', async () => {
     quiet()
-    auth.revokeOtherSessions.mockResolvedValue({ data: { status: true }, error: null })
+    answerAuth('revoke-other-sessions', SAVED)
     const loads = answer('me/account/get', ACCOUNT, 500)
     renderAt(<AccountSection />)
     await userEvent.click(await screen.findByRole('button', { name: 'Sign out everywhere' }))
@@ -277,7 +273,7 @@ describe('AccountSection', () => {
 
   it('keeps the devices when signing out everywhere fails', async () => {
     quiet()
-    auth.revokeOtherSessions.mockResolvedValue({ data: null, error: { status: 500 } })
+    answerAuth('revoke-other-sessions', 500)
     setup()
     await userEvent.click(await screen.findByRole('button', { name: 'Sign out everywhere' }))
     expect(
@@ -288,7 +284,9 @@ describe('AccountSection', () => {
 
   it('tells an owner to delete the organization first, linking to Security', async () => {
     answer('me/account/get', ACCOUNT)
-    renderAt(<RoutedSettings />, { me: meAs({ role: 'owner' }) })
+    renderAt((search) => <SettingsPage section={settingsSearch.parse(search).section} />, {
+      me: meAs({ role: 'owner' }),
+    })
     expect(await screen.findByText(/You own this organization/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull()
     const owned = screen.getByText(/You own this organization/)
@@ -298,9 +296,9 @@ describe('AccountSection', () => {
     ).toBeInTheDocument()
   })
 
-  it('deletes the account after confirming, signs out and opens Sign in', async () => {
-    const calls = answer('me/delete', null)
-    auth.signOut.mockRejectedValue(new Error('gone'))
+  it('deletes the account after confirming and opens Sign in, signed out', async () => {
+    const calls = answerAuth('delete-user', { success: true, message: 'User deleted' })
+    const signedOut = answerAuth('sign-out', { success: true })
     const { location, queryClient } = setup()
     await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
     const dialog = await screen.findByRole('alertdialog', { name: 'Delete your account?' })
@@ -309,11 +307,12 @@ describe('AccountSection', () => {
     expect(await screen.findByText('Your account is deleted.')).toBeInTheDocument()
     await waitFor(() => expect(location()).toBe('/signin'))
     expect(calls).toHaveLength(1)
+    expect(signedOut).toEqual([])
     expect(queryClient.getQueryData(orpc.me.get.queryOptions().queryKey)).toBeUndefined()
   })
 
   it('keeps the dialog on Keep it', async () => {
-    const calls = answer('me/delete', null)
+    const calls = answerAuth('delete-user', { success: true })
     setup()
     await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Keep it' }))
@@ -326,15 +325,18 @@ describe('AccountSection', () => {
       [409, 'You own an organization. Delete it first.'] as const,
       'You own an organization. Delete it first.',
     ],
+    [
+      [400, 'Session expired. Re-authenticate to perform this action.', 'SESSION_EXPIRED'] as const,
+      'For your security, sign out and sign in again, then delete your account.',
+    ],
     [500, "Couldn't delete your account. Try again."],
   ])('toasts a refused delete (%j) and stays', async (reply, message) => {
     quiet()
-    answer('me/delete', reply as number | [number, string])
+    answerAuth('delete-user', reply)
     const { location } = setup()
     await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Delete your account' }))
     expect(await screen.findByText(message)).toBeInTheDocument()
     expect(location()).toBe('/app/settings')
-    expect(auth.signOut).not.toHaveBeenCalled()
   })
 })

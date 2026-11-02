@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import type { z } from 'zod'
 
 import {
   type ChoiceSearch,
@@ -7,14 +8,10 @@ import {
   profileLanding,
 } from '#/lib/checkout-choice'
 
-import { type RefusalSearch, SignInOptions, refusalSearch } from './sign-in-options'
+import { SignInOptions, refusalSearch } from './sign-in-options'
 
-export type SignupSearch = ChoiceSearch & RefusalSearch
-
-export const signupSearch = (search: Record<string, unknown>): SignupSearch => ({
-  ...choiceSearch(search),
-  ...refusalSearch(search),
-})
+export const signupSearch = choiceSearch.extend(refusalSearch.shape)
+export type SignupSearch = z.infer<typeof signupSearch>
 
 function signupLanding(mode: 'new' | 'returning', search: ChoiceSearch): string {
   return mode === 'returning' ? '/signin' : profileLanding(checkoutChoice(search))

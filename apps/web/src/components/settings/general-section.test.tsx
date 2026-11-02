@@ -41,6 +41,36 @@ describe('GeneralSection', () => {
     expect(input).toHaveValue('Acme Capital')
   })
 
+  it('leaves me alone when the organization changed before the rename answered', async () => {
+    const birch = meAs({
+      role: 'admin',
+      organization: {
+        id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+        name: 'Birch',
+        slug: 'birch',
+        plan: 'free',
+      },
+      plan: 'free',
+    })
+    let answerRename = () => {}
+    const calls = answerAuth('organization/update', async () => {
+      await new Promise<void>((resolve) => (answerRename = resolve))
+      return { ...summary, name: 'Acme Capital' }
+    })
+    answer('me/get', birch)
+    const { queryClient } = renderAt(<GeneralSection />, { me: meAs({ role: 'admin' }) })
+    const { queryKey } = orpc.me.get.queryOptions()
+    const input = await screen.findByLabelText('Organization name')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Acme Capital')
+    await userEvent.tab()
+    await waitFor(() => expect(calls).toHaveLength(1))
+    queryClient.setQueryData(queryKey, birch)
+    answerRename()
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    expect(queryClient.getQueryData(queryKey)).toEqual(birch)
+  })
+
   it('never sends a blank name', async () => {
     const calls = answerAuth('organization/update', { ...summary, name: 'x' })
     answer('me/get', meAs({ role: 'admin' }))

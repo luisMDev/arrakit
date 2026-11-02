@@ -74,7 +74,7 @@ describe('SecuritySection', () => {
     ],
     [500, "Couldn't delete your organization. Try again."],
   ])(
-    'toasts a failed delete (%j), makes the organization active again and stays',
+    'toasts a failed delete (%j) and stays, leaving the active organization alone',
     async (reply, message) => {
       quiet()
       answer('me/get', meAs())
@@ -84,8 +84,8 @@ describe('SecuritySection', () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
       await userEvent.click(await screen.findByRole('button', { name: 'Delete the organization' }))
       expect(await screen.findByText(message)).toBeInTheDocument()
-      await waitFor(() => expect(activated).toEqual([{ input: { organizationId: ORG_ID } }]))
       expect(location()).toBe('/app/settings')
+      expect(activated).toEqual([])
     },
   )
 
@@ -114,7 +114,9 @@ describe('SecuritySection', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Leave' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Leave the organization' }))
     expect(
-      await screen.findByText("You're the organization's only owner, so you can't leave it."),
+      await screen.findByText(
+        "The organization's only owner can't leave it or be removed from it.",
+      ),
     ).toBeInTheDocument()
   })
 })

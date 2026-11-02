@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { answer, answerAuth, meAs, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
 import { MembersSection, assignableRoles, daysSince } from './members-section'
-import { RoutedSettings } from './testing'
+import { SettingsPage, settingsSearch } from './settings-page'
 
 setupTestApi()
 
@@ -74,7 +74,7 @@ describe('MembersSection', () => {
     answer('billing/get', 500)
     answer('usage/get', 500)
     quiet()
-    renderAt(<RoutedSettings />, {
+    renderAt((search) => <SettingsPage section={settingsSearch.parse(search).section} />, {
       me: meAs({ plan: 'pro' }),
       url: '/app/settings?section=members',
     })
@@ -192,6 +192,7 @@ describe('MembersSection', () => {
     ])
     expect(await row('ana@acme.com')).toBeInTheDocument()
     expect(input).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Invite' })).toBeEnabled()
   })
 
   it("toasts the API's refusal and still lists an invite saved without its email", async () => {
@@ -356,10 +357,10 @@ describe('MembersSection', () => {
 })
 
 describe('assignableRoles', () => {
-  const custom = [
-    { id: 'r-1', role: 'finance', permission: { billing: ['read'] } as const },
-    { id: 'r-2', role: 'closer', permission: { organization: ['delete'] } as const },
-  ]
+  const custom = {
+    finance: { billing: ['read'] as const },
+    closer: { organization: ['delete'] as const },
+  }
 
   it('gives the owner every role but owner', () => {
     expect(assignableRoles('owner', permissionsOf('owner'), custom)).toEqual([

@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { z } from 'zod'
 
 import { AccountSection } from '#/components/settings/account-section'
 import { BillingSection } from '#/components/settings/billing-section'
@@ -12,6 +13,7 @@ import { TeamsSection } from '#/components/settings/teams-section'
 import { UsageSection } from '#/components/settings/usage-section'
 import { Button } from '#/components/ui/button'
 import { useCurrentUser } from '#/lib/current-user'
+import { searchText } from '#/lib/search-params'
 
 const SECTIONS = {
   account: AccountSection,
@@ -25,22 +27,15 @@ const SECTIONS = {
 }
 export type SettingsSection = keyof typeof SECTIONS
 
-export interface SettingsSearch {
-  section?: SettingsSection
-  top_up?: string
-}
+const SECTION_IDS = Object.keys(SECTIONS) as [SettingsSection, ...SettingsSection[]]
 
-const isSection = (value: unknown): value is SettingsSection =>
-  typeof value === 'string' && Object.hasOwn(SECTIONS, value)
-
-export const settingsSearch = (search: Record<string, unknown>): SettingsSearch => ({
-  ...(isSection(search.section) ? { section: search.section } : {}),
-  ...(typeof search.top_up === 'string' ? { top_up: search.top_up } : {}),
+export const settingsSearch = z.object({
+  section: z.enum(SECTION_IDS).optional().catch(undefined),
+  top_up: searchText,
 })
+export type SettingsSearch = z.infer<typeof settingsSearch>
 
-const ORGANIZATION_SECTIONS = (Object.keys(SECTIONS) as SettingsSection[]).filter(
-  (id) => id !== 'account',
-)
+const ORGANIZATION_SECTIONS = SECTION_IDS.filter((id) => id !== 'account')
 
 const SETTINGS_NAV: { group: string; items: SettingsSection[] }[] = [
   { group: 'settings.mySettings', items: ['account'] },

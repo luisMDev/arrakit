@@ -5,8 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { answer, answerAuth, meAs, renderAt, setupTestApi } from '#/test/rpc'
 
-import type { SettingsSection } from './settings-page'
-import { RoutedSettings } from './testing'
+import { type SettingsSection, SettingsPage, settingsSearch } from './settings-page'
 
 setupTestApi()
 beforeEach(() => {
@@ -30,7 +29,7 @@ const renderAs = (
   section: SettingsSection = 'account',
   permissions?: Me['permissions'],
 ) =>
-  renderAt(<RoutedSettings />, {
+  renderAt((search) => <SettingsPage section={settingsSearch.parse(search).section} />, {
     me: meAs({ role, ...(permissions ? { permissions } : {}) }),
     url: `/app/settings?section=${section}`,
   })

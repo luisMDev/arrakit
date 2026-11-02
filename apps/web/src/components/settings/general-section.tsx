@@ -8,8 +8,9 @@ import { Input } from '#/components/ui/input'
 import { authCall } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
 import { initialOf, useMember } from '#/lib/current-user'
-import { nameForm, registerClearing, useClearingForm } from '#/lib/form'
+import { nameForm, useClearingForm } from '#/lib/form'
 import { organizationQueries } from '#/lib/organization-queries'
+import { orpc } from '#/lib/orpc'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
 import { SettingsSectionLayout } from './settings-ui'
@@ -20,7 +21,7 @@ export function GeneralSection() {
   const { t } = useTranslation()
   const me = useMember()
   const queryClient = useQueryClient()
-  const { organization } = me
+  const { organization } = me.user
   const form = useClearingForm({
     resolver: zodResolver(nameForm()),
     values: { name: organization.name },
@@ -33,13 +34,17 @@ export function GeneralSection() {
     mutationFn: (name: string) =>
       authCall(authClient.organization.update({ organizationId: organization.id, data: { name } })),
     onSuccess: (saved) => {
-      me.patch((current) => ({ ...current, organization: { ...organization, name: saved.name } }))
+      me.patch((current) =>
+        current.organization?.id === saved.id
+          ? { ...current, organization: { ...current.organization, name: saved.name } }
+          : current,
+      )
       form.reset({ name: saved.name })
       void queryClient.invalidateQueries({ queryKey: organizationQueries.list().queryKey })
     },
     onError: async () => {
       form.reset()
-      await me.refresh()
+      await queryClient.invalidateQueries({ queryKey: orpc.me.get.queryOptions().queryKey })
     },
     meta: { failure: t(`${K}.notSaved`) },
   })
@@ -53,7 +58,7 @@ export function GeneralSection() {
     await rename.run(trimmed)
   }
 
-  const nameField = registerClearing(form, 'name')
+  const nameField = form.register('name')
 
   return (
     <SettingsSectionLayout id="general" title={t(`${K}.title`)}>

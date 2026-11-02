@@ -24,7 +24,7 @@ export function OAuthSignInPage({ search = window.location.search }: { search?: 
       ) : (
         <SignInOptions
           landing={resume}
-          search={refusalSearch(Object.fromEntries(new URLSearchParams(search)))}
+          search={refusalSearch.parse(Object.fromEntries(new URLSearchParams(search)))}
         >
           <div className="flex max-w-md flex-col gap-3">
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">

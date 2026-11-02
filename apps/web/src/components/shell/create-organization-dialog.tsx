@@ -1,4 +1,3 @@
-import { slugOf } from '@arrakit/address'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -16,17 +15,12 @@ import {
 } from '#/components/ui/dialog'
 import { Field, FieldError, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
-import { authCall } from '#/lib/auth-call'
-import { authClient } from '#/lib/auth-client'
-import { nameForm, registerClearing, useClearingForm } from '#/lib/form'
+import { nameForm, useClearingForm } from '#/lib/form'
 import { notify } from '#/lib/notify'
-import { switchOrganization } from '#/lib/organization-queries'
+import { createOrganization, reloadForOrganization } from '#/lib/organization-queries'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
 const K = 'createOrganization'
-
-/** The API names the slug; the plugin only needs one to be sent. */
-const placeholderSlug = (name: string) => slugOf(name) || 'organization'
 
 export function CreateOrganizationDialog({
   open,
@@ -47,10 +41,8 @@ export function CreateOrganizationDialog({
   const create = useApiMutation({
     mutationKey: ['org', 'create'],
     mutationFn: async ({ name }: { name: string }) => {
-      const created = await authCall(
-        authClient.organization.create({ name, slug: placeholderSlug(name) }),
-      )
-      await switchOrganization(queryClient, created.id)
+      const created = await createOrganization({ name })
+      await reloadForOrganization(queryClient)
       return created
     },
     onSuccess: (created) => {
@@ -80,7 +72,7 @@ export function CreateOrganizationDialog({
               id="create-organization-name"
               autoComplete="organization"
               aria-invalid={nameError ? true : undefined}
-              {...registerClearing(form, 'name')}
+              {...form.register('name')}
             />
             {nameError ? <FieldError>{nameError}</FieldError> : null}
           </Field>

@@ -12,27 +12,17 @@ import { Input } from '#/components/ui/input'
 import { useClearingForm } from '#/lib/form'
 import { leave } from '#/lib/leave'
 import { orpc } from '#/lib/orpc'
+import { searchText } from '#/lib/search-params'
 import { useApiMutation } from '#/lib/use-api-mutation'
 
 import { PROVIDERS_UNKNOWN, type SocialProvider, sendMagicLink, socialSignInUrl } from './auth-api'
-
-export interface RefusalSearch {
-  error?: string
-  via?: string
-}
 
 const PROVIDER_NAMES: Record<SocialProvider, string> = { google: 'Google', microsoft: 'Microsoft' }
 
 const emailForm = z.object({ email: z.string().refine(isWorkEmail) })
 
-const searchText = (value: unknown) =>
-  value === undefined || value === null ? undefined : String(value)
-
-export function refusalSearch(search: Record<string, unknown>): RefusalSearch {
-  const error = searchText(search.error)
-  const via = searchText(search.via)
-  return { ...(error === undefined ? {} : { error }), ...(via === undefined ? {} : { via }) }
-}
+export const refusalSearch = z.object({ error: searchText, via: searchText })
+export type RefusalSearch = z.infer<typeof refusalSearch>
 
 function refusalOf(search: RefusalSearch): SocialProvider | 'link' | null {
   if (search.error === undefined) return null

@@ -1,9 +1,10 @@
 import { type ErrorComponentProps, useNavigate, useRouter } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { z } from 'zod'
 
 import { Button } from '#/components/ui/button'
-import { reportError } from '#/lib/api-errors'
+import { searchText } from '#/lib/search-params'
 
 import { RootFrame } from './root-layout'
 import { reloadOnStaleChunk } from './stale-chunk'
@@ -15,8 +16,7 @@ export function safeNext(next: string | undefined): string {
   return next && SAFE_NEXT.test(next) ? next : '/app'
 }
 
-export const unavailableSearch = (search: Record<string, unknown>): { next?: string } =>
-  typeof search.next === 'string' ? { next: search.next } : {}
+export const unavailableSearch = z.object({ next: searchText })
 
 /** The API could not be reached or failed; Try again goes back to `next`, or runs `onRetry`. */
 export function UnavailablePage({ next, onRetry }: { next?: string; onRetry?: () => void }) {
@@ -39,7 +39,7 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
   const router = useRouter()
 
   useEffect(() => {
-    if (!reloadOnStaleChunk(error)) reportError('[router] a screen failed to load', error)
+    if (!reloadOnStaleChunk(error)) console.error('[router] a screen failed to load', error)
   }, [error])
 
   return (

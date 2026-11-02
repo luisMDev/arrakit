@@ -88,6 +88,7 @@ describe('lines', () => {
           on: '2026-10-30',
           dueToday: { amount: 120_000, currency: 'usd' },
           nextInvoice: { amount: 48_000, currency: 'usd' },
+          prorationDate: 1_793_318_400,
         },
       ),
     ).toEqual([
@@ -103,6 +104,7 @@ describe('lines', () => {
       on: '2027-10-04',
       dueToday: { amount: 0, currency: 'usd' },
       nextInvoice: { amount: 2_000, currency: 'usd' },
+      prorationDate: null,
     }
     expect(switchLines('team', { plan: 'pro', cycle: 'monthly' }, preview)).toEqual([
       'Nothing to pay today.',
