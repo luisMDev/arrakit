@@ -1,4 +1,5 @@
 export {
+  MCP_SCOPE,
   ORGANIZATION_CLAIM,
   isTrustedOrigin,
   loadAuthConfig,

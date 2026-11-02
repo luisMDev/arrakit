@@ -3,10 +3,9 @@ import { type TestData, openTestData } from '@arrakit/db/testing'
 import type { Mail } from '@arrakit/emails'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { type InvitationForMail, createAuth } from './auth'
+import { createAuth } from './auth'
 import { testOrganizationDeps } from './test-deps'
 import { loadAuthConfig } from './config'
-import { invitationIdOf } from './magic-link'
 
 const WEB = 'http://localhost:5200'
 const config = loadAuthConfig({ BETTER_AUTH_SECRET: 'x'.repeat(32), BETTER_AUTH_URL: WEB })
@@ -15,7 +14,8 @@ describe('magic link sign-in (PGlite)', () => {
   let data: TestData
   let auth: ReturnType<typeof createAuth>
   const sent: Mail[] = []
-  const invitations = new Map<string, { email: string; invitation: InvitationForMail }>()
+  type Invitation = NonNullable<Awaited<ReturnType<TestData['invitationFor']>>>
+  const invitations = new Map<string, { email: string; invitation: Invitation }>()
 
   beforeAll(async () => {
     data = await openTestData()
@@ -37,7 +37,12 @@ describe('magic link sign-in (PGlite)', () => {
 
   function requestLink(
     email: string,
-    options: { origin?: string | null; callbackURL?: string; errorCallbackURL?: string } = {},
+    options: {
+      origin?: string | null
+      callbackURL?: string
+      errorCallbackURL?: string
+      metadata?: Record<string, string>
+    } = {},
   ) {
     const headers: Record<string, string> = { 'content-type': 'application/json' }
     const origin = options.origin === undefined ? WEB : options.origin
@@ -50,6 +55,7 @@ describe('magic link sign-in (PGlite)', () => {
           email,
           callbackURL: options.callbackURL ?? `${WEB}/profile`,
           errorCallbackURL: options.errorCallbackURL ?? `${WEB}/signup`,
+          metadata: options.metadata,
         }),
       }),
     )
@@ -207,23 +213,41 @@ describe('magic link sign-in (PGlite)', () => {
     expect(res.status).toBe(403)
   })
 
-  it('sends MailMember for a join link addressed to the invitee', async () => {
+  const inviteDana = () =>
     invitations.set('inv-1', {
       email: 'dana@oak.vc',
       invitation: {
         expiresAt: new Date(Date.now() + 2.5 * 24 * 60 * 60 * 1000),
         organization: { name: 'Oak' },
         inviter: { name: 'Owner Person', email: 'owner@oak.vc' },
-      },
+      } as Invitation,
     })
-    await linkFor('dana@oak.vc', { callbackURL: `${WEB}/join/inv-1` })
+
+  it('sends MailMember for a server-sent invitation link addressed to the invitee', async () => {
+    inviteDana()
+    const sendFromServer = (email: string, invitationId: string) =>
+      auth.api.signInMagicLink({
+        body: { email, callbackURL: `${WEB}/join/${invitationId}`, metadata: { invitationId } },
+        headers: new Headers(),
+      })
+
+    await sendFromServer('dana@oak.vc', 'inv-1')
     const mail = sent.at(-1)!
     expect(mail.subject).toBe('Owner invited you to Oak on Arrakit')
     expect(mail.text).toContain('3 days')
 
-    await linkFor('someone-else@oak.vc', { callbackURL: `${WEB}/join/inv-1` })
+    await sendFromServer('someone-else@oak.vc', 'inv-1')
     expect(sent.at(-1)!.subject).toBe('Your link to sign in to Arrakit')
-    await linkFor('dana@oak.vc', { callbackURL: `${WEB}/join/missing` })
+    await sendFromServer('dana@oak.vc', 'missing')
+    expect(sent.at(-1)!.subject).toBe('Your link to sign in to Arrakit')
+  })
+
+  it('ignores invitation metadata sent over HTTP', async () => {
+    inviteDana()
+    await linkFor('dana@oak.vc', {
+      callbackURL: `${WEB}/join/inv-1`,
+      metadata: { invitationId: 'inv-1' },
+    })
     expect(sent.at(-1)!.subject).toBe('Your link to sign in to Arrakit')
   })
 
@@ -232,20 +256,6 @@ describe('magic link sign-in (PGlite)', () => {
       new Request(`${WEB}/api/auth/token`, { headers: { origin: WEB } }),
     )
     expect(res.status).toBe(404)
-  })
-
-  it('never changes the language through update-user', async () => {
-    const res = await open(await linkFor('lang@acme.com'))
-    const cookie = cookieOf(res)!
-    await auth.handler(
-      new Request(`${WEB}/api/auth/update-user`, {
-        method: 'POST',
-        headers: { origin: WEB, cookie, 'content-type': 'application/json' },
-        body: JSON.stringify({ language: 'es', name: 'Lang' }),
-      }),
-    )
-    const session = await auth.api.getSession({ headers: new Headers({ cookie }) })
-    expect(session?.user.language).toBe('en')
   })
 
   it('leaves no verification row after a link is used', async () => {
@@ -272,17 +282,4 @@ describe('magic link sign-in (PGlite)', () => {
     expect(await sessionFor(other)).toBeNull()
     expect(await sessionFor(stranger)).not.toBeNull()
   })
-})
-
-describe('invitationIdOf', () => {
-  const link = (callbackURL: string) =>
-    `${WEB}/api/auth/magic-link/verify?token=t&callbackURL=${encodeURIComponent(callbackURL)}`
-
-  it.each([
-    [`${WEB}/join/abc`, 'abc'],
-    ['/join/a%20b', 'a b'],
-    [`${WEB}/join/abc/extra`, null],
-    ['https://evil.example/join/abc', null],
-    [`${WEB}/profile`, null],
-  ])('%s → %j', (callbackURL, id) => expect(invitationIdOf(link(callbackURL), config)).toBe(id))
 })

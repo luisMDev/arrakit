@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
 
-import { ACCOUNT_LANGUAGES } from '@arrakit/address'
 import { APP_NAME } from '@arrakit/emails'
 import { betterAuth } from 'better-auth'
 import { jwt, magicLink, testUtils } from 'better-auth/plugins'
 
+import type { ScopedData } from '@arrakit/db'
 import type { Mailer } from '@arrakit/emails'
 import type { BetterAuthOptions } from 'better-auth'
 
@@ -15,35 +15,25 @@ import {
   MAGIC_LINK_MINUTES,
   oauthIssuer,
 } from './config'
-import { afterHook, beforeHook } from './hooks'
+import { type InvitationLinks, afterHook, beforeHook } from './hooks'
 import { magicLinkSender } from './magic-link'
 import { connectorProvider } from './oauth'
-import { type JoinLinkSender, organizationPlugin } from './organization'
+import { organizationPlugin } from './organization'
 import { socialProviders, validateUserInfo } from './social'
+import { deleteUser } from './user'
+import { userFields } from './user-fields'
 
-export interface InvitationForMail {
-  expiresAt: Date
-  organization: { name: string }
-  inviter: { name: string; email: string }
-}
-
-/** What Better Auth's rules read from the data layer (`ScopedData` from `@arrakit/db` fits it). */
-interface AuthData {
-  authDatabase: NonNullable<BetterAuthOptions['database']>
-  /** The earliest-joined membership, or null. */
-  memberOf(userId: string): Promise<{ organization: { id: string } } | null>
-  membershipIn(userId: string, organizationId: string): Promise<object | null>
-  invitationFor(invitationId: string, email: string): Promise<InvitationForMail | null>
-  /** Deletes connector grants bound to the organization, only `userId`'s when given. */
-  revokeGrants(organizationId: string, userId?: string): Promise<void>
-  forOrganization(organizationId: string): {
-    members: {
-      /** Members plus live invitations, not counting one to `exceptEmail`. */
-      seatsTaken(exceptEmail: string): Promise<number>
-      markInvitationEmailSent(invitationId: string, sent: boolean): Promise<void>
-    }
-  }
-}
+/** What Better Auth's rules read from the data layer. */
+type AuthData = Pick<
+  ScopedData,
+  | 'authDatabase'
+  | 'memberOf'
+  | 'membershipIn'
+  | 'invitationFor'
+  | 'revokeGrants'
+  | 'clearForAccountDeletion'
+  | 'forOrganization'
+>
 
 /** What the organization plugin's rules need from the app beyond the data layer. */
 export interface OrganizationDeps {
@@ -68,8 +58,7 @@ export interface AuthDeps {
 
 export function createAuth(deps: AuthDeps) {
   const { config, data } = deps
-  const links: { send?: JoinLinkSender } = {}
-  const unsentInvitations = new Set<string>()
+  const links: InvitationLinks = {}
   const auth = betterAuth({
     appName: APP_NAME,
     baseURL: config.baseURL,
@@ -81,9 +70,8 @@ export function createAuth(deps: AuthDeps) {
     disabledPaths: ['/token'],
     socialProviders: socialProviders(config),
     user: {
-      additionalFields: {
-        language: { type: [...ACCOUNT_LANGUAGES], defaultValue: 'en', input: false },
-      },
+      additionalFields: userFields,
+      deleteUser: deleteUser(data),
       // Only Microsoft needs it. Note: with it set, testUtils.saveUser() must run inside an
       // endpoint context, so tests that configure Microsoft create users through the API instead.
       ...(config.microsoft ? { validateUserInfo } : {}),
@@ -111,7 +99,7 @@ export function createAuth(deps: AuthDeps) {
       ipAddress: { ipAddressHeaders: ['x-real-ip', 'x-forwarded-for'] },
       database: { generateId: () => randomUUID() },
     },
-    hooks: { before: beforeHook(config), after: afterHook(data, unsentInvitations) },
+    hooks: { before: beforeHook(config, data), after: afterHook(deps, links) },
     plugins: [
       magicLink({
         expiresIn: MAGIC_LINK_MINUTES * 60,
@@ -119,15 +107,16 @@ export function createAuth(deps: AuthDeps) {
         sendMagicLink: magicLinkSender(deps),
       }),
       jwt({ disableSettingJwtHeader: true, jwt: { issuer: oauthIssuer(config.baseURL) } }),
-      organizationPlugin(deps, links, unsentInvitations),
+      organizationPlugin(deps),
       connectorProvider(deps),
       ...(deps.testing ? [testUtils({ captureOTP: true })] : []),
     ],
   })
-  links.send = async (email, joinURL) => {
+  links.send = async (email, invitationId) => {
+    const joinURL = `${config.webOrigin}/join/${encodeURIComponent(invitationId)}`
     await auth.api.signInMagicLink({
-      body: { email, callbackURL: joinURL, errorCallbackURL: joinURL },
-      headers: new Headers({ origin: config.webOrigin }),
+      body: { email, callbackURL: joinURL, errorCallbackURL: joinURL, metadata: { invitationId } },
+      headers: new Headers(),
     })
   }
   return auth

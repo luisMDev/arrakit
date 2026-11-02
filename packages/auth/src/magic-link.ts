@@ -1,33 +1,27 @@
 import { personName } from '@arrakit/address'
 import { daysUntil, memberEmail, signinEmail, toMail } from '@arrakit/emails'
+import type { GenericEndpointContext } from 'better-auth'
 
-import { MAGIC_LINK_MINUTES, isTrustedOrigin } from './config'
+import { MAGIC_LINK_MINUTES } from './config'
 import type { AuthDeps } from './auth'
 
-const JOIN_PATH = /^\/join\/([^/]+)$/
+interface MagicLink {
+  email: string
+  url: string
+  metadata?: Record<string, unknown>
+}
 
-export function invitationIdOf(linkURL: string, config: AuthDeps['config']): string | null {
-  let callback: URL
-  try {
-    const raw = new URL(linkURL).searchParams.get('callbackURL')
-    if (!raw) return null
-    callback = new URL(raw, config.baseURL)
-  } catch {
-    return null
-  }
-  if (!isTrustedOrigin(callback.origin, config.trustedOrigins)) return null
-  const match = JOIN_PATH.exec(callback.pathname)
-  if (!match?.[1]) return null
-  try {
-    return decodeURIComponent(match[1])
-  } catch {
-    return null
-  }
+/** The invitation a server-sent link is for; metadata from an HTTP request is not trusted. */
+function invitationIdOf({ metadata }: MagicLink, ctx: GenericEndpointContext | undefined) {
+  if (ctx?.request) return null
+  const id = metadata?.invitationId
+  return typeof id === 'string' ? id : null
 }
 
 export function magicLinkSender(deps: AuthDeps, now: () => Date = () => new Date()) {
-  return async ({ email, url }: { email: string; url: string }) => {
-    const invitationId = invitationIdOf(url, deps.config)
+  return async (link: MagicLink, ctx?: GenericEndpointContext) => {
+    const { email, url } = link
+    const invitationId = invitationIdOf(link, ctx)
     const invitation = invitationId ? await deps.data.invitationFor(invitationId, email) : null
     const mail = invitation
       ? memberEmail({

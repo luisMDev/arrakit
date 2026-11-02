@@ -1,7 +1,7 @@
-import { oauthProvider } from '@better-auth/oauth-provider'
+import { DEFAULT_OAUTH_SCOPES, oauthProvider } from '@better-auth/oauth-provider'
 import { APIError } from 'better-auth/api'
 
-import { ORGANIZATION_CLAIM, mcpResourceURL } from './config'
+import { MCP_SCOPE, ORGANIZATION_CLAIM, mcpResourceURL } from './config'
 import type { AuthDeps } from './auth'
 
 /**
@@ -41,6 +41,7 @@ export function connectorProvider(deps: AuthDeps) {
     grantTypes: ['authorization_code', 'refresh_token'],
     resources: [resource],
     clientRegistrationDefaultResources: [resource],
+    scopes: [...DEFAULT_OAUTH_SCOPES, MCP_SCOPE],
     postLogin: {
       page: `${config.webOrigin}/oauth/consent`,
       shouldRedirect: async ({ user, session }) =>

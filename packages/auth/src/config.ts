@@ -2,6 +2,8 @@ export const AUTH_BASE_PATH = '/api/auth'
 const MCP_PATH = '/api/mcp'
 export const MAGIC_LINK_MINUTES = 15
 export const ORGANIZATION_CLAIM = 'organization_id'
+/** The OAuth scope an access token needs to call the MCP server. */
+export const MCP_SCOPE = 'mcp'
 export const COOKIE_PREFIX = 'arrakit'
 export const MICROSOFT_UNVERIFIED = 'email_not_verified'
 

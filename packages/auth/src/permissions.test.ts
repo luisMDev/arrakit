@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   type MemberChange,
   allows,
+  customRoleMap,
   isOwnerRole,
   memberChangeRefusal,
   parsePermissions,
@@ -72,8 +73,14 @@ const custom = {
 
 const change = (
   actorRole: string,
-  rest: Partial<Omit<MemberChange, 'actorRole' | 'custom'>> = {},
-): MemberChange => ({ actorRole, self: false, custom, ...rest })
+  rest: Partial<Omit<MemberChange, 'actorRole' | 'actorPermissions' | 'custom'>> = {},
+): MemberChange => ({
+  actorRole,
+  actorPermissions: permissionsOf(actorRole, custom),
+  self: false,
+  custom,
+  ...rest,
+})
 
 const invite = (actorRole: string, newRole: string) => change(actorRole, { newRole })
 const setRole = (actorRole: string, targetRole: string, newRole: string, self = false) =>
@@ -122,5 +129,28 @@ describe('memberChangeRefusal', () => {
     ['an admin removes someone above them', remove('admin', 'boss'), /more rights/],
   ])('refuses: %s', (_label, input, reason) => {
     expect(memberChangeRefusal(input)).toMatch(reason)
+  })
+
+  it("weighs the actor's permissions, not their role's name", () => {
+    const change = {
+      actorRole: 'lead',
+      actorPermissions: {},
+      targetRole: 'member',
+      self: false,
+      custom: {},
+    }
+    expect(memberChangeRefusal(change)).toMatch(/more rights/)
+    expect(memberChangeRefusal({ ...change, actorPermissions: permissionsOf('admin') })).toBeNull()
+  })
+})
+
+describe('customRoleMap', () => {
+  it('reads each stored role, dropping what it cannot grant', () => {
+    expect(
+      customRoleMap([
+        { role: 'finance', permission: '{"billing":["read","fly"]}' },
+        { role: 'broken', permission: 'not json' },
+      ]),
+    ).toEqual({ finance: { billing: ['read'] }, broken: {} })
   })
 })

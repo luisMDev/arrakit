@@ -1,20 +1,52 @@
+import { defineRequestState, tryGetCurrentAuthEndpointContext } from '@better-auth/core/context'
 import { APIError } from 'better-auth/api'
 import { organization } from 'better-auth/plugins'
 
 import type { AuthDeps } from './auth'
-import { ac, organizationSchema, roles } from './permissions'
+import {
+  ac,
+  customRoleMap,
+  memberChangeRefusal,
+  organizationSchema,
+  permissionsOf,
+  roles,
+} from './permissions'
 
 const INVITATION_DAYS = 7
+const ACTOR_UNKNOWN = "You can't change this organization's members."
 
-/** Sends a magic link whose callback is the join page (magicLinkSender writes the invite mail). */
-export type JoinLinkSender = (email: string, joinURL: string) => Promise<void>
+/** Set by the before hook of `/organization/create` when the creator sent `termsAccepted: true`. */
+export const termsAccepted = defineRequestState(() => false)
 
-export function organizationPlugin(
-  deps: AuthDeps,
-  links: { send?: JoinLinkSender },
-  unsentInvitations: Set<string>,
-) {
-  const { organizations, config, data } = deps
+type Change = { targetRole?: string; newRole?: string; self: boolean }
+
+export function organizationPlugin(deps: AuthDeps) {
+  const { organizations, data } = deps
+
+  const refuse = (message: string): never => {
+    throw new APIError('FORBIDDEN', { message })
+  }
+
+  /** Refuses the member changes Better Auth would allow but the organization's rules do not. */
+  async function checkMemberChange(organizationId: string, actorId: string, change: Change) {
+    const actor = await data.membershipIn(actorId, organizationId)
+    if (!actor) return refuse(ACTOR_UNKNOWN)
+    const custom = customRoleMap(await data.forOrganization(organizationId).customRoles())
+    const refusal = memberChangeRefusal({
+      actorRole: actor.role,
+      actorPermissions: permissionsOf(actor.role, custom),
+      custom,
+      ...change,
+    })
+    if (refusal) refuse(refusal)
+  }
+
+  /** The signed-in person making the request; the member hooks receive no request context. */
+  function actorId(): string {
+    const session = tryGetCurrentAuthEndpointContext()?.context.session
+    return session?.user.id ?? refuse(ACTOR_UNKNOWN)
+  }
+
   return organization({
     ac,
     roles,
@@ -26,27 +58,6 @@ export function organizationPlugin(
     teams: { enabled: true, defaultTeam: { enabled: false }, allowRemovingAllTeams: true },
     dynamicAccessControl: { enabled: true, maximumRolesPerOrganization: 20 },
     schema: organizationSchema,
-    async sendInvitationEmail({ id, email, organization }) {
-      try {
-        await links.send!(email, `${config.webOrigin}/join/${encodeURIComponent(id)}`)
-      } catch (err) {
-        organizations.log.error(
-          { err, organizationId: organization.id, invitationId: id },
-          'invite email not sent',
-        )
-        unsentInvitations.add(id)
-      }
-      try {
-        await data
-          .forOrganization(organization.id)
-          .members.markInvitationEmailSent(id, !unsentInvitations.has(id))
-      } catch (err) {
-        organizations.log.error(
-          { err, organizationId: organization.id, invitationId: id },
-          'invite email state not saved',
-        )
-      }
-    },
     organizationHooks: {
       async beforeUpdateOrganization({ organization }) {
         const { name, ...rest } = organization
@@ -59,9 +70,46 @@ export function organizationPlugin(
         }
         return { data: { name: trimmed } }
       },
-      beforeDeleteOrganization: ({ organization }) => organizations.beforeDelete(organization.id),
+      async beforeDeleteOrganization({ organization }, ctx) {
+        try {
+          await organizations.beforeDelete(organization.id)
+        } catch (err) {
+          // The plugin clears the active organization before this hook; a kept one stays active.
+          const session = ctx?.context.session?.session
+          if (session?.activeOrganizationId === organization.id) {
+            await ctx!.context.internalAdapter.updateSession(session.token, {
+              activeOrganizationId: organization.id,
+            })
+          }
+          throw err
+        }
+      },
       afterDeleteOrganization: ({ organization }) => organizations.afterDelete(organization.id),
-      async beforeCreateInvitation({ invitation, organization }) {
+      async beforeAddMember() {
+        if (tryGetCurrentAuthEndpointContext()?.path !== '/organization/create') return
+        if (!(await termsAccepted.get())) return
+        return { data: { termsAcceptedAt: new Date() } }
+      },
+      async beforeRemoveMember({ member, organization }) {
+        const actor = actorId()
+        await checkMemberChange(organization.id, actor, {
+          targetRole: member.role,
+          self: member.userId === actor,
+        })
+      },
+      async beforeUpdateMemberRole({ member, newRole, organization }) {
+        const actor = actorId()
+        await checkMemberChange(organization.id, actor, {
+          targetRole: member.role,
+          newRole,
+          self: member.userId === actor,
+        })
+      },
+      async beforeCreateInvitation({ invitation, inviter, organization }) {
+        await checkMemberChange(organization.id, inviter.id, {
+          newRole: invitation.role,
+          self: false,
+        })
         const seats = organizations.seats(organization)
         if (
           (await data.forOrganization(organization.id).members.seatsTaken(invitation.email)) >=

@@ -88,6 +88,12 @@ export function parsePermissions(raw: string): Permissions {
   ) as Permissions
 }
 
+/** An organization's custom roles by name, from their stored rows. */
+export const customRoleMap = (
+  rows: readonly { role: string; permission: string }[],
+): Record<string, Permissions> =>
+  Object.fromEntries(rows.map((row) => [row.role, parsePermissions(row.permission)]))
+
 export interface MemberChange {
   actorRole: string
   /** The member changed or removed; absent for an invitation. */
@@ -98,6 +104,8 @@ export interface MemberChange {
   self: boolean
   /** The organization's custom roles. */
   custom: Record<string, Permissions>
+  /** What the actor holds. */
+  actorPermissions: Permissions
 }
 
 /**
@@ -105,7 +113,7 @@ export interface MemberChange {
  * role-name permissions and keeps the sole owner; these are the rules it does not have.
  */
 export function memberChangeRefusal(change: MemberChange): string | null {
-  const { actorRole, targetRole, newRole, self, custom } = change
+  const { actorRole, actorPermissions, targetRole, newRole, self, custom } = change
   if (newRole !== undefined && rolesOf(newRole).includes('owner')) {
     return 'No one is made owner: the organization has its creator.'
   }
@@ -122,11 +130,14 @@ export function memberChangeRefusal(change: MemberChange): string | null {
   if (targetRole !== undefined && !self && rolesOf(targetRole).includes('admin')) {
     return 'Only the owner demotes or removes an admin.'
   }
-  const rights = permissionsOf(actorRole, custom)
-  if (newRole !== undefined && !allows(rights, permissionsOf(newRole, custom))) {
+  if (newRole !== undefined && !allows(actorPermissions, permissionsOf(newRole, custom))) {
     return "You can't give permissions you don't have."
   }
-  if (targetRole !== undefined && !self && !allows(rights, permissionsOf(targetRole, custom))) {
+  if (
+    targetRole !== undefined &&
+    !self &&
+    !allows(actorPermissions, permissionsOf(targetRole, custom))
+  ) {
     return 'Only the owner changes someone with more rights than yours.'
   }
   return null
