@@ -28,7 +28,7 @@ billing, prepaid credits, transactional email and an MCP server, in a pnpm + Tur
   to a local Mailpit inbox (http://localhost:5025, started by `pnpm dev`).
 - **MCP server** at `/api/mcp`, with OAuth 2.1 sign-in through Better Auth's OAuth provider
   (Claude's custom connectors work with it) and one example tool, `whoami`.
-- **Jobs** with pg-boss on the same Postgres (an in-process runner on PGlite); files on any
+- **Jobs** with pg-boss on the same Postgres (on the PGlite instance too when `DATABASE_URL` is unset); files on any
   S3-compatible bucket (a local directory without one).
 - **Tenancy**: every organization query and file key goes through `forOrganization(id)` in
   `@arrakit/db`; ESLint refuses the database and storage drivers anywhere else.

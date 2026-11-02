@@ -17,13 +17,14 @@ Cross-references to other areas (they own their screens; this area only routes t
 
 One place to rebrand. In arrakit:
 
-| Constant | saas-base value | arrakit location | Used by |
-| --- | --- | --- | --- |
-| `APP_NAME` | `'SaaS'` | `apps/web/src/config.ts` (and the emails package brand) | Page titles, wordmark, copy that says the product name |
-| `SITE_URL` | `'https://example.com'` | `apps/web/src/config.ts`, read from `VITE_SITE_URL` with that default | Wordmark link outside `/app`, Pricing's "Home" |
-| App origin used by the landing | `https://app.example.com` | `apps/landing`, from `PUBLIC_APP_URL` | Landing links (Pricing, Sign in, Get started) |
+| Constant                       | saas-base value           | arrakit location                                                      | Used by                                                |
+| ------------------------------ | ------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------ |
+| `APP_NAME`                     | `'SaaS'`                  | `apps/web/src/config.ts` (and the emails package brand)               | Page titles, wordmark, copy that says the product name |
+| `SITE_URL`                     | `'https://example.com'`   | `apps/web/src/config.ts`, read from `VITE_SITE_URL` with that default | Wordmark link outside `/app`, Pricing's "Home"         |
+| App origin used by the landing | `https://app.example.com` | `apps/landing`, from `PUBLIC_APP_URL`                                 | Landing links (Pricing, Sign in, Get started)          |
 
 README "Make it yours" checklist, to be reproduced in arrakit's README/AGENTS.md:
+
 - Product name: `APP_NAME` in the web config and in the emails brand file; texts in `apps/web/src/i18n/locales/*.json`
   (or wherever arrakit keeps them), `apps/landing`, and the icons in `apps/web/public` and `apps/landing/public`.
 - Plans and prices: the shared `plans` package, then the Stripe prices script.
@@ -42,6 +43,7 @@ saas-base strings with "SaaS" – substitute the arrakit name.
 Equivalent of saas-base `App` (`app.ts` + `app.html`).
 
 What it renders, on **every** screen:
+
 1. A single `<header>` holding the **wordmark** (the product name `APP_NAME`; optionally a round mark with the
    name's first letter before it). Exactly one `<header>` exists on any screen, signed-in screens included
    (the signed-in shell must not add a second one).
@@ -49,6 +51,7 @@ What it renders, on **every** screen:
 3. The global toaster (shadcn `Sonner` `<Toaster />`), mounted once.
 
 Wordmark link rule (tested):
+
 - When the current path's **first segment is `app`** (`/app`, `/app/anything/...`, `/app?tab=1`): the wordmark is an
   internal link to `/app` (Home).
 - Anywhere else (`/`, `/pricing`, `/signin`, `/apply`, `/unavailable`...): it is a plain `<a href={SITE_URL}>` to
@@ -61,24 +64,25 @@ Document shell: `<html lang>` follows the active language (see §6). `<title>` i
 `apps/web/public/icons/google.svg` and `icons/microsoft.svg` (used by the sign-in buttons in the auth area).
 
 ### Page titles
+
 Every route sets `<title>` = `` `${APP_NAME} · ${t('app.titles.<key>')}` `` (TanStack `head()` per route, in the
 language active at navigation time). Keys and routes:
 
-| Route | Title key | en | es |
-| --- | --- | --- | --- |
-| `/signin` | `app.titles.signIn` | Sign in | Iniciar sesión |
-| `/pricing` | `app.titles.pricing` | Pricing | Precios |
-| `/unavailable` | `app.titles.unavailable` | Unavailable | No disponible |
-| `/join/$invitationId` | `app.titles.joinYourOrganization` | Join your organization | Únete a tu organización |
-| `/oauth/signin` | `app.titles.signInToConnect` | Sign in to connect | Inicia sesión para conectar |
-| `/oauth/consent` | `app.titles.connect` | Connect | Conectar |
-| `/signup` | `app.titles.whereToWrite` | Where to write | Dónde escribir |
-| `/profile` | `app.titles.yourOrganization` | Your organization | Tu organización |
-| `/app` (index) | `app.titles.home` | Home | Inicio |
-| `/app/settings` | `app.titles.settings` | Settings | Ajustes |
-| `/app/plans` | `app.titles.plans` | Plans | Planes |
-| `/app/checkout` | `app.titles.checkout` | Checkout | Pago |
-| `/app/welcome` | `app.titles.welcome` | Welcome | Bienvenida |
+| Route                 | Title key                         | en                     | es                          |
+| --------------------- | --------------------------------- | ---------------------- | --------------------------- |
+| `/signin`             | `app.titles.signIn`               | Sign in                | Iniciar sesión              |
+| `/pricing`            | `app.titles.pricing`              | Pricing                | Precios                     |
+| `/unavailable`        | `app.titles.unavailable`          | Unavailable            | No disponible               |
+| `/join/$invitationId` | `app.titles.joinYourOrganization` | Join your organization | Únete a tu organización     |
+| `/oauth/signin`       | `app.titles.signInToConnect`      | Sign in to connect     | Inicia sesión para conectar |
+| `/oauth/consent`      | `app.titles.connect`              | Connect                | Conectar                    |
+| `/signup`             | `app.titles.whereToWrite`         | Where to write         | Dónde escribir              |
+| `/profile`            | `app.titles.yourOrganization`     | Your organization      | Tu organización             |
+| `/app` (index)        | `app.titles.home`                 | Home                   | Inicio                      |
+| `/app/settings`       | `app.titles.settings`             | Settings               | Ajustes                     |
+| `/app/plans`          | `app.titles.plans`                | Plans                  | Planes                      |
+| `/app/checkout`       | `app.titles.checkout`             | Checkout               | Pago                        |
+| `/app/welcome`        | `app.titles.welcome`              | Welcome                | Bienvenida                  |
 
 ---
 
@@ -86,31 +90,32 @@ language active at navigation time). Keys and routes:
 
 The app has **no front page of its own**: the website (landing) is the front page.
 
-| Path | Behaviour | Guard | Owner area |
-| --- | --- | --- | --- |
-| `/` | Redirect to `/signin` | – | this |
-| `/signin` | Sign-in screen (same component as signup, "returning" mode) | `skipWhenSignedIn` (signed-in person goes to `/app`, or `/profile` without organization) | auth-onboarding |
-| `/signup` | Get-started screen | `skipWhenSignedIn` | auth-onboarding |
-| `/profile` | Create organization | `requireAccount` | auth-onboarding |
-| `/pricing` | Public price list, no session | – | billing-plans |
-| `/unavailable` | API failure screen (§5) | – (public) | this |
-| `/join/$invitationId` | Join an organization from an invite link | – (public) | auth-onboarding |
-| `/oauth/signin` | Connector sign-in (no `skipWhenSignedIn`) | – | oauth-mcp |
-| `/oauth/consent` | Connector consent | – | oauth-mcp |
-| `/app` | Signed-in shell (§4) + Home (§7) | `requireUser` | this |
-| `/app/settings?section=<id>` | Settings on that section (`account` default; `general`, `usage`, `members`, `teams`, `roles`, `billing`, `security`) | `requireUser` | settings |
-| `/app/members` | Redirect to `/app/settings?section=members` | `requireUser` | settings |
-| `/app/billing` | Redirect to `/app/settings?section=billing`, keeping `top_up` (Stripe's top-up URLs and email links use it) | `requireUser` | settings |
-| `/app/plans` | Plans | `requireUser` | billing-plans |
-| `/app/checkout?plan=&cycle=` | Checkout | `requireUser` + `canCheckout` | billing-plans |
-| `/app/welcome[?session_id=]` | Welcome (§8) | `requireUser` + `onPaidPlan` | this |
-| anything else (`**`) | Not found page (404, "Back home" → `/`) | – | this |
+| Path                         | Behaviour                                                                                                            | Guard                                                                                    | Owner area      |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------- |
+| `/`                          | Redirect to `/signin`                                                                                                | –                                                                                        | this            |
+| `/signin`                    | Sign-in screen (same component as signup, "returning" mode)                                                          | `skipWhenSignedIn` (signed-in person goes to `/app`, or `/profile` without organization) | auth-onboarding |
+| `/signup`                    | Get-started screen                                                                                                   | `skipWhenSignedIn`                                                                       | auth-onboarding |
+| `/profile`                   | Create organization                                                                                                  | `requireAccount`                                                                         | auth-onboarding |
+| `/pricing`                   | Public price list, no session                                                                                        | –                                                                                        | billing-plans   |
+| `/unavailable`               | API failure screen (§5)                                                                                              | – (public)                                                                               | this            |
+| `/join/$invitationId`        | Join an organization from an invite link                                                                             | – (public)                                                                               | auth-onboarding |
+| `/oauth/signin`              | Connector sign-in (no `skipWhenSignedIn`)                                                                            | –                                                                                        | oauth-mcp       |
+| `/oauth/consent`             | Connector consent                                                                                                    | –                                                                                        | oauth-mcp       |
+| `/app`                       | Signed-in shell (§4) + Home (§7)                                                                                     | `requireUser`                                                                            | this            |
+| `/app/settings?section=<id>` | Settings on that section (`account` default; `general`, `usage`, `members`, `teams`, `roles`, `billing`, `security`) | `requireUser`                                                                            | settings        |
+| `/app/members`               | Redirect to `/app/settings?section=members`                                                                          | `requireUser`                                                                            | settings        |
+| `/app/billing`               | Redirect to `/app/settings?section=billing`, keeping `top_up` (Stripe's top-up URLs and email links use it)          | `requireUser`                                                                            | settings        |
+| `/app/plans`                 | Plans                                                                                                                | `requireUser`                                                                            | billing-plans   |
+| `/app/checkout?plan=&cycle=` | Checkout                                                                                                             | `requireUser` + `canCheckout`                                                            | billing-plans   |
+| `/app/welcome[?session_id=]` | Welcome (§8)                                                                                                         | `requireUser` + `onPaidPlan`                                                             | this            |
+| anything else (`**`)         | Not found page (404, "Back home" → `/`)                                                                              | –                                                                                        | this            |
 
 Unknown paths under `/app` (e.g. `/app/booking`, `/app/booked`) render the same not-found page inside the signed-in
 shell (still behind `requireUser`), keeping the URL. Implement as a catch-all route under `/app`. Test:
 `/app/booking` and `/app/booked` keep their URL and show the not-found h1 with the account menu.
 
 Implementation notes for TanStack Start:
+
 - File routes: `routes/index.tsx` (redirect in `beforeLoad`), `routes/app.tsx` (layout with `beforeLoad` =
   `requireUser`), `routes/app/index.tsx`, `routes/app/welcome.tsx`, etc.
 - Settings: `routes/app/settings.tsx` validates `?section` (`settingsSearch`) and renders `SettingsPage` on it;
@@ -124,38 +129,45 @@ Implementation notes for TanStack Start:
 ## 4. Signed-in shell (`/app` layout route)
 
 ### 4.1 `requireUser` guard (beforeLoad of `/app`)
+
 Loads the signed-in person (`me.get`, §10) through `guardedMe` (private to `#/lib/guards.ts`) before any `/app/*`
 screen renders; the answer stays in the query cache (`orpc.me.get.queryOptions()`). Outcomes:
 
-| API result | Navigation |
-| --- | --- |
-| OK with `organization != null` | Allow. Before allowing, if `me.language !== activeLanguage`, **switch the UI language to `me.language` and wait for it** (§6) so the first signed-in render is already in the account language. |
-| OK with `organization === null` (also `role`/`plan`/`seats` null) — person in no organization, never joined or removed | Redirect to `/profile` |
-| `UNAUTHORIZED` (401) | Redirect to `/signin` |
-| Any other failure (403, 500, network down, timeout) | Redirect to `/unavailable?next=<requested URL>` (URL-encoded full path + search, e.g. `/unavailable?next=%2Fapp%2Fsettings`); the QueryCache reports it |
+| API result                                                                                                             | Navigation                                                                                                                                                                                      |
+| ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OK with `organization != null`                                                                                         | Allow. Before allowing, if `me.language !== activeLanguage`, **switch the UI language to `me.language` and wait for it** (§6) so the first signed-in render is already in the account language. |
+| OK with `organization === null` (also `role`/`plan`/`seats` null) — person in no organization, never joined or removed | Redirect to `/profile`                                                                                                                                                                          |
+| `UNAUTHORIZED` (401)                                                                                                   | Redirect to `/signin`                                                                                                                                                                           |
+| Any other failure (403, 500, network down, timeout)                                                                    | Redirect to `/unavailable?next=<requested URL>` (URL-encoded full path + search, e.g. `/unavailable?next=%2Fapp%2Fsettings`); the QueryCache reports it                                         |
 
 A 403 or a 5xx is **never** treated as a sign-out.
 
 ### 4.2 Current-user state (`useCurrentUser()` hook)
+
 Derived from the `me` query:
-- `user: Me | null`
-- `role: string | null`: Better Auth's role string (`owner`, `admin`, `member`, a custom role, or several joined by `,`)
+
+- `user: Me | null` (`user.role` is Better Auth's role string: `owner`, `admin`, `member`, a custom role, or several joined by `,`)
+- `name`: the display name (below)
 - `can(wanted)`: `allows(me.permissions, wanted)` from `@arrakit/auth/permissions` (e.g. `can({ billing: ['manage'] })`);
   every permission-gated screen, link and button reads it. `grants(me, wanted)` is the same outside React (guards).
-- `isOwner = isOwnerRole(role)`
+- `isOwner = isOwnerRole(user.role)`
 - `managesMembers = can({ member: ['update'] }) || can({ invitation: ['create'] })`,
   `managesBilling = can({ billing: ['manage'] })`
-- `planLabel = t('pricing.plan.<plan>')` (Free / Pro / Team / Internal; es: same words), `''` when none
-- `refresh()`: invalidate `me` so it refetches (a count/setting moved behind the screen's back).
 - `patch(fn)`: optimistic local update after a save the API already accepted (e.g. Settings renames the person → menu shows new name at once). Use `queryClient.setQueryData`.
 - `signedOut()`: clear every query (`queryClient.removeQueries()`), so nothing of the previous person lingers.
 - Before anyone signs in: `can(...)` is false for everything and `isOwner` is false.
+
+`useMember()` is the same under `/app`, with `user.organization`, `user.role` and `user.plan` known (it
+throws otherwise). A plan reads as `planLabel(plan)` from `components/billing/plan-copy`:
+`t('pricing.plan.<plan>')` (Free / Pro / Team / Internal; es: same words), `''` when none.
 
 Display name rule (`Me.name`): Better Auth's `user.name` trimmed; when blank, the local part of the email
 (`ana@acme.com` → `ana`). Apply in the API mapper or the client, consistently.
 
 ### 4.3 Shell layout
+
 Renders, on the same row as the root header's wordmark (right-aligned), only when the person is loaded:
+
 - A `<nav aria-label={t('shell.account')}>` ("Account" / "Cuenta") containing:
   - The **organization switcher** (§4.5): a button `aria-label={t('orgSwitcher.label', { organization })}`
     ("Organization: Acme") showing `t('shell.usage', { organization, plan: planLabel })` → "Acme · Pro".
@@ -163,17 +175,20 @@ Renders, on the same row as the root header's wordmark (right-aligned), only whe
 - Then the `<Outlet />` with the signed-in screens.
 
 ### 4.4 App menu (account menu)
+
 A **disclosure**, not an ARIA menu (its entries are links). Build with shadcn `DropdownMenu` or `Popover`, but the
 behaviour below must hold (if using Radix DropdownMenu, links must be `asChild` `<Link>`s and tests adapted to
 `role="menuitem"`; a `Popover` is closest to the original).
 
 Trigger button:
+
 - `aria-label={t('appMenu.accountMenu')}` ("Account menu" / "Menú de la cuenta"), `aria-controls="app-menu"`,
   `aria-expanded` = `"true"|"false"`.
 - Content: the person's **initial** = first character of the trimmed display name, uppercased (`"Ana Ruiz"` → `"A"`).
   Rendered as a round avatar (shadcn `Avatar` + `AvatarFallback`).
 
 Panel (`id="app-menu"`), only in the DOM while open:
+
 1. Header block: person's name ("Ana Ruiz") and `"<organization> · <planLabel>"` ("Acme · Pro").
 2. List `aria-label={t('appMenu.yourOrganization')}` ("Your organization"):
    - `Home` → `/app` (`appMenu.home`)
@@ -186,6 +201,7 @@ Panel (`id="app-menu"`), only in the DOM while open:
    - Button `Sign out` (`appMenu.signOut`).
 
 Behaviour:
+
 - Click on trigger toggles open/closed.
 - Click on any link navigates **and closes** the menu.
 - `Escape` closes it (only when open) and **returns focus to the trigger button**.
@@ -199,8 +215,10 @@ Behaviour:
   ("Couldn't sign you out. Try again.") and stay.
 
 ### 4.5 Organization switcher (`components/shell/org-switcher.tsx`)
+
 A person may belong to several organizations; the session's **active organization** (Better Auth
 `session.activeOrganizationId`) is the one every screen and procedure works in.
+
 - shadcn `DropdownMenu`. It loads `authClient.organization.list()` (query `['org', 'list']`) when opened, and lists each
   organization as a radio item (name + plan label), the active one checked, under `orgSwitcher.organizations`.
 - Picking another: `switchOrganization(queryClient, id)` (`#/lib/organization-queries`: `organization.setActive`
@@ -218,6 +236,7 @@ A person may belong to several organizations; the session's **active organizatio
 ## 5. Unavailable screen (`/unavailable`)
 
 Public route, one mode (there is no `reason=forbidden` variant; any non-401 failure lands here):
+
 - h1 `unavailable.unreachableTitle` "Couldn't reach SaaS." / "No se ha podido conectar con SaaS."
 - p `unavailable.unreachableBody` "Nothing is lost. Try again in a moment." / "No se ha perdido nada. Inténtalo de nuevo en un momento."
 - Button `unavailable.tryAgain` "Try again" / "Reintentar": navigates to `next`, which re-runs that route's guards.
@@ -244,6 +263,7 @@ namespaces: `app`, `appMenu`, `auth`, `checkout`, `confirmDelete`, `join`, `oaut
 `{{name}}` is already i18next-compatible. Keep `en` and `es` key sets identical (add a parity unit test).
 
 Loading:
+
 - `en` is **bundled** (imported JSON) so the first render never waits for a request and never shows a raw key.
 - `es` is lazy-loaded (dynamic import or fetch of `/locales/es.json`) the first time it is used.
 - A switch **loads the target language first, then flips the active language**: nothing ever renders a key.
@@ -252,13 +272,14 @@ Loading:
 - Missing key in `es` → fall back to `en` text.
 
 Language selection (`Language` service: `use(lang)`, `initial()`):
+
 - `initial()`: the language stored in this browser (`localStorage['arrakit.lang']`, saas-base used `saas.lang`) if it is
   `en`/`es`; else the browser's `navigator.language.slice(0, 2)` if supported (`es-ES` → `es`); else `en` (`fr-FR` → `en`).
 - On app start (client): `use(initial())`.
 - `use(lang)`: no-op if already active; else load, activate, set `document.documentElement.lang = lang`, and store it
   in `localStorage['arrakit.lang']`. Storage access is wrapped in try/catch (blocked storage must not break anything).
 - Once signed in, the **account language wins**: `requireUser` switches to `me.language` before rendering (§4.1).
-- Settings → Account (settings area) saves `language` via `me.updateAccount`; on success it calls `use(account.language)`
+- Settings → Account (settings area) saves `language` via `authClient.updateUser`; on success it calls `use(language)`
   so every screen switches immediately, no reload.
 - SSR note (TanStack Start): `localStorage`/`navigator` exist only in the browser. Either render the app client-only
   (SPA mode) or render `en` on the server and switch on hydration; never read storage during SSR.
@@ -273,6 +294,7 @@ uppercased; `firstName(name)`; `listing(items, lang)` ("a, b and c" / "a, b y c"
 The first screen once signed in; placeholder for the product's own dashboard.
 
 Content (only when the person is loaded):
+
 - h1 `home.title` → "Hi, {{name}}." → "Hi, Ana Ruiz." (es "Hola, {{name}}.")
 - p `home.organization` → "{{organization}} is on {{plan}}. This is where your product starts." → contains "Acme is on Pro."
   (es "{{organization}} está en {{plan}}. Aquí empieza tu producto.")
@@ -289,6 +311,7 @@ Content (only when the person is loaded):
 Shown after a successful Stripe Checkout (Checkout's return URL is `/app/welcome?session_id={CHECKOUT_SESSION_ID}`).
 
 Guard `onPaidPlan` (after `requireUser`):
+
 - Organization plan ≠ `free` → allow.
 - Plan is `free` and **no** `session_id` query param → redirect `/app/plans` (nothing to welcome to).
 - Plan is `free` **with** `session_id` → Stripe's webhook may arrive after the browser: re-fetch `me` every
@@ -296,6 +319,7 @@ Guard `onPaidPlan` (after `requireUser`):
   allow (and the refreshed `me` is in the cache). After 15 tries still free, or on any fetch error → `/app/plans`.
 
 Content:
+
 - A check icon in a round badge (lucide `Check`).
 - h1: `welcome.titleLead` + " " + `welcome.titleRest` with `{{plan}}` = planLabel → "Welcome to Pro." / "Welcome to Team."
   (es "Te damos la bienvenida a Pro."). Tests match the h1 full text "Welcome to Pro.".
@@ -314,6 +338,7 @@ Problem: each deploy renames lazy chunks; a tab opened before the deploy (or a C
 HTTP cache, then hard-load the target URL **once**.
 
 `recoverFromStaleChunk(error: unknown, targetUrl: string, win: Window): Promise<boolean>` (pure, testable):
+
 1. Message = `error.message` if `Error`, else `String(error)`. If it does not match
    `/dynamically imported module|Importing a module script failed/i` (Chrome/Firefox, then Safari) → return `false`, do nothing.
 2. Loop guard in `sessionStorage['arrakit:stale-chunk-retried-at']`: if `now - stored < 10_000` ms → return `false`
@@ -332,6 +357,7 @@ components), passing the navigation's target href.
 ## 10. API endpoints used by this area
 
 ### `me.get` (oRPC, `POST /api/rpc/me/get` or as the oRPC router defines it)
+
 - Auth: requires a live Better Auth session (oRPC middleware reading `auth.api.getSession({ headers })`); none → `UNAUTHORIZED` (401).
 - Input: none.
 - Output (Zod):
@@ -354,11 +380,13 @@ components), passing the navigation's target href.
 - Client mapping: if `organization|role|plan` is null → guard → `/profile`.
 
 ### Better Auth (mounted at `/api/auth/*`)
+
 - `POST /api/auth/sign-out` — app menu Sign out (via `authClient.signOut()`).
 - (Other auth endpoints belong to auth-onboarding.)
 
 ### Referenced, owned by other areas
-- `me.updateAccount` (settings) — language switch trigger.
+
+- `authClient.updateUser` (settings) — language switch trigger.
 - `organization`/billing endpoints for `/app/plans` and Settings → Billing.
 
 Error toast rule for **all** screens, handled once in the query client (`integrations/tanstack-query/root-provider.tsx`):
@@ -384,6 +412,7 @@ values back.
 ## 11. Data
 
 Tables read (owned by auth/organizations areas; Better Auth schema via Drizzle):
+
 - `user`: `id`, `name`, `email`, `language` (text, `'en' | 'es'`, not null, default `'en'`, check constraint; declared
   as a Better Auth `additionalFields` entry).
 - `member`: `user_id`, `organization_id`, `role` (`owner|admin|member`).
@@ -397,15 +426,15 @@ External integrations: Stripe only indirectly (Welcome waits for the webhook to 
 
 ## 12. Environment variables
 
-| Var | App | Default | Purpose |
-| --- | --- | --- | --- |
-| `VITE_SITE_URL` | web | `https://example.com` | Website URL for wordmark outside `/app` and Unavailable's Home |
-| `VITE_APP_NAME` (optional; or constant) | web | `Arrakit` | Product name |
-| `API_ORIGIN` / dev proxy target | web | `http://localhost:5000` | Vite dev server proxies `/api` **and** `/.well-known` (OAuth metadata for MCP) to the API |
-| `PUBLIC_APP_URL` | landing | `https://app.example.com` | Host of Pricing / Sign in / Get started links |
-| `PUBLIC_SITE_URL` (Astro `site`) | landing | `https://example.com` | Canonical, og:url, og:image, sitemap |
-| `VITE_ANALYTICS_SRC` + `VITE_ANALYTICS_DOMAIN` | web | unset (off) | Plausible-compatible script (`defer`, `data-domain`) in the root head |
-| `PUBLIC_ANALYTICS_SRC` + `PUBLIC_ANALYTICS_DOMAIN` | landing | unset (off) | Same script on every landing page (in the `<head>` of `layouts/Base.astro`) |
+| Var                                                | App     | Default                   | Purpose                                                                                   |
+| -------------------------------------------------- | ------- | ------------------------- | ----------------------------------------------------------------------------------------- |
+| `VITE_SITE_URL`                                    | web     | `https://example.com`     | Website URL for wordmark outside `/app` and Unavailable's Home                            |
+| `VITE_APP_NAME` (optional; or constant)            | web     | `Arrakit`                 | Product name                                                                              |
+| `API_ORIGIN` / dev proxy target                    | web     | `http://localhost:5000`   | Vite dev server proxies `/api` **and** `/.well-known` (OAuth metadata for MCP) to the API |
+| `PUBLIC_APP_URL`                                   | landing | `https://app.example.com` | Host of Pricing / Sign in / Get started links                                             |
+| `PUBLIC_SITE_URL` (Astro `site`)                   | landing | `https://example.com`     | Canonical, og:url, og:image, sitemap                                                      |
+| `VITE_ANALYTICS_SRC` + `VITE_ANALYTICS_DOMAIN`     | web     | unset (off)               | Plausible-compatible script (`defer`, `data-domain`) in the root head                     |
+| `PUBLIC_ANALYTICS_SRC` + `PUBLIC_ANALYTICS_DOMAIN` | landing | unset (off)               | Same script on every landing page (in the `<head>` of `layouts/Base.astro`)               |
 
 Production proxy (saas-base `edge/api-proxy.ts`, Cloudflare Pages Functions): web and API must be **one site** so the
 Better Auth cookie is first-party; `BETTER_AUTH_URL` = web origin. If arrakit deploys web separately, port
@@ -422,6 +451,7 @@ consent) reach the browser. Routes: `/api/*`, `/.well-known/oauth-authorization-
 Static site, the product's **front page**. Port content and links; styling with Tailwind (default look) is fine.
 
 ### `/` (`src/pages/index.astro`)
+
 - `<html lang="en">`, `<title>` = product name.
 - Head: favicons (`/favicon.ico` 48x48 — a real file, not data URI, for Google's favicon crawler; `/favicon.svg`;
   `/favicon-96x96.png`; `/apple-touch-icon.png`), `meta description` ("One sentence on what the product does, for
@@ -438,15 +468,18 @@ Static site, the product's **front page**. Port content and links; styling with 
 - English only (no i18n on the landing in saas-base).
 
 ### 404 (`src/pages/404.astro`)
+
 - `meta robots=noindex`, title "Page not found · <product name>", favicons, logo mark, h1 "This page does not exist.",
   link "Back home" → `/`. Must be served with HTTP 404 for unknown paths (static hosts use `404.html`).
 
 ### Legal pages (`src/pages/terms.astro`, `src/pages/privacy.astro`)
+
 - Layout `src/layouts/LegalPage.astro` (wraps `src/layouts/Base.astro`, the shared `<head>` with favicons and analytics): title "<page> · <product name>", canonical, product name linking home, "Last
   updated" line, shared footer. Content is a template marked "replace before launch". The web's onboarding links here
   (`TERMS_URL`, `PRIVACY_URL`).
 
 ### Static files (`public/`)
+
 - `robots.txt`: allow everything, AI crawlers included (deliberate: marketing site; keep the explanatory comment),
   `Sitemap: ${SITE_URL}/sitemap.xml`.
 - `sitemap.xml` with `${SITE_URL}/` (or `@astrojs/sitemap`).
@@ -456,6 +489,7 @@ Static site, the product's **front page**. Port content and links; styling with 
 ---
 
 ### Empty states (web)
+
 - Every "nothing here yet" in the web uses `EmptyState` (`components/shell/empty-state.tsx`, over shadcn `Empty`):
   lucide icon + title, nothing else. Used by Settings > Billing invoices and top-ups.
 
@@ -470,8 +504,8 @@ Static site, the product's **front page**. Port content and links; styling with 
 5. Open menu shows "Ana Ruiz", "Acme · Pro", links Home/Settings/Members/Billing (owner/admin), button Sign out.
 6. Member's menu: no "Members", no "Billing", has "Settings". Owner's: has both. A custom role sees what its
    permissions open (`billing:read` → Billing).
-6b. The switcher lists the person's organizations; picking one makes it active and reloads; "Create organization"
-    makes a new one, active at once (`org-switcher.test.tsx`, e2e `organizations-switch.spec.ts`).
+   6b. The switcher lists the person's organizations; picking one makes it active and reloads; "Create organization"
+   makes a new one, active at once (`org-switcher.test.tsx`, e2e `organizations-switch.spec.ts`).
 7. Escape and outside click close the menu; link click navigates and closes; Home link from `/app/settings` goes to `/app`.
 8. Sign out → `/signin`.
 9. `me` 401 → `/signin`; 500 (or 403) → `/unavailable?next=%2Fapp` with h1 "Couldn't reach SaaS." and the error reported.
@@ -495,25 +529,25 @@ Static site, the product's **front page**. Port content and links; styling with 
 
 ## 15. saas-base tests worth porting (as Vitest + RTL / Playwright)
 
-| saas-base spec | Port as | Notes |
-| --- | --- | --- |
-| `app.spec.ts` | RTL: root layout | header + wordmark + outlet; wordmark href per URL (it.each) |
-| `app.routes.spec.ts` | RTL/router tests | no-org → `/profile`; `/` → `/signin`; `/app/booking|booked` → not-found page; connector routes open their pages |
-| `signed-in/shell/shell.spec.ts` | RTL | all cases (menu content, roles, Escape/outside click, navigation, sign out, 401/500 routing) |
-| `signed-in/home/home.page.spec.ts` | RTL | add the missing "member sees neither" assertion |
-| `signed-in/welcome/welcome.page.spec.ts` | RTL | plus a fake-timers test for the 15-try polling |
-| `signed-in/current-user.state.spec.ts` | Vitest | role → isOwner/managesMembers/managesBilling table; custom role read from permissions; account language applied before set; nothing granted before sign-in |
-| `signed-in/plan-access.spec.ts` | Vitest | `checkout-choice.test.ts`: `checkoutChoice` (shared with billing-plans) |
-| `unavailable/unavailable.page.spec.ts` | RTL | flaky API fake; `next` sanitising it.each |
-| `signed-in.flow.spec.ts` | Playwright e2e (PGlite + seeded user via Better Auth test utils) | one header; menu reaches Settings/Members/Billing with right h2; plan switch flow (billing area) |
-| `shared/i18n.spec.ts` | Vitest | switch + remember + `<html lang>`; browser language; fallback en |
-| `shared/stale-chunk.spec.ts` | Vitest | all 6 cases verbatim (pure function with fake `win`) |
-| `shared/api-call.spec.ts` | Vitest/RTL | `api-errors.test.ts` (API message for any answered status but 500; fallback for 500/0/no message) and `use-api-mutation.test.tsx` (`run()` single-flight, `meta.failure` toast) |
-| `signed-in/no-recovery-copy.spec.ts` | Vitest | scan `apps/web/src` + locale files |
-| `edge/api-proxy.spec.ts` | Vitest | only if the production proxy is ported |
-| new | Vitest | `en`/`es` locale key parity |
-| new | Playwright | landing: links point to `${APP_URL}/pricing`, `/signin`, `/start`; 404 page |
-| `template-hygiene.spec.ts` | **skip** | DaisyUI/style-specific |
+| saas-base spec                           | Port as                                                          | Notes                                                                                                                                                                           |
+| ---------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app.spec.ts`                            | RTL: root layout                                                 | header + wordmark + outlet; wordmark href per URL (it.each)                                                                                                                     |
+| `app.routes.spec.ts`                     | RTL/router tests                                                 | no-org → `/profile`; `/` → `/signin`; `/app/booking                                                                                                                             | booked` → not-found page; connector routes open their pages |
+| `signed-in/shell/shell.spec.ts`          | RTL                                                              | all cases (menu content, roles, Escape/outside click, navigation, sign out, 401/500 routing)                                                                                    |
+| `signed-in/home/home.page.spec.ts`       | RTL                                                              | add the missing "member sees neither" assertion                                                                                                                                 |
+| `signed-in/welcome/welcome.page.spec.ts` | RTL                                                              | plus a fake-timers test for the 15-try polling                                                                                                                                  |
+| `signed-in/current-user.state.spec.ts`   | Vitest                                                           | role → isOwner/managesMembers/managesBilling table; custom role read from permissions; account language applied before set; nothing granted before sign-in                      |
+| `signed-in/plan-access.spec.ts`          | Vitest                                                           | `checkout-choice.test.ts`: `checkoutChoice` (shared with billing-plans)                                                                                                         |
+| `unavailable/unavailable.page.spec.ts`   | RTL                                                              | flaky API fake; `next` sanitising it.each                                                                                                                                       |
+| `signed-in.flow.spec.ts`                 | Playwright e2e (PGlite + seeded user via Better Auth test utils) | one header; menu reaches Settings/Members/Billing with right h2; plan switch flow (billing area)                                                                                |
+| `shared/i18n.spec.ts`                    | Vitest                                                           | switch + remember + `<html lang>`; browser language; fallback en                                                                                                                |
+| `shared/stale-chunk.spec.ts`             | Vitest                                                           | all 6 cases verbatim (pure function with fake `win`)                                                                                                                            |
+| `shared/api-call.spec.ts`                | Vitest/RTL                                                       | `api-errors.test.ts` (API message for any answered status but 500; fallback for 500/0/no message) and `use-api-mutation.test.tsx` (`run()` single-flight, `meta.failure` toast) |
+| `signed-in/no-recovery-copy.spec.ts`     | Vitest                                                           | scan `apps/web/src` + locale files                                                                                                                                              |
+| `edge/api-proxy.spec.ts`                 | Vitest                                                           | only if the production proxy is ported                                                                                                                                          |
+| new                                      | Vitest                                                           | `en`/`es` locale key parity                                                                                                                                                     |
+| new                                      | Playwright                                                       | landing: links point to `${APP_URL}/pricing`, `/signin`, `/start`; 404 page                                                                                                     |
+| `template-hygiene.spec.ts`               | **skip**                                                         | DaisyUI/style-specific                                                                                                                                                          |
 
 Test fixtures used throughout: person "Ana Ruiz" `ana@acme.com`, organization "Acme" (slug `acme`), plan `pro`, role
 `owner` by default.

@@ -24,9 +24,9 @@ When a spec and this file disagree on layout or tooling, this file wins; on beha
 | API      | Hono on Node (`@hono/node-server`) + oRPC (contract-first, `@orpc/contract`) + Zod 4                                                   |
 | DB       | Postgres + Drizzle ORM (drizzle-kit migrations); PGlite when `DATABASE_URL` is unset                                                   |
 | Auth     | Better Auth (magic link, Google, Microsoft, organization plugin with teams and custom roles, OAuth provider + JWT, 5-min cookie cache) |
-| Payments | Stripe (`stripe`, `@stripe/stripe-js`, `@stripe/react-stripe-js`), fake gateway in dev                                                 |
+| Payments | Stripe (`stripe`, `@stripe/stripe-js`), fake gateway in dev                                                                            |
 | Email    | Resend in production; Mailpit (local inbox) in dev and e2e; recording mailer in tests                                                  |
-| Jobs     | pg-boss on Postgres; in-process runner with the same interface on PGlite                                                               |
+| Jobs     | pg-boss on Postgres, and on the same PGlite instance Drizzle uses when `DATABASE_URL` is unset                                         |
 | Logs     | Pino (JSON lines; pino-pretty in dev), request id per request; Sentry (`@sentry/node`)                                                 |
 | Files    | S3-compatible storage (`@aws-sdk/client-s3`); local/in-memory fallback in dev/tests                                                    |
 | MCP      | `@modelcontextprotocol/server` (v2, stateless Streamable HTTP) behind Better Auth OAuth                                                |
@@ -54,17 +54,18 @@ apps/
     src/components/<module>/      screens per module: auth, onboarding, organizations, settings,
                                   billing, usage, shell, oauth (settings/ holds one file per section)
     src/lib/orpc.ts               typed oRPC client + TanStack Query utils (`orpc.x.y.queryOptions()`)
-    src/lib/auth-client.ts        Better Auth React client (`@arrakit/auth/client`)
+    src/lib/auth-client.ts        Better Auth React clients (`@arrakit/auth/client`): `authClient` (magic link,
+                                  organization) and `oauthClient`, only for the /oauth/* screens
     src/lib/auth-call.ts          authCall(): unwraps a Better Auth client answer, throws {status, code,
                                   message} (our `orgErrors.<CODE>` copy for plugin codes) for the toasts
     src/lib/organization-queries.ts organizationQueries (`['org', …]` list/members/invitations/roles/teams)
                                   and switchOrganization() (setActive + reset queries)
     src/lib/guards.ts             route guards: requireUser, requireAccount, skipWhenSignedIn,
                                   canCheckout, onPaidPlan
-    src/lib/                      statusOf()/reportError()/apiMessage(), format, notify, titled(), checkoutChoice(),
-                                  useCurrentUser() (`can(wanted)` from me.permissions, isOwner), grants(),
-                                  useClearingForm()/registerClearing() (form errors hide while a field is edited)
-    src/i18n/                     i18next setup, `tr()`, `loadLanguage()`;
+    src/lib/                      statusOf()/apiMessage(), format, notify, titled(), checkoutChoice(),
+                                  useCurrentUser()/useMember() (`user`, `can(wanted)` from me.permissions, isOwner), grants(),
+                                  useClearingForm() (its register() hides a field's error while it is edited)
+    src/i18n/                     i18next setup (`i18n`), `loadLanguage()`;
                                   locales/{en,es}/<module>.json deep-merged into one namespace
     src/start.ts                  createStart({ defaultSsr: false }): screens render in the browser
     src/config.ts                 APP_NAME, SITE_URL (one place to rebrand the web)
@@ -113,16 +114,19 @@ packages/
                                   invitations, account)
     src/organization/             forOrganization(id): tenant-db guard; index.ts holds the organization,
                                   billing, roles, teams and storage scope; members.ts and usage.ts
-    src/jobs/, src/storage/       Jobs (pg-boss / in-process / memory), Storage (S3 / local / memory)
+    src/jobs/, src/storage/       Jobs (pg-boss / memory), Storage (S3 / local / memory)
     src/testing.ts                `@arrakit/db/testing`: openTestData() (in-memory PGlite, migrated)
   auth/         @arrakit/auth     createAuth({ config, data, mailer, organizations }) (Better Auth +
-                                  plugins; one file per concern: hooks, magic-link, social, oauth,
-                                  organization), loadAuthConfig(); `./client` (React client with
-                                  organizationClient); `./permissions` (pure, shared with the web:
+                                  plugins; one file per concern: hooks (global before/after: naming,
+                                  terms, invite email + 503), magic-link (template from server-only
+                                  `metadata.invitationId`), social, oauth, organization (plugin hooks:
+                                  member change policy, terms seal, delete keeps the active org), user
+                                  (update-user fields, delete-user)), loadAuthConfig();
+                                  `./client` (React clients: general and OAuth-provider); `./permissions` (pure, shared with the web:
                                   statements, ac, roles, permissionsOf, allows, memberChangeRefusal,
                                   organizationSchema). The data layer is injected as `data`.
   contract/     @arrakit/contract oRPC contract: index.ts composes it (and holds auth providers,
-                                  onboarding, teams, plans); account.ts, billing.ts (with topUp),
+                                  teams, plans); account.ts, billing.ts (with topUp),
                                   usage.ts, common.ts
   plans/        @arrakit/plans    Pure plans catalog and usage arithmetic (src/index.ts)
   address/      @arrakit/address  Pure email/slug/org-name/time-zone/device-name/language rules (src/index.ts)
@@ -213,7 +217,7 @@ Run from the repo root.
   `organization_id uuid not null references organizations(id) on delete cascade`, and
   organization data is only reached through `forOrganization(orgId)`.
 - **i18n rule**: no hard-coded user-facing strings in the web app. Use `useTranslation()` /
-  `t('ns.key')` in components and `tr()` outside React. Keys live in
+  `t('ns.key')` in components and `i18n.t()` (from `#/i18n`) outside React. Keys live in
   `apps/web/src/i18n/locales/{en,es}/<module>.json` (common, shell, auth, onboarding,
   organizations, members, teams, roles, settings, billing, usage, oauth; imported from saas-base with "SaaS" →
   "Arrakit"). The files are deep-merged into one namespace, so a key reads the same wherever it
@@ -287,10 +291,12 @@ Run from the repo root.
   `#/test/rpc` (`src/test/rpc.tsx`) holds the shared kit: `setupTestApi()` (msw server for the file),
   `answer(path, ...replies)` for `/api/rpc/<path>`, `answerAuth('organization/<path>', ...replies)` for
   Better Auth (`[status, message, code]` is a plugin refusal), `meAs()` (permissions follow the role),
-  `renderAt(ui, { me, url })` (router + query client + toaster), `withQueries()`, `renderWithQueries()`,
-  `setupAuthTestApi()`, `billingOf()`, `quiet()`. `components/settings/testing.tsx` has `RoutedSettings`
-  and `components/shell/testing.tsx` has `renderApp(url)` (the real `routeTree`, other modules' screens
-  stubbed with `vi.mock`).
+  `setupAuthTestApi()`, `billingOf()`, `quiet()`, `testQueryClient()`. A screen renders through one of two
+  entry points: `renderAt(ui, { me, url, queryClient })` (`#/test/rpc`: router at `url` + query client +
+  toaster; `me: null` for no one; `ui` may be a function of the URL's search, as a route component
+  reads it; await `act(() => router.load())` before a synchronous query) or `renderApp(url)`
+  (`components/shell/testing.tsx`: the real `routeTree`, other modules' screens stubbed with `vi.mock`).
+  Hook tests use `renderHook` with a `QueryClientProvider` wrapper around `testQueryClient()`.
 - **E2E**: Playwright in `apps/web/e2e`; `playwright.config.ts` boots the API on port 5100 with a
   throwaway PGlite dir (`.data/e2e-pglite-<api port>`, reset at boot), `STRIPE_FAKE=1`,
   `NODE_ENV=test`, mail sent to a Mailpit on 5125, and the web dev server on 5200. Specs import `WEB_ORIGIN` from `e2e/origins.ts`;

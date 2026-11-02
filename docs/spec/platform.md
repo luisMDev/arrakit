@@ -24,19 +24,19 @@ elsewhere.
 
 ## 1. Arrakit mapping (stack decisions for this area)
 
-| saas-base | arrakit |
-| --- | --- |
-| `libs/platform/data` (`@saas/data`) | `packages/db` (or the name AGENTS.md uses): Drizzle schema, migrations, `openData()`, `forOrganization()`, jobs, storage, testing helpers |
-| `node-postgres` + migrations on boot | `drizzle-orm/node-postgres` when `DATABASE_URL` is set; **`drizzle-orm/pglite`** (file dir) when it is not. Migrations applied on boot in both cases |
-| pg-boss on the same Postgres | pg-boss when on real Postgres; **in-process job runner** with the same `Jobs` interface on PGlite |
-| S3/R2 via `@aws-sdk/client-s3` | Same when `R2_*` env is set; **in-memory** `OrganizationFiles` otherwise |
-| testcontainers Postgres + MinIO for `*.int.spec.ts` | **PGlite in-memory** per test file (Docker is not available) + in-memory storage. S3-specific behaviour is covered by unit tests with a mocked `S3Client` (optional) |
-| NestJS controllers + nestjs-zod + `/api/openapi.json` | Hono app; oRPC contract (`@orpc/contract`) + Zod, served only over the oRPC protocol at `/api/rpc/*` (no REST routes, no OpenAPI document) |
-| Nest middleware for `/api/auth/*`, `/api/mcp`, `/.well-known/*` | Plain Hono routes (`app.on(['GET','POST'], '/api/auth/*', c => auth.handler(c.req.raw))`, etc.) |
-| `libs/shared/emails` | `packages/emails` (pure TS, no framework) |
-| Angular `/oauth/signin`, `/oauth/consent` | TanStack Start routes `apps/web/src/routes/oauth/signin.tsx`, `oauth/consent.tsx` built with shadcn/ui (Card, Button, Input, Alert) |
-| Angular dev proxy (`proxy.conf.json`) + Cloudflare Pages Functions | Vite dev server proxy in `apps/web` for `/api` and `/.well-known/oauth-*` to the API |
-| `@modelcontextprotocol/server` 2.0 | Latest stable official MCP TypeScript SDK (`@modelcontextprotocol/sdk` or `@modelcontextprotocol/server`, whichever is current), stateless Streamable HTTP over a web `Request`/`Response` (fits Hono natively) |
+| saas-base                                                          | arrakit                                                                                                                                                                                                         |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `libs/platform/data` (`@saas/data`)                                | `packages/db` (or the name AGENTS.md uses): Drizzle schema, migrations, `openData()`, `forOrganization()`, jobs, storage, testing helpers                                                                       |
+| `node-postgres` + migrations on boot                               | `drizzle-orm/node-postgres` when `DATABASE_URL` is set; **`drizzle-orm/pglite`** (file dir) when it is not. Migrations applied on boot in both cases                                                            |
+| pg-boss on the same Postgres                                       | pg-boss on the same database: real Postgres, or the **same PGlite instance** Drizzle uses (`fromPglite` + `backend: 'pglite'`)                                                                                  |
+| S3/R2 via `@aws-sdk/client-s3`                                     | Same when `R2_*` env is set; **in-memory** `OrganizationFiles` otherwise, production included (no endpoint writes files)                                                                                        |
+| testcontainers Postgres + MinIO for `*.int.spec.ts`                | **PGlite in-memory** per test file (Docker is not available) + in-memory storage. S3-specific behaviour is covered by unit tests with a mocked `S3Client` (optional)                                            |
+| NestJS controllers + nestjs-zod + `/api/openapi.json`              | Hono app; oRPC contract (`@orpc/contract`) + Zod, served only over the oRPC protocol at `/api/rpc/*` (no REST routes, no OpenAPI document)                                                                      |
+| Nest middleware for `/api/auth/*`, `/api/mcp`, `/.well-known/*`    | Plain Hono routes (`app.on(['GET','POST'], '/api/auth/*', c => auth.handler(c.req.raw))`, etc.)                                                                                                                 |
+| `libs/shared/emails`                                               | `packages/emails` (pure TS, no framework)                                                                                                                                                                       |
+| Angular `/oauth/signin`, `/oauth/consent`                          | TanStack Start routes `apps/web/src/routes/oauth/signin.tsx`, `oauth/consent.tsx` built with shadcn/ui (Card, Button, Input, Alert)                                                                             |
+| Angular dev proxy (`proxy.conf.json`) + Cloudflare Pages Functions | Vite dev server proxy in `apps/web` for `/api` and `/.well-known/oauth-*` to the API                                                                                                                            |
+| `@modelcontextprotocol/server` 2.0                                 | Latest stable official MCP TypeScript SDK (`@modelcontextprotocol/sdk` or `@modelcontextprotocol/server`, whichever is current), stateless Streamable HTTP over a web `Request`/`Response` (fits Hono natively) |
 
 Hard rules kept from saas-base:
 
@@ -74,17 +74,17 @@ adds the organization plugin's session columns, `invitations.team_id`, `teams`,
 
 ### 2.1 `users` (better-auth `user`)
 
-| column | type | constraints |
-| --- | --- | --- |
-| id | text | PK |
-| name | text | not null |
-| email | text | not null, unique (`users_email_unique`) |
-| email_verified | boolean | not null default false |
-| image | text | null |
-| language | text | not null default `'en'`; check `language in ('en','es')` (`users_language_check`) |
-| time_zone | text | null (IANA zone; stays null until the web sends the browser zone) |
-| email_product_news | boolean | not null default false ("Product news" toggle; stored only, nothing sends it) |
-| created_at, updated_at | timestamptz | defaults |
+| column                 | type        | constraints                                                                       |
+| ---------------------- | ----------- | --------------------------------------------------------------------------------- |
+| id                     | text        | PK                                                                                |
+| name                   | text        | not null                                                                          |
+| email                  | text        | not null, unique (`users_email_unique`)                                           |
+| email_verified         | boolean     | not null default false                                                            |
+| image                  | text        | null                                                                              |
+| language               | text        | not null default `'en'`; check `language in ('en','es')` (`users_language_check`) |
+| time_zone              | text        | null (IANA zone; stays null until the web sends the browser zone)                 |
+| email_product_news     | boolean     | not null default false ("Product news" toggle; stored only, nothing sends it)     |
+| created_at, updated_at | timestamptz | defaults                                                                          |
 
 `ACCOUNT_LANGUAGES = ['en','es']`. better-auth `user.additionalFields`:
 `language: { type: ['en','es'], defaultValue: 'en', input: false }` so the
@@ -92,17 +92,17 @@ session carries `user.language` and better-auth's own routes cannot change it.
 
 ### 2.2 `sessions`
 
-| column | type | constraints |
-| --- | --- | --- |
-| id | text | PK |
-| expires_at | timestamptz | not null |
-| token | text | not null unique |
-| created_at, updated_at | timestamptz | defaults |
-| ip_address | text | null |
-| user_agent | text | null |
-| user_id | text | not null → users.id on delete cascade; index `sessions_user_id_idx` |
-| active_organization_id | uuid | null → organizations.id on delete set null |
-| active_team_id | text | null → teams.id on delete set null |
+| column                 | type        | constraints                                                         |
+| ---------------------- | ----------- | ------------------------------------------------------------------- |
+| id                     | text        | PK                                                                  |
+| expires_at             | timestamptz | not null                                                            |
+| token                  | text        | not null unique                                                     |
+| created_at, updated_at | timestamptz | defaults                                                            |
+| ip_address             | text        | null                                                                |
+| user_agent             | text        | null                                                                |
+| user_id                | text        | not null → users.id on delete cascade; index `sessions_user_id_idx` |
+| active_organization_id | uuid        | null → organizations.id on delete set null                          |
+| active_team_id         | text        | null → teams.id on delete set null                                  |
 
 A new session starts in the earliest organization joined. The API reads the
 membership in it fresh on every call (`activeMembership`), falling back to the
@@ -127,49 +127,49 @@ use.
 
 ### 2.5 `organizations` (tenant root)
 
-| column | type | constraints |
-| --- | --- | --- |
-| id | uuid | PK default gen_random_uuid() |
-| name | text | not null |
-| slug | text | not null unique (lowercase) |
-| logo | text | null (refused on update) |
-| metadata | text | null (refused on update) |
-| plan | text | not null default `'free'`; check `plan in ('free','pro','team','internal')`; declared to better-auth `input: false` |
-| stripe_customer_id | text | null, unique |
-| stripe_subscription_id | text | null |
-| usage_anchor | timestamptz | null (billing anchor on a paid plan; months count from `created_at` on Free) |
-| created_at | timestamptz | not null default now() |
+| column                 | type        | constraints                                                                                                         |
+| ---------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------- |
+| id                     | uuid        | PK default gen_random_uuid()                                                                                        |
+| name                   | text        | not null                                                                                                            |
+| slug                   | text        | not null unique (lowercase)                                                                                         |
+| logo                   | text        | null (refused on update)                                                                                            |
+| metadata               | text        | null (refused on update)                                                                                            |
+| plan                   | text        | not null default `'free'`; check `plan in ('free','pro','team','internal')`; declared to better-auth `input: false` |
+| stripe_customer_id     | text        | null, unique                                                                                                        |
+| stripe_subscription_id | text        | null                                                                                                                |
+| usage_anchor           | timestamptz | null (billing anchor on a paid plan; months count from `created_at` on Free)                                        |
+| created_at             | timestamptz | not null default now()                                                                                              |
 
 The Stripe and usage columns are not declared to better-auth, so it never
 returns or writes them.
 
 ### 2.6 `members`
 
-| column | type | constraints |
-| --- | --- | --- |
-| id | text | PK, Drizzle `$defaultFn(() => randomUUID())` |
-| organization_id | uuid | not null → organizations.id cascade |
-| user_id | text | not null → users.id cascade; index `members_user_id_idx` |
-| role | text | not null default `'member'` (better-auth role string: `owner` / `admin` / `member` / custom, `a,b` for several) |
-| terms_accepted_at | timestamptz | null; declared `input: false` (stamped with DB `now()` by `onboarding.create`) |
-| created_at | timestamptz | not null default now() |
+| column            | type        | constraints                                                                                                     |
+| ----------------- | ----------- | --------------------------------------------------------------------------------------------------------------- |
+| id                | text        | PK, Drizzle `$defaultFn(() => randomUUID())`                                                                    |
+| organization_id   | uuid        | not null → organizations.id cascade                                                                             |
+| user_id           | text        | not null → users.id cascade; index `members_user_id_idx`                                                        |
+| role              | text        | not null default `'member'` (better-auth role string: `owner` / `admin` / `member` / custom, `a,b` for several) |
+| terms_accepted_at | timestamptz | null; declared `input: false` (stamped with DB `now()` by the `organization/create` after hook)                 |
+| created_at        | timestamptz | not null default now()                                                                                          |
 
 Unique `(organization_id, user_id)` (`members_organization_id_user_id_unique`).
 
 ### 2.7 `invitations`
 
-| column | type | constraints |
-| --- | --- | --- |
-| id | text | PK, `$defaultFn(() => randomUUID())` |
-| organization_id | uuid | not null → organizations.id cascade; index `invitations_organization_id_idx` |
-| email | text | not null (normalized); index `invitations_email_idx` |
-| role | text | null (role string; never `owner`) |
-| team_id | text | null (plugin; comma-separated team ids, no FK) |
-| status | text | not null default `'pending'` (`pending` / `accepted` / `canceled` / `rejected`) |
-| email_sent | boolean | not null default false (declared `input: false`; true once an invite email went out) |
-| expires_at | timestamptz | not null |
-| created_at | timestamptz | not null default now() |
-| inviter_id | text | not null → users.id cascade |
+| column          | type        | constraints                                                                          |
+| --------------- | ----------- | ------------------------------------------------------------------------------------ |
+| id              | text        | PK, `$defaultFn(() => randomUUID())`                                                 |
+| organization_id | uuid        | not null → organizations.id cascade; index `invitations_organization_id_idx`         |
+| email           | text        | not null (normalized); index `invitations_email_idx`                                 |
+| role            | text        | null (role string; never `owner`)                                                    |
+| team_id         | text        | null (plugin; comma-separated team ids, no FK)                                       |
+| status          | text        | not null default `'pending'` (`pending` / `accepted` / `canceled` / `rejected`)      |
+| email_sent      | boolean     | not null default false (declared `input: false`; true once an invite email went out) |
+| expires_at      | timestamptz | not null                                                                             |
+| created_at      | timestamptz | not null default now()                                                               |
+| inviter_id      | text        | not null → users.id cascade                                                          |
 
 Note: every non-better-auth column on a better-auth table must have a default
 (better-auth refuses requests when a declared table has a required column it
@@ -193,18 +193,18 @@ never writes).
 `credit_ledger` (append-only; rows are never updated/deleted except by org
 cascade):
 
-| column | type | constraints |
-| --- | --- | --- |
-| id | uuid | PK default gen_random_uuid() |
-| organization_id | uuid | not null → organizations.id cascade |
-| metric | text | not null (e.g. `credits`, `storage_gb`) |
-| bucket | text | not null; check in (`plan`,`purchased`) |
-| reason | text | not null; check in (`plan_grant`,`purchase`,`consumption`,`adjustment`) |
-| amount | bigint (mode number) | not null, signed (consumption negative) |
-| period_start | timestamptz | null (plan grant and uses: the grant month) |
-| cents | integer | null (money behind a purchase) |
-| idempotency_key | text | not null |
-| created_at | timestamptz | not null default now() |
+| column          | type                 | constraints                                                             |
+| --------------- | -------------------- | ----------------------------------------------------------------------- |
+| id              | uuid                 | PK default gen_random_uuid()                                            |
+| organization_id | uuid                 | not null → organizations.id cascade                                     |
+| metric          | text                 | not null (e.g. `credits`, `storage_gb`)                                 |
+| bucket          | text                 | not null; check in (`plan`,`purchased`)                                 |
+| reason          | text                 | not null; check in (`plan_grant`,`purchase`,`consumption`,`adjustment`) |
+| amount          | bigint (mode number) | not null, signed (consumption negative)                                 |
+| period_start    | timestamptz          | null (plan grant and uses: the grant month)                             |
+| cents           | integer              | null (money behind a purchase)                                          |
+| idempotency_key | text                 | not null                                                                |
+| created_at      | timestamptz          | not null default now()                                                  |
 
 Unique `(organization_id, metric, bucket, idempotency_key)`
 (`credit_ledger_idempotency_unique`); index
@@ -307,25 +307,26 @@ node-postgres and the PGlite Drizzle instances (`provider: 'pg'` for both).
    the client with the error (destroying it). If migration fails, end the pool
    and rethrow.
 3. Open storage (S3 when configured, else in-memory).
-4. Start jobs (pg-boss or in-process). If that fails, close storage, end the
-   pool, rethrow.
+4. Start jobs: pg-boss on `DATABASE_URL`, or on the PGlite instance the
+   connection opened (`Connection.pglite`). If that fails, close storage, end
+   the pool, rethrow.
 5. Return `Data`. `close()` is idempotent (memoized promise): stop jobs
    (graceful), then close storage and end the pool even if stopping fails.
 
 `Data` members (all used by other areas; signatures to keep):
 
-| member | behaviour |
-| --- | --- |
-| `deleteAccount(userId)` | Transaction: lock user `FOR UPDATE`; false if none; throw `DomainError('CONFLICT')` if they are `owner` of any org; delete invitations where `email = normalizeEmail(user.email)`; delete user (cascades sessions, accounts, members, invitations sent) |
-| `account(userId, currentSessionId)` / `updateAccount(...)` | Account settings area |
-| `memberOf(userId)` / `membershipIn(userId, orgId)` / `activeMembership(userId, sessionId)` | `{ organization, role }` or null: the earliest-joined membership; the one in an organization; the one in the session's active organization (else the earliest). Fresh reads |
-| `revokeGrants(orgId, userId?)` | 3.6 |
-| `invitationFor(invitationId, email)` | Members area (the invite email) |
-| `forOrganization(id)` | Throws synchronously on non-UUID before any query. Returns `OrganizationScope` (3.1) |
-| `jobs` | `JobsRuntime` (3.4) |
-| `authDatabase` | better-auth adapter (2.11) |
-| `health()` | Section 5 |
-| `close()` | Above |
+| member                                                                                     | behaviour                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clearForAccountDeletion(userId)`                                                          | Run by Better Auth's `deleteUser.beforeDelete`. Transaction: lock user `FOR UPDATE`; `'owner'` (nothing deleted) if they are `owner` of any org; else delete invitations where `email = normalizeEmail(user.email)` and answer `'cleared'`. Better Auth then deletes the user (cascades sessions, accounts, members, invitations sent) |
+| `account(userId, currentSessionId)`                                                        | Account settings area (profile writes go through Better Auth's `update-user`)                                                                                                                                                                                                                                                          |
+| `memberOf(userId)` / `membershipIn(userId, orgId)` / `activeMembership(userId, sessionId)` | `{ organization, role }` or null: the earliest-joined membership; the one in an organization; the one in the session's active organization (else the earliest). Fresh reads                                                                                                                                                            |
+| `revokeGrants(orgId, userId?)`                                                             | 3.6                                                                                                                                                                                                                                                                                                                                    |
+| `invitationFor(invitationId, email)`                                                       | Members area (the invite email)                                                                                                                                                                                                                                                                                                        |
+| `forOrganization(id)`                                                                      | Throws synchronously on non-UUID before any query. Returns `OrganizationScope` (3.1)                                                                                                                                                                                                                                                   |
+| `jobs`                                                                                     | `JobsRuntime` (3.4)                                                                                                                                                                                                                                                                                                                    |
+| `authDatabase`                                                                             | better-auth adapter (2.11)                                                                                                                                                                                                                                                                                                             |
+| `health()`                                                                                 | Section 5                                                                                                                                                                                                                                                                                                                              |
+| `close()`                                                                                  | Above                                                                                                                                                                                                                                                                                                                                  |
 
 ### 3.1 Tenancy (`forOrganization`)
 
@@ -351,16 +352,25 @@ those handles for packages/db and test set-up.
 
 ### 3.2 Storage (`OrganizationFiles`)
 
-Storage is either S3 (`R2_*` set) or in-memory (dev without a bucket, tests).
-There is no local-disk storage and no presigned URL.
+Storage is either S3 (`R2_*` set) or in-memory (no bucket configured, in any
+environment, and tests). No endpoint stores files today; only the
+organization-deletion purge reads storage, so without a bucket a purge finds
+nothing. `Data.storageKind` is `'s3' | 'memory'`; the API logs at boot when it
+is `memory`. There is no local-disk storage and no presigned URL.
 
 ```ts
-interface StoredFile { path: string } // relative to the organization prefix
+interface StoredFile {
+  path: string
+} // relative to the organization prefix
 interface OrganizationFiles {
   removePrefix(folder: string): Promise<void>
   list(folder: string): Promise<StoredFile[]>
 }
-interface Storage { forOrganization(id): OrganizationFiles; probe(signal?); close() }
+interface Storage {
+  forOrganization(id): OrganizationFiles
+  probe(signal?)
+  close()
+}
 ```
 
 `folderPrefix(orgId, folder)` (`storage/folder.ts`): `''` → `<orgId>/` (the
@@ -370,8 +380,9 @@ control or DEL, key ≤ 1024 UTF-8 bytes; error
 `[data] not a usable folder: "<folder>"`. The organization id is validated
 with `toOrganizationId`.
 
-- `list(folder)`: keys under the prefix, page by page (`listPageSize`,
-  default 1000), paths relative to the organization prefix.
+- `list(folder)`: keys under the prefix, page by page (`paginateListObjectsV2`
+  with `pageSize = listPageSize`, default 1000), paths relative to the
+  organization prefix.
 - `removePrefix(folder)`: lists then deletes in batches of 1000 via
   DeleteObjects; empty folder sends nothing; throws
   `[data] the bucket kept N of M objects, <key> with <code>: <message>` when
@@ -391,22 +402,27 @@ S3 client: `forcePathStyle: true`, `requestChecksumCalculation: 'WHEN_REQUIRED'`
 `PGLITE_DIR`, default `.data/pglite`; `PGLITE_RESET=1` wipes it at boot).
 `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`:
 all-or-none (partial set → error naming the missing ones); absent → in-memory
-storage. `R2_REGION` defaults to `auto`. With `NODE_ENV=production`,
-`DATABASE_URL` and all `R2_*` are required. Empty string counts as missing;
+storage, in production too. `R2_REGION` defaults to `auto`. With
+`NODE_ENV=production`, `DATABASE_URL` is required. Empty string counts as missing;
 every missing name in one error `[data] missing env: A, B`.
 
 ### 3.4 Jobs
 
 ```ts
-interface RetryPolicy { retryLimit: number; retryDelay: number /* s */; retryBackoff: boolean; expireInSeconds?: number }
+interface RetryPolicy {
+  retryLimit: number
+  retryDelay: number /* s */
+  retryBackoff: boolean
+  expireInSeconds?: number
+}
 interface Jobs {
-  defineQueue(name, policy): Promise<void>; // creates `<name>__dead` then `<name>` dead-lettering into it; an existing queue keeps its policy
-  send(name, data): Promise<string>;        // throws if not queued
-  work<T>(name, handler: (data: T) => Promise<void>): Promise<void>;
+  defineQueue(name, policy): Promise<void> // creates `<name>__dead` then `<name>` dead-lettering into it; an existing queue keeps its policy
+  send(name, data): Promise<string> // throws if not queued
+  work<T>(name, handler: (data: T) => Promise<void>): Promise<void>
 }
 interface JobsRuntime extends Jobs {
   probe(signal?): Promise<void> // throws when stopped or unreachable
-  stop(): Promise<void>         // graceful (waits for running handlers), idempotent
+  stop(): Promise<void> // graceful (waits for running handlers), idempotent
 }
 deadLetterOf(name) = `${name}__dead`
 ```
@@ -414,16 +430,16 @@ deadLetterOf(name) = `${name}__dead`
 There is no transactional send, no `sendOnce`, `schedule`, `find` or
 `queuePolicy`: a job is sent after the rows it refers to are committed.
 
-pg-boss implementation (real Postgres): its own `pgboss` schema; an `'error'`
-listener that logs; a `health` queue created at start for the probe.
-
-In-process runner (PGlite): same interface, jobs held in memory, polled by a
-timer; retries with `retryDelay` doubling when `retryBackoff`; after
-`retryLimit` retries the payload moves to `<name>__dead`; graceful `stop`
-waits for running handlers; `probe` throws once stopped.
+pg-boss is the only runtime, on Postgres and on PGlite alike: its own
+`pgboss` schema; an `'error'` listener that logs; a `health` queue created at
+start for the probe. On PGlite it shares the instance Drizzle uses
+(`{ db: fromPglite(pglite), backend: 'pglite' }`); PGlite serializes every
+query and transaction, so the two never interleave. `stop()` leaves the PGlite
+instance open; `close()` ends it afterwards.
 
 Test fake (`memoryJobs()` from `@arrakit/db/testing`): records `queues`,
-`workers`, `sent` (`{ id, name, data }`).
+`workers`, `sent` (`{ id, name, data }`). `openTestDataWithQueue()` opens an
+in-memory database with real pg-boss jobs on it, to drive a job end to end.
 
 Retry policy constant `WORKER_RETRY_POLICY = { retryLimit: 5, retryDelay: 30, retryBackoff: true }`.
 
@@ -431,8 +447,7 @@ Retry policy constant `WORKER_RETRY_POLICY = { retryLimit: 5, retryDelay: 30, re
 
 Refusals the data layer raises extend `DomainError(code, message, data?)`
 (`packages/db/src/errors.ts`), `code` one of `BAD_REQUEST`, `FORBIDDEN`,
-`NOT_FOUND`, `CONFLICT`, `PAYMENT_REQUIRED`: `deleteAccount` throws `DomainError('CONFLICT')`
-for an owner, and `UsageLimitError` (usage scope; `PAYMENT_REQUIRED` with
+`NOT_FOUND`, `CONFLICT`, `PAYMENT_REQUIRED`, e.g. `UsageLimitError` (usage scope; `PAYMENT_REQUIRED` with
 `{ metric, requested, available }`). The API's `reportErrors` middleware maps
 every `DomainError` to an `ORPCError` with the same code, message and data
 (402 for `PAYMENT_REQUIRED`), so routers do not catch them one by one. It maps
@@ -453,17 +468,17 @@ member and leaving (that user only). `oauth_clients` rows always stay.
 
 Route layout on the Hono app (port `PORT`, default 5000):
 
-| Method | Path | Handler | Auth |
-| --- | --- | --- | --- |
-| GET | `/health` | health (section 5) | none |
-| GET, POST | `/api/auth/*` | `auth.handler(c.req.raw)` (better-auth, includes `/api/auth/oauth2/*`, `/api/auth/jwks`) | per route |
-| GET | `/.well-known/oauth-authorization-server/api/auth` | better-auth OAuth provider metadata (RFC 8414). Use the provider's metadata helper (e.g. `oauthProviderAuthServerMetadata(auth)` or the current equivalent); in saas-base the better-auth handler answered it | none |
-| GET | `/.well-known/oauth-protected-resource/api/mcp` | MCP protected-resource metadata (section 7.3) | none |
-| POST | `/api/mcp` | MCP Streamable HTTP, stateless | Bearer JWT |
-| GET, DELETE | `/api/mcp` | 405 when authenticated (no SSE sessions); 401 challenge when not | Bearer JWT |
-| ALL | `/api/rpc/*` | oRPC `RPCHandler` (other areas); the only way the contract is served | session; trusted Origin on writes |
-| POST | `/api/webhooks/stripe` | billing area | Stripe signature |
-| * | anything else | 404 | |
+| Method      | Path                                               | Handler                                                                                                                                                                                                       | Auth                              |
+| ----------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| GET         | `/health`                                          | health (section 5)                                                                                                                                                                                            | none                              |
+| GET, POST   | `/api/auth/*`                                      | `auth.handler(c.req.raw)` (better-auth, includes `/api/auth/oauth2/*`, `/api/auth/jwks`)                                                                                                                      | per route                         |
+| GET         | `/.well-known/oauth-authorization-server/api/auth` | better-auth OAuth provider metadata (RFC 8414). Use the provider's metadata helper (e.g. `oauthProviderAuthServerMetadata(auth)` or the current equivalent); in saas-base the better-auth handler answered it | none                              |
+| GET         | `/.well-known/oauth-protected-resource/api/mcp`    | MCP protected-resource metadata (section 7.3)                                                                                                                                                                 | none                              |
+| POST        | `/api/mcp`                                         | MCP Streamable HTTP, stateless                                                                                                                                                                                | Bearer JWT                        |
+| GET, DELETE | `/api/mcp`                                         | 405 when authenticated (no SSE sessions); 401 challenge when not                                                                                                                                              | Bearer JWT                        |
+| ALL         | `/api/rpc/*`                                       | oRPC `RPCHandler` (other areas); the only way the contract is served                                                                                                                                          | session; trusted Origin on writes |
+| POST        | `/api/webhooks/stripe`                             | billing area                                                                                                                                                                                                  | Stripe signature                  |
+| *           | anything else                                      | 404                                                                                                                                                                                                           |                                   |
 
 Rules from tests:
 
@@ -690,38 +705,49 @@ provider are fine.
 ### 7.3 MCP endpoint
 
 Protected-resource metadata `GET /.well-known/oauth-protected-resource/api/mcp`
+(path from the SDK's `getOAuthProtectedResourceMetadataUrl(<base>/api/mcp)`)
 → 200 `application/json`:
-`{ resource: <base>/api/mcp, authorization_servers: [<issuer>], bearer_methods_supported: ['header'], resource_name: APP_NAME }`.
+`{ resource: <base>/api/mcp, authorization_servers: [<issuer>], scopes_supported: ['mcp', 'offline_access'], bearer_methods_supported: ['header'], resource_name: APP_NAME }`.
 
-Bearer parsing (`bearerToken(header)`): regex
-`^Bearer +([A-Za-z0-9\-._~+/]+=*)$` case-insensitive. Accept: `Bearer abc`,
-`bearer abc`, `BEARER abc`, a JWT, two spaces, trailing `==`. Reject (null):
-`Basic abc`, `Token abc`, `Bearerabc`, `Bearer`, `Bearer    `, `Bearer a b`,
-`Bearer x, Bearer y`, `Bearer a"b`, `Bearer a=b`, empty, undefined. A
+Scope: the OAuth provider issues `MCP_SCOPE = 'mcp'` (from `@arrakit/auth`)
+besides Better Auth's default `openid profile email offline_access`. A client
+registered without scopes gets all of them, and an authorization request
+without `scope` is granted all the client's scopes, so a connector that asks
+for none still gets `mcp` (and `offline_access`, hence a refresh token).
+`/api/mcp` requires `mcp`.
+
+Bearer authentication uses the SDK (`@modelcontextprotocol/server`):
+`verifyBearerToken(authorization, { verifier, requiredScopes: ['mcp'], resourceMetadataUrl })`
+then `bearerAuthChallengeResponse(err, ...)` for an `OAuthError`; any other
+error is rethrown to `app.onError` (500, logged and reported, no challenge).
+The SDK reads `Bearer <token>` (scheme case-insensitive, one space); a
 `?access_token=` query parameter is never read.
 
-`verifyAccessToken(authorization)` → `ConnectorCaller | null`:
-1. No bearer → null.
-2. Verify JWS against the API's own JWKS (`auth.api.getJwks()`, cached by
-   better-auth's `verifyJwsAccessToken` from `better-auth/oauth2` or the
-   current equivalent) with `issuer` and `audience = mcp resource`.
-   Invalid signature/alg none/other key/other `aud`/other `iss`/expired → null.
+`accessTokenVerifier(deps).verifyAccessToken(token)` → `AuthInfo`, or throws
+`OAuthError(invalid_token)`:
+
+1. Verify JWS against the API's own JWKS (`auth.api.getJwks()`, cached by
+   better-auth's `verifyJwsAccessToken` from `better-auth/oauth2`) with
+   `issuer` and `audience = mcp resource`.
+   Invalid signature/alg none/other key/other `aud`/other `iss`/expired → refused.
    **If reading the JWKS itself fails, rethrow → 500, no `www-authenticate`.**
-3. Claims `sub` and `organization_id` must be strings, else null.
-4. `membershipIn(sub, claim)` read fresh; null when the person is not (or no
+2. Claims `sub` and `organization_id` must be strings, else refused.
+3. `membershipIn(sub, claim)` read fresh; refused when the person is not (or no
    longer) in that exact organization. The grant stays bound to the
    organization that was active at consent, whatever the session switches to later.
-5. Return `{ userId, organizationId, role, organizationSlug, clientId: claims.client_id ?? '', scopes: claims.scope split by space }`.
+4. Return `{ token, clientId: claims.client_id ?? '', scopes: claims.scope split by space, expiresAt: claims.exp, resource, extra: { organization, role } }`
+   (the SDK refuses a token without `expiresAt`).
 
-Unauthenticated response: 401, `content-type: application/json`, body
-`{"error":"invalid_token"}`, header
-`www-authenticate: Bearer resource_metadata="<base>/.well-known/oauth-protected-resource/api/mcp"`
-and, only when a bearer token was presented and refused, `, error="invalid_token"` appended.
+Refusals (SDK format, body `{ error, error_description }`, `application/json`,
+header `www-authenticate: Bearer error="<code>", error_description="…", scope="mcp", resource_metadata="<base>/.well-known/oauth-protected-resource/api/mcp"`):
+
+- no or malformed `Authorization`, or a refused token → 401 `invalid_token`;
+- a valid token without the `mcp` scope → 403 `insufficient_scope`.
 
 Authenticated:
+
 - POST: JSON-RPC over Streamable HTTP, **stateless** (new MCP server per
-  request, no session id), keep-alive off. Pass `authInfo` with
-  `{ token, clientId, scopes, resource, extra: { organizationId, userId, role, organizationSlug } }`.
+  request, no session id), keep-alive off, with the verifier's `authInfo`.
   The server factory reads the caller only from `authInfo.extra`, never from
   tool arguments; throws `[mcp] a request without a verified person` if missing.
   Response may be JSON or SSE; Accept `application/json, text/event-stream`.
@@ -743,6 +769,7 @@ Tools (exactly this list today: `tools/list` → `['whoami']`):
   `{ isError: true, content: [{ type: 'text', text: 'The organization is gone.' }] }`.
 
 Revocation rules (tests):
+
 - Removing a member (members area) revokes that user's grants in that org in
   the same transaction; their access tokens (original and refreshed) get 401
   on the next call (membership check), their refresh token now fails (400);
@@ -859,6 +886,7 @@ better-auth routes, not oRPC procedures).
 ### 9.3 Copy keys (`oauth.*`)
 
 en:
+
 ```json
 "oauth": {
   "oauthSignin": {
@@ -884,7 +912,9 @@ en:
   }
 }
 ```
+
 es:
+
 ```json
 "oauth": {
   "oauthSignin": {
@@ -910,6 +940,7 @@ es:
   }
 }
 ```
+
 (saas-base hard-codes "SaaS" where `{{appName}}` is; es fixes the typo "ningún organización".)
 Shared keys used: `auth.checkYourEmail.*`, `auth.signInOptions.*`,
 `app.titles.signInToConnect`, `app.titles.connect`.
@@ -930,10 +961,10 @@ A production proxy (if any) must: keep path+query, method, body (streamed,
 
 ## 10. Background jobs summary
 
-| queue | sender | worker | policy |
-| --- | --- | --- | --- |
-| `storage-purge` | org delete via `queueStoragePurge` | `registerStoragePurge` | 5 retries, 30 s, backoff, dead letter `storage-purge__dead` |
-| `health` | none | none (probe only, pg-boss) | default |
+| queue           | sender                             | worker                     | policy                                                      |
+| --------------- | ---------------------------------- | -------------------------- | ----------------------------------------------------------- |
+| `storage-purge` | org delete via `queueStoragePurge` | `registerStoragePurge`     | 5 retries, 30 s, backoff, dead letter `storage-purge__dead` |
+| `health`        | none                               | none (probe only, pg-boss) | default                                                     |
 
 No cron schedules (the `Jobs` interface has none). Usage plan grants are
 computed on read (no job).
@@ -942,28 +973,28 @@ computed on read (no job).
 
 ## 11. Env vars
 
-| var | required | notes |
-| --- | --- | --- |
-| `NODE_ENV` | no | `production` makes Google client, `RESEND_API_KEY`, `DATABASE_URL`, `R2_*` mandatory |
-| `PORT` | no | default 5000 |
-| `DATABASE_URL` | prod | Postgres; absent → PGlite |
-| `PGLITE_DIR` | no | PGlite data dir in dev, default `.data/pglite`; `PGLITE_RESET=1` wipes it at boot |
-| `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | prod (all or none) | S3-compatible bucket; absent → in-memory storage |
-| `R2_REGION` | no | default `auto` |
-| `BETTER_AUTH_SECRET` | yes | ≥ 32 chars |
-| `BETTER_AUTH_URL` | yes | public web origin (where `/api/auth` is reached); must be a URL |
-| `WEB_URL` | no | web origin when different |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | pair; required in prod | redirect `<BETTER_AUTH_URL>/api/auth/callback/google` |
-| `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | pair; optional | redirect `<BETTER_AUTH_URL>/api/auth/callback/microsoft`; tenant `common` |
-| `RESEND_API_KEY` | prod | absent → Mailpit (`MAILPIT_URL`) or log |
-| `MAIL_FROM` | no | default `Arrakit <hello@example.com>` |
-| `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` | no | billing; without all three (and without `STRIPE_FAKE=1`) every Stripe call answers 503 |
-| `STRIPE_FAKE` | no | `1`: in-memory fake gateway (dev, e2e); refused in production |
-| `LOG_LEVEL` | no | Pino level; default `silent` in tests, `info` otherwise |
-| `LOG_FORMAT` | no | `json` or `pretty`; default `pretty` in development, `json` otherwise |
-| `SENTRY_DSN` | no | report unexpected errors to Sentry; absent → only logged |
-| `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` | no | environment defaults to `NODE_ENV` |
-| `API_ORIGIN` | web/proxy only | where the web proxies `/api` (dev default `http://localhost:3001` or as AGENTS.md sets) |
+| var                                                                    | required               | notes                                                                                   |
+| ---------------------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------- |
+| `NODE_ENV`                                                             | no                     | `production` makes Google client, `RESEND_API_KEY`, `DATABASE_URL` mandatory            |
+| `PORT`                                                                 | no                     | default 5000                                                                            |
+| `DATABASE_URL`                                                         | prod                   | Postgres; absent → PGlite                                                               |
+| `PGLITE_DIR`                                                           | no                     | PGlite data dir in dev, default `.data/pglite`; `PGLITE_RESET=1` wipes it at boot       |
+| `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | no (all or none)       | S3-compatible bucket; absent → in-memory storage and a boot log line                    |
+| `R2_REGION`                                                            | no                     | default `auto`                                                                          |
+| `BETTER_AUTH_SECRET`                                                   | yes                    | ≥ 32 chars                                                                              |
+| `BETTER_AUTH_URL`                                                      | yes                    | public web origin (where `/api/auth` is reached); must be a URL                         |
+| `WEB_URL`                                                              | no                     | web origin when different                                                               |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`                            | pair; required in prod | redirect `<BETTER_AUTH_URL>/api/auth/callback/google`                                   |
+| `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET`                      | pair; optional         | redirect `<BETTER_AUTH_URL>/api/auth/callback/microsoft`; tenant `common`               |
+| `RESEND_API_KEY`                                                       | prod                   | absent → Mailpit (`MAILPIT_URL`) or log                                                 |
+| `MAIL_FROM`                                                            | no                     | default `Arrakit <hello@example.com>`                                                   |
+| `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` | no                     | billing; without all three (and without `STRIPE_FAKE=1`) every Stripe call answers 503  |
+| `STRIPE_FAKE`                                                          | no                     | `1`: in-memory fake gateway (dev, e2e); refused in production                           |
+| `LOG_LEVEL`                                                            | no                     | Pino level; default `silent` in tests, `info` otherwise                                 |
+| `LOG_FORMAT`                                                           | no                     | `json` or `pretty`; default `pretty` in development, `json` otherwise                   |
+| `SENTRY_DSN`                                                           | no                     | report unexpected errors to Sentry; absent → only logged                                |
+| `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`                                 | no                     | environment defaults to `NODE_ENV`                                                      |
+| `API_ORIGIN`                                                           | web/proxy only         | where the web proxies `/api` (dev default `http://localhost:3001` or as AGENTS.md sets) |
 
 Provide `apps/api/.env.example` documenting all of these (port the saas-base
 comments).
@@ -973,6 +1004,7 @@ comments).
 ## 12. Tests worth porting (Vitest; PGlite in-memory instead of containers)
 
 Data package:
+
 - `schema.spec.ts` – every table but the exceptions has `organization_id`; still refuses new tables without it; OAuth tables present.
 - `organization-id.spec.ts` – all accept/reject cases (3.1).
 - `storage` – memory storage: removePrefix keeps a sibling sharing the prefix
@@ -980,9 +1012,11 @@ Data package:
   S3 against a mocked client: folder validated before listing, batches of
   1000, paging with `listPageSize`, `Errors` reported, HeadBucket probe; an
   optional integration test against a real bucket.
-- `jobs` – in-process runner and pg-boss: retry with backoff then dead letter;
-  fail-once-then-succeed; redefining a queue keeps its policy; stop waits for
-  running handlers, then the probe fails; `memoryJobs()` records and runs sends.
+- `jobs` – pg-boss on PGlite (and on Postgres with `DATABASE_URL`): retry with
+  backoff then dead letter; fail-once-then-succeed; redefining a queue keeps
+  its policy; the probe fails once stopped; `memoryJobs()` records and runs
+  sends. `openData` on PGlite runs pg-boss on Drizzle's own instance and a
+  queued job completes.
 - `health` – all up; storage down; queue down after close; hanging probe ≈3 s.
 - `config.spec.ts` – env parsing (adapted to optional DB/R2).
 - `delete-organization` – cascades every org table (discovered from the
@@ -998,11 +1032,13 @@ Data package:
 - `lint-guard.spec.ts` – driver imports refused in apps/api, allowed in the db package.
 
 API:
+
 - `health` route (200/503, the only route outside `/api`); `app` (unknown → 404,
   no REST or OpenAPI paths, cross-site `/api/rpc` writes → 403 `Use the app.`).
 - `mailer.spec.ts`, `mail-signin.spec.ts`, `mail-member.spec.ts`.
-- `mcp.test.ts`: `bearerToken`, the OAuth provider (all 11 cases of 7.2) and the MCP endpoint
-  (challenge + metadata, tools list, whoami structured content, token in URL
+- `mcp.test.ts`: the OAuth provider (all 11 cases of 7.2) and the MCP endpoint
+  (challenge + metadata, malformed `Authorization` headers, tokens without the
+  `mcp` scope → 403 `insufficient_scope`, tools list, whoami structured content, token in URL
   refused, forged tokens refused: garbage, other key, alg none, other aud,
   other iss, no org claim, org not theirs; expiry; member removal revokes;
   org delete revokes; GET → 405; JWKS failure → 500 without challenge).
@@ -1011,7 +1047,8 @@ API:
   links where the flow itself is not under test; keep at least one full
   magic-link flow (read link from `recordingMailer().sent`).
 - `storage-purge.test.ts` (queue defined with policy, runs via queue, logs+throws
-  on bucket failure, `queueStoragePurge` logs and does not throw).
+  on bucket failure, `queueStoragePurge` logs and does not throw; one purge
+  end to end on real pg-boss over PGlite).
 
 Emails: `compose.spec.ts`, `account.spec.ts`, `copy.spec.ts`.
 
