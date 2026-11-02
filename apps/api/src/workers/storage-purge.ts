@@ -1,30 +1,33 @@
-import { type ScopedData, type Jobs, WORKER_RETRY_POLICY } from '@arrakit/db'
+import { type Jobs, WORKER_RETRY_POLICY } from '@arrakit/db'
+import { z } from 'zod'
 
 import type { Logger } from '../observability/logger'
 
-export const STORAGE_PURGE = 'storage-purge'
+import { defineJob, sendJob } from './job'
 
 interface StoragePurgeJob {
   organizationId: string
   folder: string
 }
 
-const target = (job: StoragePurgeJob) => `folder "${job.folder === '' ? '<all>' : job.folder}"`
+const purgeFields = ({ organizationId, folder }: StoragePurgeJob) => ({
+  organizationId,
+  target: `folder "${folder === '' ? '<all>' : folder}"`,
+})
 
-export async function registerStoragePurge(data: ScopedData, log: Logger): Promise<void> {
-  await data.jobs.defineQueue(STORAGE_PURGE, WORKER_RETRY_POLICY)
-  await data.jobs.work<StoragePurgeJob>(STORAGE_PURGE, async (job) => {
-    try {
-      await data.forOrganization(job.organizationId).files.removePrefix(job.folder)
-    } catch (err) {
-      log.error(
-        { err, organizationId: job.organizationId, target: target(job) },
-        'storage purge failed; the queue retries it, then dead-letters it',
-      )
-      throw err
-    }
-  })
-}
+export const storagePurge = defineJob({
+  name: 'storage-purge',
+  schema: z.object({
+    organizationId: z.guid(),
+    /** A folder ending in `/`, or '' for the whole organization. */
+    folder: z.string(),
+  }),
+  policy: WORKER_RETRY_POLICY,
+  async handler({ organizationId, folder }, { data }) {
+    await data.forOrganization(organizationId).files.removePrefix(folder)
+  },
+  logFields: purgeFields,
+})
 
 /** Queues a purge; a failure is logged and never thrown (the delete already succeeded). */
 export async function queueStoragePurge(
@@ -33,10 +36,10 @@ export async function queueStoragePurge(
   log: Logger,
 ): Promise<void> {
   try {
-    await jobs.send(STORAGE_PURGE, job)
+    await sendJob(jobs, storagePurge, job)
   } catch (err) {
     log.error(
-      { err, organizationId: job.organizationId, target: target(job) },
+      { err, ...purgeFields(job) },
       'storage purge not queued; its files stay in the bucket',
     )
   }

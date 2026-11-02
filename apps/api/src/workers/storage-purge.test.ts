@@ -1,4 +1,3 @@
-import { WORKER_RETRY_POLICY } from '@arrakit/db'
 import {
   type QueuedTestData,
   type TestData,
@@ -8,9 +7,11 @@ import {
 } from '@arrakit/db/testing'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { noErrorReporter } from '../observability/error-reporter'
 import { type LogEntry, recordingLogger } from '../observability/logger'
 
-import { STORAGE_PURGE, queueStoragePurge, registerStoragePurge } from './storage-purge'
+import { registerJobs } from './job'
+import { queueStoragePurge, storagePurge } from './storage-purge'
 
 describe('storage purge worker', () => {
   let data: TestData
@@ -20,7 +21,7 @@ describe('storage purge worker', () => {
 
   beforeAll(async () => {
     data = await openTestData()
-    await registerStoragePurge(data, log)
+    await registerJobs([storagePurge], { data, log, errors: noErrorReporter })
     orgId = (await insertOrganization(data, { slug: 'purge-co' })).id
   })
   beforeEach(() => void logs.splice(0))
@@ -29,39 +30,35 @@ describe('storage purge worker', () => {
   const files = () => data.forOrganization(orgId).files
   const paths = async () => (await files().list('')).map((file) => file.path)
 
-  it('defines its queue with the worker retry policy', () => {
-    expect(data.jobs.queues.get(STORAGE_PURGE)).toMatchObject(WORKER_RETRY_POLICY)
-    expect(data.jobs.workers.has(STORAGE_PURGE)).toBe(true)
-  })
-
   it('removes a folder, or the whole organization, through the queue', async () => {
     for (const path of ['companies/c1/a.pdf', 'companies/c1x/b.pdf', 'keep.txt']) {
       data.storage.put(orgId, path)
     }
 
     await queueStoragePurge(data.jobs, { organizationId: orgId, folder: 'companies/c1/' }, log)
-    await data.jobs.run(STORAGE_PURGE)
+    await data.jobs.run(storagePurge.name)
     expect(await paths()).toEqual(['companies/c1x/b.pdf', 'keep.txt'])
 
     await queueStoragePurge(data.jobs, { organizationId: orgId, folder: '' }, log)
-    await data.jobs.run(STORAGE_PURGE)
+    await data.jobs.run(storagePurge.name)
     expect(await paths()).toEqual([])
   })
 
-  it('logs and rethrows a failing purge so the queue retries it', async () => {
-    const worker = data.jobs.workers.get(STORAGE_PURGE)!
+  it('names the organization and folder when a purge fails', async () => {
+    const worker = data.jobs.workers.get(storagePurge.name)!
     await expect(worker({ organizationId: orgId, folder: '../escape/' })).rejects.toThrow(
       'not a usable folder',
     )
     expect(errors()[0]).toMatchObject({
-      msg: 'storage purge failed; the queue retries it, then dead-letters it',
+      msg: 'job failed; the queue retries it, then dead-letters it',
+      job: 'storage-purge',
       organizationId: orgId,
       target: 'folder "../escape/"',
       err: { message: expect.stringContaining('not a usable folder') },
     })
   })
 
-  it('names the folder or the whole organization in its log lines', async () => {
+  it('names the folder or the whole organization when a purge is not queued', async () => {
     const jobs = { ...data.jobs, send: async () => Promise.reject(new Error('queue down')) }
 
     await expect(
@@ -87,7 +84,7 @@ describe('storage purge on the real queue (pg-boss over PGlite)', () => {
 
   beforeAll(async () => {
     data = await openTestDataWithQueue()
-    await registerStoragePurge(data, log)
+    await registerJobs([storagePurge], { data, log, errors: noErrorReporter })
   }, 60_000)
   afterAll(() => data.close())
 

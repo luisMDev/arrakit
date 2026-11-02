@@ -5,13 +5,13 @@ import { loadLogEnv } from './env'
 import { createLogger } from './observability/logger'
 import { mcpHandler } from './routes/mcp'
 import { depsFromEnv } from './services'
-import { registerStoragePurge } from './workers/storage-purge'
+import { registerWorkers } from './workers'
 
 const log = createLogger(loadLogEnv(process.env))
 
 async function main() {
   const deps = await depsFromEnv(process.env, log)
-  await registerStoragePurge(deps.data, log.child({ worker: 'storage-purge' }))
+  await registerWorkers(deps)
   const mcp = mcpHandler(log)
   const app = createApp(deps, mcp)
   const server = serve({ fetch: app.fetch, port: deps.env.PORT }, (info) => {
