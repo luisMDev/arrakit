@@ -10,6 +10,7 @@ import {
   organizationNameOnSkip,
   organizationNameOr,
   personName,
+  personNameRefusal,
   slugCandidates,
   slugOf,
 } from './index'
@@ -257,5 +258,18 @@ describe('personName', () => {
     ['', '@acme.com', '@acme.com'],
   ])('%j with %j → %j', (name, email, expected) => {
     expect(personName(name, email)).toBe(expected)
+  })
+})
+
+describe('personNameRefusal', () => {
+  it.each([
+    ['Ana Pérez', null],
+    ['a'.repeat(100), null],
+    ['', 'Enter your name.'],
+    ['a'.repeat(101), 'Keep your name to 100 characters.'],
+    ['Ana\nPérez', 'Keep your name on one line.'],
+    ['Ana\u2028Pérez', 'Keep your name on one line.'],
+  ])('%j → %j', (name, expected) => {
+    expect(personNameRefusal(name)).toBe(expected)
   })
 })

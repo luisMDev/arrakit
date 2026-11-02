@@ -43,6 +43,8 @@ export const changePreviewSchema = z.object({
   on: daySchema,
   dueToday: moneySchema,
   nextInvoice: moneySchema,
+  /** Unix seconds the charge today was prorated at; `change` takes it back to charge the same. */
+  prorationDate: z.number().int().nullable(),
 })
 export type ChangePreview = z.infer<typeof changePreviewSchema>
 
@@ -52,7 +54,9 @@ export const billingContract = {
     .output(z.object({ clientSecret: z.string(), publishableKey: z.string() })),
   get: base.output(billingSchema),
   previewChange: base.input(paidChoiceSchema).output(changePreviewSchema),
-  change: base.input(paidChoiceSchema).output(billingSchema),
+  change: base
+    .input(paidChoiceSchema.extend({ prorationDate: z.number().int().positive().nullish() }))
+    .output(billingSchema),
   cancel: base.output(billingSchema),
   resume: base.output(billingSchema),
   portal: base

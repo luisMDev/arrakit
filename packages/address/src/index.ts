@@ -160,3 +160,15 @@ export const isAccountLanguage = (value: unknown): value is AccountLanguage =>
 export function personName(name: string | null | undefined, email: string): string {
   return name?.trim() || email.split('@')[0] || email
 }
+
+export const PERSON_NAME_MAX = 100
+
+const ONE_LINE = /^[^\p{Cc}\u2028\u2029]*$/u
+
+/** Why `name` (already trimmed) cannot be a person's name, or null. */
+export function personNameRefusal(name: string): string | null {
+  if (name === '') return 'Enter your name.'
+  if (name.length > PERSON_NAME_MAX) return `Keep your name to ${PERSON_NAME_MAX} characters.`
+  if (!ONE_LINE.test(name)) return 'Keep your name on one line.'
+  return null
+}
