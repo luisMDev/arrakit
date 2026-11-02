@@ -16,6 +16,27 @@ const DRIVER_MESSAGE =
 const INTERNALS_MESSAGE =
   'Use @arrakit/db (openData() / forOrganization()); its schema, testing helpers and sources are for packages/db and tests.'
 
+/**
+ * `pg`, `pg/lib/client`, `drizzle-orm/node-postgres`, `@aws-sdk/...`, but not `pg-format` or
+ * `pgvector`. esquery regexes cannot contain `/`, so `.` stands for it and `[^\\w-]` for the
+ * subpath separator.
+ */
+const DRIVER_SPECIFIER = `^(${[...DATA_ONLY_MODULES, '@aws-sdk']
+  .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replaceAll('/', '.'))
+  .join('|')})([^\\w-].*)?$`
+/** Any @arrakit/db subpath: `/schema`, `/testing`, `/src/...`. */
+const INTERNALS_SPECIFIER = '^@arrakit.db.+$'
+
+/** `require()` and dynamic `import()`, which no-restricted-imports does not see. */
+const restrictedSyntax = (specifier, message) => [
+  { selector: `CallExpression[callee.name='require'][arguments.0.value=/${specifier}/]`, message },
+  { selector: `ImportExpression[source.value=/${specifier}/]`, message },
+  {
+    selector: `ImportExpression[source.expressions.length=0][source.quasis.0.value.cooked=/${specifier}/]`,
+    message,
+  },
+]
+
 const guard = ({ internals, paths = [] }) => ({
   rules: {
     'no-restricted-imports': [
@@ -31,6 +52,11 @@ const guard = ({ internals, paths = [] }) => ({
         ],
       },
     ],
+    'no-restricted-syntax': [
+      'error',
+      ...restrictedSyntax(DRIVER_SPECIFIER, DRIVER_MESSAGE),
+      ...(internals ? restrictedSyntax(INTERNALS_SPECIFIER, INTERNALS_MESSAGE) : []),
+    ],
   },
 })
 
@@ -45,8 +71,9 @@ const TEST_FILES = [
 ]
 
 /**
- * Keeps data access behind openData() / forOrganization(): the drivers are refused everywhere, and
- * @arrakit/db subpaths outside test files. `restrictedPaths` adds workspace-specific
+ * Keeps data access behind openData() / forOrganization(): the drivers are refused everywhere
+ * (import, export-from, require, dynamic import, .cjs included), and @arrakit/db subpaths outside
+ * test files. `restrictedPaths` adds workspace-specific
  * `no-restricted-imports` paths, allowed in test files and in `restrictedPathsAllowedIn`.
  */
 const restrictImports = ({ restrictedPaths = [], restrictedPathsAllowedIn = [] }) => [
