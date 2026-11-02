@@ -331,6 +331,7 @@ describe('billing procedures', () => {
         on: new Date().toISOString().slice(0, 10),
         dueToday: FAKE_PRORATION,
         nextInvoice: { amount: 48_000, currency: 'usd' },
+        prorationDate: expect.any(Number),
       })
     })
 
@@ -343,6 +344,7 @@ describe('billing procedures', () => {
         on: '2027-10-04',
         dueToday: { amount: 0, currency: 'usd' },
         nextInvoice: { amount: 2_000, currency: 'usd' },
+        prorationDate: null,
       })
     })
 
@@ -376,8 +378,36 @@ describe('billing procedures', () => {
         subscriptionId: ana.subscriptionId,
         choice: { plan: 'team', cycle: 'yearly' },
         when: 'now',
+        prorationDate: expect.any(Number),
       })
       expect((await t.client(ana.headers).me.get()).plan).toBe('team')
+    })
+
+    it('charges a move up at the date its preview was prorated at', async () => {
+      const ana = await paying(t, stripe, 'owner@sequoia.vc')
+      const choice = { plan: 'team', cycle: 'yearly' } as const
+      const preview = await t.client(ana.headers).billing.previewChange(choice)
+      expect(stripe.previews.at(-1)?.prorationDate).toBe(preview.prorationDate)
+      await t
+        .client(ana.headers)
+        .billing.change({ ...choice, prorationDate: preview.prorationDate })
+      expect(stripe.changes.at(-1)?.prorationDate).toBe(preview.prorationDate)
+    })
+
+    it.each([
+      ['older than an hour', -2 * 60 * 60],
+      ['in the future', 60],
+    ])('prorates at now a proration date %s', async (_, offset) => {
+      const ana = await paying(t, stripe, `owner@elm${offset}.vc`)
+      const now = Math.floor(Date.now() / 1000)
+      await t.client(ana.headers).billing.change({
+        plan: 'team',
+        cycle: 'yearly',
+        prorationDate: now + offset,
+      })
+      const used = stripe.changes.at(-1)?.prorationDate ?? 0
+      expect(used).toBeGreaterThanOrEqual(now)
+      expect(used).toBeLessThanOrEqual(now + 5)
     })
 
     it('schedules a move down for the renewal, keeping the plan until then', async () => {
@@ -389,6 +419,20 @@ describe('billing procedures', () => {
         when: 'renewal',
       })
       expect((await t.client(ana.headers).me.get()).plan).toBe('pro')
+    })
+
+    it('switches a plan billed on an unknown cycle, a known cycle at the renewal', async () => {
+      const snapshot = proYearly()
+      snapshot.subscription!.lookupKey = 'pro_weekly'
+      const ana = await paying(t, stripe, 'owner@hornbeam.vc', snapshot)
+      const billing = t.client(ana.headers).billing
+      await expect(billing.get()).resolves.toMatchObject({ plan: 'pro', cycle: null })
+      await expect(billing.previewChange({ plan: 'pro', cycle: 'yearly' })).resolves.toMatchObject({
+        applies: 'renewal',
+      })
+      await billing.change({ plan: 'pro', cycle: 'yearly' })
+      expect(stripe.changes.at(-1)).toMatchObject({ when: 'renewal' })
+      await expect(billing.cancel()).resolves.toMatchObject({ plan: 'pro', cycle: null })
     })
 
     it('answers 402 in its own words when the card is declined, plan unchanged', async () => {

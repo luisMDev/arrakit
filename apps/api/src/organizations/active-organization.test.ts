@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { type TestApp, createTestApp } from '../testing/app'
-import { joined, orgApi, ownerOf, sqlOf } from '../testing/people'
+import { createOrganization, joined, orgApi, ownerOf, sqlOf } from '../testing/people'
 
 describe('the active organization', () => {
   let t: TestApp
@@ -15,9 +15,7 @@ describe('the active organization', () => {
 
   it('switches what me, billing and usage read with set-active', async () => {
     const ana = await ownerOf(t, 'ana@alder.vc', 'free')
-    const second = await t
-      .client(ana.headers)
-      .onboarding.create({ name: 'Birch', termsAccepted: true })
+    const second = await createOrganization(t, ana.headers, 'Birch')
     await t.data.forOrganization(second.id).setPlan('team')
     expect(await activeOf(ana.headers)).toBe(second.id)
     await expect(t.client(ana.headers).billing.get()).resolves.toMatchObject({ plan: 'team' })
@@ -71,7 +69,7 @@ describe('the active organization', () => {
 
   it('starts a new session in the earliest organization joined', async () => {
     const first = await ownerOf(t, 'ana@hazel.vc')
-    await t.client(first.headers).onboarding.create({ name: 'Later', termsAccepted: true })
+    await createOrganization(t, first.headers, 'Later')
     const again = await t.signIn({ email: 'ana@hazel.vc' })
     const { rows } = await sqlOf(t)(
       'select active_organization_id from sessions where token = $1',

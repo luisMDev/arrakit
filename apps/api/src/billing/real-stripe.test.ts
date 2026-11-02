@@ -1,11 +1,11 @@
 import type Stripe from 'stripe'
 import { ORPCError } from '@orpc/server'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { loadApiEnv } from '../env'
 import { recordingLogger } from '../observability/logger'
 import { fakeStripe } from './fake-stripe'
-import { mapStripeEvent, planKeyOf, realStripeGateway } from './real-stripe'
+import { PRICE_CACHE_MS, mapStripeEvent, planKeyOf, realStripeGateway } from './real-stripe'
 import {
   type SubscriptionState,
   createStripeGateway,
@@ -56,6 +56,12 @@ function stripeClient() {
   }))
   const client = {
     prices: { list: listPrices },
+    invoices: {
+      createPreview: async (params: unknown) => {
+        sent.push({ call: 'invoices.createPreview', params })
+        return { amount_due: 9_000, currency: 'usd' }
+      },
+    },
     customers: {
       retrieve: async (id: string) =>
         id === 'cus_gone'
@@ -137,10 +143,9 @@ describe('createStripeGateway', () => {
   it.each(Object.keys(ENV))('answers 503 without %s: payments are not set up', async (missing) => {
     for (const value of [undefined, '']) {
       const gateway = createStripeGateway(loadApiEnv({ ...ENV, [missing]: value }))
-      await expect(gateway.portal('cus_1', 'https://app.test', 'payment')).rejects.toMatchObject({
-        code: 'SERVICE_UNAVAILABLE',
-        message: 'Payments are not set up yet.',
-      })
+      await expect(gateway.portal('cus_1', 'https://app.test', 'payment')).rejects.toThrow(
+        'Payments are not set up yet.',
+      )
       expect(() => gateway.event('{}', 'sig')).toThrow('Stripe is not set up')
     }
   })
@@ -181,12 +186,26 @@ describe('guardedStripe', () => {
     ])
   })
 
-  it('passes oRPC errors and webhook signature failures through unchanged', async () => {
-    const guarded = guardedStripe(unconfiguredStripe(), recordingLogger().log)
+  it('answers 503 without Stripe keys, unlogged, and leaves webhook signature failures as they are', async () => {
+    const { log, logs } = recordingLogger()
+    const guarded = guardedStripe(unconfiguredStripe(), log)
     const error = await guarded.billing('cus_1', null).catch((err: unknown) => err)
     expect(error).toBeInstanceOf(ORPCError)
-    expect(error).toMatchObject({ status: 503 })
+    expect(error).toMatchObject({ status: 503, message: 'Payments are not set up yet.' })
+    expect(logs).toEqual([])
     expect(() => guarded.event('{}', 'sig')).toThrow('Stripe is not set up')
+  })
+
+  it('builds its refusals with the factory it is given', async () => {
+    const fake = fakeStripe()
+    const guarded = guardedStripe(fake, recordingLogger().log, (code, message) =>
+      Object.assign(new Error(message), { code }),
+    )
+    fake.failNext('endNow', new Error('socket hang up'))
+    await expect(guarded.endNow('sub_1')).rejects.toMatchObject({
+      code: 'BAD_GATEWAY',
+      message: "Couldn't reach Stripe. Try again in a minute.",
+    })
   })
 })
 
@@ -240,11 +259,12 @@ describe('the real gateway', () => {
   })
 
   it('changes now, prorating and refusing an incomplete payment, and answers the changed subscription', async () => {
-    const changed = await gateway.changeNow(state(), { plan: 'team', cycle: 'yearly' })
+    const changed = await gateway.changeNow(state(), { plan: 'team', cycle: 'yearly' }, 1_500)
     expect(params('subscriptionSchedules.release')).toEqual(['sub_sched_old'])
     expect(params('subscriptions.update')[0]).toEqual({
       items: [{ id: 'si_1', price: 'price_new' }],
       proration_behavior: 'always_invoice',
+      proration_date: 1_500,
       payment_behavior: 'error_if_incomplete',
       cancel_at_period_end: false,
     })
@@ -327,6 +347,65 @@ describe('the real gateway', () => {
     await gateway.price({ plan: 'pro', cycle: 'yearly' })
     await gateway.price({ plan: 'team', cycle: 'yearly' })
     expect(stripe.listPrices).toHaveBeenCalledTimes(2)
+  })
+
+  it('previews a change now prorated at the date the change will reuse', async () => {
+    const choice = { plan: 'team', cycle: 'yearly' } as const
+    await expect(gateway.previewNow(state(), choice, 1_500)).resolves.toEqual({
+      amount: 9_000,
+      currency: 'usd',
+    })
+    await gateway.changeNow(state(), choice, 1_500)
+    const preview = params('invoices.createPreview')[0] as {
+      subscription_details: { proration_date: number }
+    }
+    const update = params('subscriptions.update')[0] as { proration_date: number }
+    expect(preview.subscription_details.proration_date).toBe(1_500)
+    expect(update.proration_date).toBe(preview.subscription_details.proration_date)
+  })
+
+  describe('prices', () => {
+    afterEach(() => vi.useRealTimers())
+
+    it('looks a price up again once its cache has expired', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      await gateway.price({ plan: 'pro', cycle: 'yearly' })
+      vi.advanceTimersByTime(PRICE_CACHE_MS - 1)
+      await gateway.price({ plan: 'pro', cycle: 'yearly' })
+      expect(stripe.listPrices).toHaveBeenCalledTimes(1)
+      vi.advanceTimersByTime(2)
+      await gateway.price({ plan: 'pro', cycle: 'yearly' })
+      expect(stripe.listPrices).toHaveBeenCalledTimes(2)
+    })
+
+    it('looks a price up again after a failed lookup', async () => {
+      stripe.listPrices.mockRejectedValueOnce(new Error('Stripe is down'))
+      await expect(gateway.price({ plan: 'pro', cycle: 'yearly' })).rejects.toThrow()
+      await expect(gateway.price({ plan: 'pro', cycle: 'yearly' })).resolves.toMatchObject({
+        amount: 19_200,
+      })
+      expect(stripe.listPrices).toHaveBeenCalledTimes(2)
+    })
+
+    it('looks the price up fresh for every change, whatever was shown', async () => {
+      const choice = { plan: 'team', cycle: 'yearly' } as const
+      await gateway.price(choice)
+      stripe.listPrices.mockResolvedValueOnce({ data: [{ id: 'price_rotated' }] } as never)
+      await gateway.changeNow(state(), choice, 1_500)
+      expect(params('subscriptions.update')).toMatchObject([
+        { items: [{ price: 'price_rotated' }] },
+      ])
+      await gateway.changeNow(state(), choice, 1_500)
+      expect(stripe.listPrices).toHaveBeenCalledTimes(3)
+    })
+
+    it('refuses a change to a missing price before releasing the schedule', async () => {
+      stripe.listPrices.mockResolvedValueOnce({ data: [] } as never)
+      await expect(
+        gateway.changeAtRenewal(state(), { plan: 'pro', cycle: 'yearly' }),
+      ).rejects.toThrow(/no active Stripe price/)
+      expect(params('subscriptionSchedules.release')).toEqual([])
+    })
   })
 
   it('cancels at the period end, releasing a schedule first, and resumes', async () => {

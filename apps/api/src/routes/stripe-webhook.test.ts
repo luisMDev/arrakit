@@ -478,6 +478,65 @@ describe('POST /api/webhooks/stripe: emails', () => {
   })
 })
 
+describe('POST /api/webhooks/stripe: two Checkouts paid while on Free', () => {
+  let t: TestApp
+  let stripe: FakeStripe
+
+  beforeAll(async () => {
+    stripe = fakeStripe()
+    t = await createTestApp({ stripe, env: { WEB_URL: WEB } })
+  })
+  afterAll(() => t.close())
+
+  it('keeps the first subscription paid and ends the second at once, logging it', async () => {
+    const ana = await ownerOf(t, 'ana@hazel.vc', 'free')
+    const paid = (id: string, lookupKey: string) =>
+      stripe.subscribe({
+        id,
+        customerId: 'cus_hazel',
+        organizationId: ana.organizationId,
+        status: 'active',
+        lookupKey,
+      })
+    paid('sub_first', 'pro_yearly')
+    paid('sub_second', 'team_monthly')
+    const from = t.logs.length
+    expect((await t.webhook({ subscriptionId: 'sub_first' })).status).toBe(204)
+    expect((await t.webhook({ subscriptionId: 'sub_second' })).status).toBe(204)
+    expect((await t.webhook({ subscriptionId: 'sub_second' })).status).toBe(204)
+    expect(stripe.ended).toEqual(['sub_second'])
+    expect(stripe.subscriptions.get('sub_second')?.status).toBe('canceled')
+    expect((await t.client(ana.headers).me.get()).plan).toBe('pro')
+    expect(t.logs.slice(from)).toContainEqual(
+      expect.objectContaining({
+        level: 'warn',
+        msg: 'duplicate subscription ended',
+        organizationId: ana.organizationId,
+        kept: 'sub_first',
+        ended: 'sub_second',
+      }),
+    )
+  })
+
+  it('answers 500 when the duplicate cannot be ended, so Stripe delivers again', async () => {
+    const ana = await ownerOf(t, 'ana@linden.vc', 'free')
+    for (const id of ['sub_linden_1', 'sub_linden_2']) {
+      stripe.subscribe({
+        id,
+        customerId: 'cus_linden',
+        organizationId: ana.organizationId,
+        status: 'active',
+        lookupKey: 'pro_monthly',
+      })
+    }
+    await t.webhook({ subscriptionId: 'sub_linden_1' })
+    stripe.failNext('endNow', new Error('Stripe is down'))
+    expect((await t.webhook({ subscriptionId: 'sub_linden_2' })).status).toBe(500)
+    expect((await t.webhook({ subscriptionId: 'sub_linden_2' })).status).toBe(204)
+    expect(stripe.ended).toContain('sub_linden_2')
+  })
+})
+
 describe('POST /api/webhooks/stripe without Stripe set up', () => {
   let t: TestApp
 

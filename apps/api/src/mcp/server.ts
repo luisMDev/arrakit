@@ -10,11 +10,9 @@ const MCP_INSTRUCTIONS =
   'This server acts as one person in one of their organizations: the person who connected it. Use whoami to read who that is and their organization. Add a tool per thing the product does; every tool reads the caller from the token, never from its arguments.'
 
 /** Who a request acts as: the person and organization its token names, never a tool argument. */
-export interface ConnectorCaller {
+export type ConnectorCaller = {
   organization: OrganizationRow
   role: string
-  clientId: string
-  scopes: string[]
 }
 
 const WHOAMI_OUTPUT = z.object({
@@ -22,7 +20,7 @@ const WHOAMI_OUTPUT = z.object({
   role: z.string().describe("The person's role in it: owner, admin, member or a custom role"),
 })
 
-export function createMcpServer(caller: Pick<ConnectorCaller, 'organization' | 'role'>): McpServer {
+export function createMcpServer(caller: ConnectorCaller): McpServer {
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     { capabilities: { tools: { listChanged: false } }, instructions: MCP_INSTRUCTIONS },

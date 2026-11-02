@@ -3,7 +3,6 @@ import { soldOffers } from '@arrakit/plans'
 import { member, pub } from './orpc/base'
 import { meRouter } from './routers/account'
 import { billingRouter } from './routers/billing'
-import { onboardingRouter } from './routers/onboarding'
 import { usageRouter } from './routers/usage'
 
 export const router = pub.router({
@@ -14,7 +13,6 @@ export const router = pub.router({
     })),
   },
   me: meRouter,
-  onboarding: onboardingRouter,
   teams: {
     members: member().teams.members.handler(({ context, input }) =>
       context.scope.teamMembers(input.teamId),

@@ -2,22 +2,40 @@ import { PLAN_LABELS } from '@arrakit/plans'
 import { ORPCError } from '@orpc/server'
 
 import { stripeRefs } from '../billing/settle-event'
-import { billingService, billingView, refuseInternal } from '../billing/billing-service'
+import {
+  billingSnapshot,
+  billingView,
+  changeApplies,
+  paidOrganization,
+  refuseInternal,
+  sendCancellation,
+} from '../billing/billing-service'
 import { planOfSubscription } from '../billing/subscription-plan'
-import { dayOf } from '../day'
+import { dayOf, nowSeconds } from '../day'
 import { member } from '../orpc/base'
 import type { MemberContext } from '../orpc/context'
+
+const PRORATION_DATE_VALID_SECONDS = 60 * 60
+
+function prorationDateOf(previewed: number | null | undefined): number {
+  const now = nowSeconds()
+  const recent =
+    typeof previewed === 'number' &&
+    previewed <= now &&
+    now - previewed <= PRORATION_DATE_VALID_SECONDS
+  return recent ? previewed : now
+}
 
 const reader = member({ billing: ['read'] })
 const manager = member({ billing: ['manage'] })
 
 async function setCancelled(context: MemberContext, cancelledBy: string | null) {
-  const service = billingService(context)
-  const paid = await service.paidOrganization(context.activeOrganization)
-  await context.deps.stripe.cancelAtPeriodEnd(paid.subscription, cancelledBy !== null)
+  const { stripe } = context.deps
+  const paid = await paidOrganization(context)
+  await stripe.cancelAtPeriodEnd(paid.subscription, cancelledBy !== null)
   const [snapshot] = await Promise.all([
-    service.snapshot(paid.organization),
-    cancelledBy && service.sendCancellation(paid, cancelledBy),
+    billingSnapshot(stripe, paid.organization),
+    cancelledBy && sendCancellation(context, paid, cancelledBy),
   ])
   return billingView(paid.organization, snapshot)
 }
@@ -42,17 +60,18 @@ export const billingRouter = {
     return { clientSecret, publishableKey: stripe.publishableKey }
   }),
 
-  get: reader.billing.get.handler(async ({ context }) =>
-    billingService(context).view(context.activeOrganization),
-  ),
+  get: reader.billing.get.handler(async ({ context }) => {
+    const { activeOrganization: organization } = context
+    return billingView(organization, await billingSnapshot(context.deps.stripe, organization))
+  }),
 
   previewChange: manager.billing.previewChange.handler(async ({ context, input }) => {
-    const service = billingService(context)
-    const paid = await service.paidOrganization(context.activeOrganization)
-    const applies = service.applies(paid, input)
+    const paid = await paidOrganization(context)
+    const applies = changeApplies(paid, input)
     const { stripe } = context.deps
+    const prorationDate = applies === 'now' ? nowSeconds() : null
     const [dueToday, nextInvoice] = await Promise.all([
-      applies === 'now' ? stripe.previewNow(paid.subscription, input) : null,
+      prorationDate !== null ? stripe.previewNow(paid.subscription, input, prorationDate) : null,
       stripe.price(input),
     ])
     return {
@@ -60,20 +79,22 @@ export const billingRouter = {
       on: applies === 'now' ? dayOf(new Date()) : dayOf(paid.subscription.periodEnd),
       dueToday: dueToday ?? { amount: 0, currency: nextInvoice.currency },
       nextInvoice,
+      prorationDate,
     }
   }),
 
   change: manager.billing.change.handler(async ({ context, input }) => {
-    const service = billingService(context)
-    const paid = await service.paidOrganization(context.activeOrganization)
+    const paid = await paidOrganization(context)
     const { stripe } = context.deps
+    const choice = { plan: input.plan, cycle: input.cycle }
     const changed =
-      service.applies(paid, input) === 'now'
-        ? await stripe.changeNow(paid.subscription, input)
-        : await stripe.changeAtRenewal(paid.subscription, input)
+      changeApplies(paid, choice) === 'now'
+        ? await stripe.changeNow(paid.subscription, choice, prorationDateOf(input.prorationDate))
+        : await stripe.changeAtRenewal(paid.subscription, choice)
     const plan = planOfSubscription(changed.status, changed.lookupKey)
     await context.scope.setPlan(plan, stripeRefs(changed, plan))
-    return service.view({ ...paid.organization, plan })
+    const organization = { ...paid.organization, plan }
+    return billingView(organization, await billingSnapshot(stripe, organization))
   }),
 
   cancel: manager.billing.cancel.handler(({ context }) =>

@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 
 import type { StripeGateway } from '../billing/stripe-gateway'
 import { type TestApp, createTestApp } from '../testing/app'
-import { joined, orgApi, ownerOf, sqlOf } from '../testing/people'
+import { createOrganization, joined, orgApi, ownerOf, sqlOf } from '../testing/people'
 
 function endingStripe() {
   const ended: string[] = []
@@ -95,10 +95,7 @@ describe('organization rename and delete (Better Auth organization plugin)', () 
     it('deletes for the owner, revokes grants, queues the purge, and keeps other organizations', async () => {
       const owner = await ownerOf(t, 'owner@cedar.vc')
       const member = await joined(t, owner, 'marta@cedar.vc')
-      const second = await t.client(owner.headers).onboarding.create({
-        name: 'Second Cedar',
-        termsAccepted: true,
-      })
+      const second = await createOrganization(t, owner.headers, 'Second Cedar')
       const revoke = vi.spyOn(t.data, 'revokeGrants')
       t.data.jobs.sent.splice(0)
 
@@ -143,6 +140,22 @@ describe('organization rename and delete (Better Auth organization plugin)', () 
       stripe.failNext(null)
       expect((await remove(owner.headers, owner.organizationId)).status).toBe(200)
       expect(stripe.ended).toContain('sub_fir')
+    })
+
+    it('keeps the organization active in the session when its delete is refused', async () => {
+      const owner = await ownerOf(t, 'owner@larch.vc')
+      const second = await createOrganization(t, owner.headers, 'Larch Two')
+      await subscribe(second.id, 'sub_larch')
+      stripe.failNext(new Error('stripe down'))
+      expect((await remove(owner.headers, second.id)).status).toBe(502)
+      stripe.failNext(null)
+
+      const { rows } = await sqlOf(t)(
+        'select active_organization_id from sessions where user_id = $1',
+        [owner.userId],
+      )
+      expect(rows.map((row) => row.active_organization_id)).toEqual([second.id])
+      expect((await t.client(owner.headers).me.get()).organization?.id).toBe(second.id)
     })
 
     it('still deletes when the purge cannot be queued, logging it', async () => {

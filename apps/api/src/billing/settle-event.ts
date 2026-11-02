@@ -1,6 +1,5 @@
 import type { OrganizationRow, OrganizationScope, ScopedData, StripeRefs } from '@arrakit/db'
 import {
-  type Mailer,
   type RenderedEmail,
   daysUntil,
   downgradedEmail,
@@ -11,6 +10,7 @@ import {
 import { PLAN_LABELS, type Plan } from '@arrakit/plans'
 
 import { dayOf } from '../day'
+import type { AppDeps } from '../deps'
 import type { Logger } from '../observability/logger'
 import {
   adminsOf,
@@ -28,32 +28,20 @@ import type {
 } from './stripe-gateway'
 import { planOfSubscription, subscriptionOfLookupKey } from './subscription-plan'
 
-type Ignored = { kind: 'ignored'; reason: string }
+interface FoundOrganization {
+  scope: OrganizationScope
+  organization: OrganizationRow
+}
 
-type FoundOrganization =
-  | Ignored
-  | {
-      kind: 'found'
-      organizationId: string
-      scope: OrganizationScope
-      organization: OrganizationRow
-    }
+type SubscriptionOrganization = FoundOrganization & { subscription: SubscriptionState }
 
-type SubscriptionOrganization =
-  Ignored | (Extract<FoundOrganization, { kind: 'found' }> & { subscription: SubscriptionState })
+interface AppliedPlan {
+  organization: OrganizationRow
+  plan: Plan
+  subscription: SubscriptionState
+}
 
-type BillingOutcome =
-  | Ignored
-  | {
-      kind: 'applied'
-      organizationId: string
-      organization: { name: string; slug: string }
-      previousPlan: Plan
-      plan: Plan
-      subscription: SubscriptionState
-    }
-
-type DataLike = Pick<ScopedData, 'forOrganization'>
+type Organizations = Pick<ScopedData, 'forOrganization'>
 
 export const stripeRefs = (subscription: SubscriptionState, plan: Plan): StripeRefs => ({
   customerId: subscription.customerId,
@@ -61,92 +49,98 @@ export const stripeRefs = (subscription: SubscriptionState, plan: Plan): StripeR
   anchor: subscription.anchor,
 })
 
+const ignored = (log: Logger, reason: string) => {
+  log.warn({ reason }, 'billing event ignored')
+  return null
+}
+
 async function findOrganization(
-  data: DataLike,
+  data: Organizations,
+  log: Logger,
   organizationId: string | null,
   what: string,
-): Promise<FoundOrganization> {
-  if (!organizationId) return { kind: 'ignored', reason: `${what} names no organization` }
+): Promise<FoundOrganization | null> {
+  if (!organizationId) return ignored(log, `${what} names no organization`)
   let scope: OrganizationScope
   try {
     scope = data.forOrganization(organizationId)
   } catch {
-    return { kind: 'ignored', reason: `${what} names no organization id` }
+    return ignored(log, `${what} names no organization id`)
   }
   const organization = await scope.organization()
-  if (!organization) return { kind: 'ignored', reason: `organization ${organizationId} is gone` }
-  return { kind: 'found', organizationId: organization.id, scope, organization }
+  if (!organization) return ignored(log, `organization ${organizationId} is gone`)
+  return { scope, organization }
 }
 
 async function findSubscriptionOrganization(
-  data: DataLike,
+  data: Organizations,
   stripe: Pick<StripeGateway, 'subscription'>,
+  log: Logger,
   subscriptionId: string | null,
   eventOrganizationId: string | null = null,
-): Promise<SubscriptionOrganization> {
-  if (!subscriptionId) return { kind: 'ignored', reason: 'no subscription' }
+): Promise<SubscriptionOrganization | null> {
+  if (!subscriptionId) return ignored(log, 'no subscription')
   const subscription = await stripe.subscription(subscriptionId)
   const organizationId = subscription.organizationId ?? eventOrganizationId
-  const found = await findOrganization(data, organizationId, `subscription ${subscription.id}`)
-  return found.kind === 'ignored' ? found : { ...found, subscription }
+  const found = await findOrganization(data, log, organizationId, `subscription ${subscription.id}`)
+  return found && { ...found, subscription }
 }
 
+async function isLive(stripe: Pick<StripeGateway, 'subscription'>, subscriptionId: string) {
+  const subscription = await stripe.subscription(subscriptionId)
+  return planOfSubscription(subscription.status, subscription.lookupKey) !== 'free'
+}
+
+/**
+ * The subscription an organization already pays with wins: a second live one (two Checkouts
+ * paid while the organization was on Free) is ended at once, so only one keeps charging.
+ * Answers the plan set, with the organization as it was before, or null when nothing changed.
+ */
 export async function applyBillingEvent(
-  data: DataLike,
-  stripe: Pick<StripeGateway, 'subscription'>,
+  data: Organizations,
+  stripe: Pick<StripeGateway, 'subscription' | 'endNow'>,
+  log: Logger,
   event: SubscriptionEvent,
-): Promise<BillingOutcome> {
+): Promise<AppliedPlan | null> {
   const found = await findSubscriptionOrganization(
     data,
     stripe,
+    log,
     event.subscriptionId,
     event.organizationId,
   )
-  if (found.kind === 'ignored') return found
-  const { organizationId, scope, organization, subscription } = found
+  if (!found) return null
+  const { scope, organization, subscription } = found
+  const organizationId = organization.id
   if (organization.plan === 'internal') {
-    return {
-      kind: 'ignored',
-      reason: `organization ${organizationId} is on the internal plan, set by hand`,
-    }
+    return ignored(log, `organization ${organizationId} is on the internal plan, set by hand`)
   }
   const plan = planOfSubscription(subscription.status, subscription.lookupKey)
-  const replaced =
-    organization.stripeSubscriptionId !== null &&
-    organization.stripeSubscriptionId !== subscription.id
+  const kept = organization.stripeSubscriptionId
+  const replaced = kept !== null && kept !== subscription.id
   if (plan === 'free' && replaced) {
-    return { kind: 'ignored', reason: `subscription ${subscription.id} was replaced` }
+    return ignored(log, `subscription ${subscription.id} was replaced`)
+  }
+  if (replaced && (await isLive(stripe, kept))) {
+    await stripe.endNow(subscription.id)
+    log.warn({ organizationId, kept, ended: subscription.id }, 'duplicate subscription ended')
+    return null
   }
   await scope.setPlan(plan, stripeRefs(subscription, plan))
-  return {
-    kind: 'applied',
-    organizationId,
-    organization: { name: organization.name, slug: organization.slug },
-    previousPlan: organization.plan,
-    plan,
-    subscription,
-  }
+  log.info({ organizationId, plan }, 'plan updated')
+  return { organization, plan, subscription }
 }
 
 type MailKind = 'receipt' | 'failed payment' | 'renewal' | 'downgraded'
-type Applied = Extract<BillingOutcome, { kind: 'applied' }>
 type EventOf<K extends BillingEvent['kind']> = Extract<BillingEvent, { kind: K }>
 
-interface SettleDeps {
-  data: ScopedData
-  stripe: StripeGateway
-  mailer: Mailer
-  webUrl: string
-  log: Logger
-  now?: () => number
-}
-
-export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promise<void> {
-  const { data, stripe, mailer, webUrl, log } = deps
-  const now = deps.now ?? Date.now
-  const links = { billing: billingLink(webUrl) }
-
-  const ignored = (reason: string) => log.warn({ reason }, 'billing event ignored')
+export function settleBillingEvent(
+  deps: Pick<AppDeps, 'data' | 'stripe' | 'mailer' | 'env'>,
+  log: Logger,
+  event: BillingEvent,
+): Promise<void> {
+  const { data, stripe, mailer } = deps
+  const links = { billing: billingLink(deps.env.webUrl) }
 
   const notSent = (organizationId: string, kind: MailKind, err: unknown) =>
     log.error({ err, organizationId, mail: kind }, 'billing email not sent')
@@ -158,14 +152,19 @@ export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promi
 
   async function settleTopUp(topUp: EventOf<'top-up'>) {
     if (!topUp.paid) return
-    const found = await findOrganization(data, topUp.organizationId, `top-up ${topUp.sessionId}`)
-    if (found.kind === 'ignored') return ignored(found.reason)
+    const found = await findOrganization(
+      data,
+      log,
+      topUp.organizationId,
+      `top-up ${topUp.sessionId}`,
+    )
+    if (!found) return
     const credited = await found.scope.usage.credit(topUp.cents, {
       idempotencyKey: `checkout:${topUp.sessionId}`,
     })
     if (topUp.customerId) await found.scope.setStripeCustomer(topUp.customerId)
     if (credited) {
-      log.info({ organizationId: found.organizationId, cents: topUp.cents }, 'credits topped up')
+      log.info({ organizationId: found.organization.id, cents: topUp.cents }, 'credits topped up')
     }
   }
 
@@ -174,10 +173,11 @@ export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promi
     if (!topUp) return
     const found = await findOrganization(
       data,
+      log,
       topUp.organizationId,
       `top-up ${reversal.paymentIntentId}`,
     )
-    if (found.kind === 'ignored') return ignored(found.reason)
+    if (!found) return
     const cents = Math.min(
       topUp.cents,
       Math.round((reversal.amount * topUp.cents) / Math.max(topUp.total, 1)),
@@ -189,16 +189,16 @@ export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promi
     })
     if (reversed) {
       log.info(
-        { organizationId: found.organizationId, cents, reversalId: reversal.reversalId },
+        { organizationId: found.organization.id, cents, reversalId: reversal.reversalId },
         'top-up taken back',
       )
     }
   }
 
   async function settleRenewal(upcoming: EventOf<'invoice-upcoming'>) {
-    const found = await findSubscriptionOrganization(data, stripe, upcoming.subscriptionId)
-    if (found.kind === 'ignored') return ignored(found.reason)
-    const { organizationId, subscription } = found
+    const found = await findSubscriptionOrganization(data, stripe, log, upcoming.subscriptionId)
+    if (!found) return
+    const { organization, subscription } = found
     const paid = subscriptionOfLookupKey(subscription.lookupKey)
     if (paid?.cycle !== 'yearly') return
     const customer = await stripe.customer(subscription.customerId)
@@ -206,19 +206,19 @@ export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promi
       plan: PLAN_LABELS[paid.plan],
       charge: chargeOf(upcoming.amount, customer.card),
       renewsOn: dayOf(subscription.periodEnd),
-      daysLeft: daysUntil(new Date(subscription.periodEnd * 1000), new Date(now())),
+      daysLeft: daysUntil(new Date(subscription.periodEnd * 1000), new Date()),
       links,
     })
-    await send(organizationId, 'renewal', email, recipients(customer.email))
+    await send(organization.id, 'renewal', email, recipients(customer.email))
   }
 
   async function settleReceipt(invoice: EventOf<'invoice-paid'>) {
     if (invoice.amount.amount === 0) return
-    const found = await findSubscriptionOrganization(data, stripe, invoice.subscriptionId)
-    if (found.kind === 'ignored') return ignored(found.reason)
-    const { organizationId, subscription } = found
+    const found = await findSubscriptionOrganization(data, stripe, log, invoice.subscriptionId)
+    if (!found) return
+    const { organization, subscription } = found
     const paid = subscriptionOfLookupKey(subscription.lookupKey)
-    if (!paid) return ignored(`subscription ${subscription.id} bills no known price`)
+    if (!paid) return void ignored(log, `subscription ${subscription.id} bills no known price`)
     const customer = await stripe.customer(subscription.customerId)
     const email = receiptEmail({
       plan: PLAN_LABELS[paid.plan],
@@ -227,46 +227,46 @@ export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promi
       renewsOn: dayOf(subscription.periodEnd),
       links: { ...links, invoice: invoice.invoiceUrl ?? links.billing },
     })
-    await send(organizationId, 'receipt', email, recipients(customer.email))
+    await send(organization.id, 'receipt', email, recipients(customer.email))
   }
 
   async function settleFailed(failed: EventOf<'invoice-failed'>) {
     if (failed.nextAttempt === null) return
-    const found = await findSubscriptionOrganization(data, stripe, failed.subscriptionId)
-    if (found.kind === 'ignored') return ignored(found.reason)
-    const { organizationId, scope, subscription } = found
+    const found = await findSubscriptionOrganization(data, stripe, log, failed.subscriptionId)
+    if (!found) return
+    const { organization, scope, subscription } = found
     const [customer, members] = await Promise.all([
       stripe.customer(subscription.customerId),
       scope.members.list(),
     ])
     const email = failedEmail({
       charge: chargeOf(failed.amount, customer.card),
-      retryInDays: daysUntil(new Date(failed.nextAttempt * 1000), new Date(now())),
+      retryInDays: daysUntil(new Date(failed.nextAttempt * 1000), new Date()),
       links,
     })
     await send(
-      organizationId,
+      organization.id,
       'failed payment',
       email,
       recipients(customer.email, ...adminsOf(members)),
     )
   }
 
-  async function settleDowngrade(outcome: Applied) {
-    const { subscription, previousPlan, plan } = outcome
+  async function settleDowngrade({ organization, plan, subscription }: AppliedPlan) {
+    const previousPlan = organization.plan
     if (!downgradeDue({ previousPlan, plan, cancellationReason: subscription.cancellationReason }))
       return
     const [customer, members] = await Promise.all([
       stripe.customer(subscription.customerId),
-      data.forOrganization(outcome.organizationId).members.list(),
+      data.forOrganization(organization.id).members.list(),
     ])
     const email = downgradedEmail({
-      organization: outcome.organization.name,
+      organization: organization.name,
       plan: PLAN_LABELS[previousPlan],
       links,
     })
     await send(
-      outcome.organizationId,
+      organization.id,
       'downgraded',
       email,
       recipients(customer.email, ...adminsOf(members)),
@@ -274,13 +274,12 @@ export function settleBillingEvent(deps: SettleDeps, event: BillingEvent): Promi
   }
 
   async function settleSubscription(event: SubscriptionEvent) {
-    const outcome = await applyBillingEvent(data, stripe, event)
-    if (outcome.kind === 'ignored') return ignored(outcome.reason)
-    log.info({ organizationId: outcome.organizationId, plan: outcome.plan }, 'plan updated')
+    const applied = await applyBillingEvent(data, stripe, log, event)
+    if (!applied) return
     try {
-      await settleDowngrade(outcome)
+      await settleDowngrade(applied)
     } catch (err) {
-      notSent(outcome.organizationId, 'downgraded', err)
+      notSent(applied.organization.id, 'downgraded', err)
     }
   }
 

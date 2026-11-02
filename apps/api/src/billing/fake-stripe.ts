@@ -1,5 +1,6 @@
 import { PLAN_OFFERS } from '@arrakit/plans'
 
+import { nowSeconds } from '../day'
 import type {
   BillingEvent,
   BillingSnapshot,
@@ -19,6 +20,7 @@ interface FakeChange {
   subscriptionId: string
   choice: PaidSubscription
   when: 'now' | 'renewal'
+  prorationDate?: number
 }
 
 type OptionalState = 'cancellationReason' | 'periodEnd' | 'itemId' | 'scheduleId'
@@ -43,6 +45,7 @@ export function fakeStripe() {
   const topUps: TopUpRequest[] = []
   const topUpPayments = new Map<string, { organizationId: string; cents: number; total: number }>()
   const changes: FakeChange[] = []
+  const previews: { subscriptionId: string; choice: PaidSubscription; prorationDate: number }[] = []
   const cancellations: { subscriptionId: string; cancel: boolean }[] = []
   const ended: string[] = []
   const portals: { customerId: string; returnUrl: string; to: PortalTarget }[] = []
@@ -72,7 +75,7 @@ export function fakeStripe() {
   const subscribe = (state: FakeSubscription) => {
     subscriptions.set(state.id, {
       cancellationReason: null,
-      periodEnd: Math.floor(Date.now() / 1000) + MONTH_SECONDS,
+      periodEnd: nowSeconds() + MONTH_SECONDS,
       itemId: `si_${state.id}`,
       scheduleId: null,
       ...state,
@@ -137,13 +140,14 @@ export function fakeStripe() {
       failIfAsked('price')
       return priceOf(choice)
     },
-    async previewNow() {
+    async previewNow(subscription, choice, prorationDate) {
       failIfAsked('previewNow')
+      previews.push({ subscriptionId: subscription.id, choice, prorationDate })
       return { ...FAKE_PRORATION }
     },
-    async changeNow(subscription, choice) {
+    async changeNow(subscription, choice, prorationDate) {
       failIfAsked('changeNow')
-      changes.push({ subscriptionId: subscription.id, choice, when: 'now' })
+      changes.push({ subscriptionId: subscription.id, choice, when: 'now', prorationDate })
       const lookupKey = `${choice.plan}_${choice.cycle}`
       const changed = { ...(subscriptions.get(subscription.id) ?? subscription), lookupKey }
       subscriptions.set(subscription.id, changed)
@@ -179,6 +183,8 @@ export function fakeStripe() {
     async endNow(subscriptionId) {
       failIfAsked('endNow')
       ended.push(subscriptionId)
+      const subscription = subscriptions.get(subscriptionId)
+      if (subscription) subscriptions.set(subscriptionId, { ...subscription, status: 'canceled' })
     },
     async portal(customerId, returnUrl, to) {
       failIfAsked('portal')
@@ -192,6 +198,7 @@ export function fakeStripe() {
     checkouts,
     topUps,
     topUpPayments,
+    previews,
     changes,
     cancellations,
     ended,

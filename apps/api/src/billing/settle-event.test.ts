@@ -4,11 +4,12 @@ import type { OrganizationRow } from '@arrakit/db'
 import { organizations } from '@arrakit/db/schema'
 import { type TestData, openTestData } from '@arrakit/db/testing'
 import type { Plan } from '@arrakit/plans'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
+import { recordingLogger } from '../observability/logger'
 import { fakeStripe } from './fake-stripe'
 import { applyBillingEvent } from './settle-event'
-import type { SubscriptionState } from './stripe-gateway'
+import type { StripeGateway, SubscriptionEvent, SubscriptionState } from './stripe-gateway'
 
 let data: TestData
 let slugs = 0
@@ -17,6 +18,16 @@ beforeAll(async () => {
   data = await openTestData()
 })
 afterAll(() => data.close())
+
+let recorded = recordingLogger()
+beforeEach(() => {
+  recorded = recordingLogger()
+})
+
+const apply = (stripe: Pick<StripeGateway, 'subscription' | 'endNow'>, given: SubscriptionEvent) =>
+  applyBillingEvent(data, stripe, recorded.log, given)
+
+const warned = (msg: string) => recorded.logs.filter((entry) => entry.msg === msg)
 
 async function organization(initial: Partial<OrganizationRow> = {}): Promise<OrganizationRow> {
   slugs += 1
@@ -53,14 +64,13 @@ describe('applyBillingEvent', () => {
   it("counts the plan's monthly grant from the subscription's billing anchor", async () => {
     const org = await organization()
     const anchor = new Date('2026-10-04T12:00:00Z')
-    await applyBillingEvent(data, stripeWith(org.id, { anchor }), event())
+    await apply(stripeWith(org.id, { anchor }), event())
     expect((await read(org.id)).usageAnchor).toEqual(anchor)
   })
 
   it('puts the organization on the plan an active subscription pays for, recording its customer and subscription', async () => {
     const org = await organization()
-    const outcome = await applyBillingEvent(data, stripeWith(org.id), event())
-    expect(outcome).toMatchObject({ kind: 'applied', organizationId: org.id, plan: 'pro' })
+    expect(await apply(stripeWith(org.id), event())).toMatchObject({ plan: 'pro' })
     expect(await read(org.id)).toMatchObject({
       plan: 'pro',
       stripeCustomerId: expect.stringMatching(/^cus_/),
@@ -71,15 +81,13 @@ describe('applyBillingEvent', () => {
   it('says which plan the organization was on before: Free on the first payment, Pro on a replay', async () => {
     const org = await organization()
     const stripe = stripeWith(org.id)
-    expect(await applyBillingEvent(data, stripe, event())).toMatchObject({
-      kind: 'applied',
-      previousPlan: 'free',
+    expect(await apply(stripe, event())).toMatchObject({
+      organization: { id: org.id, name: 'Alder', plan: 'free' },
       plan: 'pro',
-      organization: { name: 'Alder', slug: org.slug },
       subscription: { lookupKey: 'pro_yearly' },
     })
-    expect(await applyBillingEvent(data, stripe, event())).toMatchObject({
-      previousPlan: 'pro',
+    expect(await apply(stripe, event())).toMatchObject({
+      organization: { plan: 'pro' },
       plan: 'pro',
     })
   })
@@ -89,7 +97,8 @@ describe('applyBillingEvent', () => {
     async (status) => {
       const org = await organization({ plan: 'internal' })
       const stripe = stripeWith(org.id, { status, lookupKey: 'team_monthly' })
-      expect(await applyBillingEvent(data, stripe, event())).toMatchObject({ kind: 'ignored' })
+      expect(await apply(stripe, event())).toBeNull()
+      expect(warned('billing event ignored')).toHaveLength(1)
       expect((await read(org.id)).plan).toBe('internal')
     },
   )
@@ -97,9 +106,9 @@ describe('applyBillingEvent', () => {
   it('lands on the same state when Stripe delivers the event twice', async () => {
     const org = await organization()
     const stripe = stripeWith(org.id)
-    await applyBillingEvent(data, stripe, event())
+    await apply(stripe, event())
     const once = await read(org.id)
-    await applyBillingEvent(data, stripe, event())
+    await apply(stripe, event())
     expect(await read(org.id)).toEqual(once)
   })
 
@@ -113,10 +122,7 @@ describe('applyBillingEvent', () => {
         usageAnchor: new Date(),
       })
       const stripe = stripeWith(org.id, { status, customerId: `cus_${status}` })
-      expect(await applyBillingEvent(data, stripe, event())).toMatchObject({
-        kind: 'applied',
-        plan: 'free',
-      })
+      expect(await apply(stripe, event())).toMatchObject({ plan: 'free' })
       expect(await read(org.id)).toMatchObject({
         plan: 'free',
         stripeCustomerId: `cus_${status}`,
@@ -133,17 +139,76 @@ describe('applyBillingEvent', () => {
       stripeSubscriptionId: 'sub_2',
     })
     const stripe = stripeWith(org.id, { status: 'canceled', customerId: 'cus_replaced' })
-    expect(await applyBillingEvent(data, stripe, event())).toEqual({
-      kind: 'ignored',
-      reason: 'subscription sub_1 was replaced',
+    expect(await apply(stripe, event())).toBeNull()
+    expect(warned('billing event ignored')).toEqual([
+      expect.objectContaining({ reason: 'subscription sub_1 was replaced' }),
+    ])
+    expect(await read(org.id)).toMatchObject({ plan: 'team', stripeSubscriptionId: 'sub_2' })
+  })
+
+  it('ends a second live subscription at once, keeping the one the organization pays with', async () => {
+    const org = await organization()
+    const stripe = stripeWith(org.id)
+    stripe.subscribe({
+      id: 'sub_2',
+      customerId: 'cus_twin',
+      organizationId: org.id,
+      status: 'active',
+      lookupKey: 'team_monthly',
     })
+    await apply(stripe, event())
+    expect(await apply(stripe, event(null, 'sub_2'))).toBeNull()
+    expect(warned('duplicate subscription ended')).toEqual([
+      expect.objectContaining({ organizationId: org.id, kept: 'sub_1', ended: 'sub_2' }),
+    ])
+    expect(stripe.ended).toEqual(['sub_2'])
+    expect(await read(org.id)).toMatchObject({ plan: 'pro', stripeSubscriptionId: 'sub_1' })
+  })
+
+  it('settles the ended duplicate, and a replay of either, without moving the plan', async () => {
+    const org = await organization()
+    const stripe = stripeWith(org.id)
+    stripe.subscribe({
+      id: 'sub_2',
+      customerId: 'cus_twin',
+      organizationId: org.id,
+      status: 'active',
+      lookupKey: 'team_monthly',
+    })
+    await apply(stripe, event())
+    await apply(stripe, event(null, 'sub_2'))
+    expect(await apply(stripe, event(null, 'sub_2'))).toBeNull()
+    expect(warned('billing event ignored')).toHaveLength(1)
+    expect(await apply(stripe, event())).toMatchObject({ plan: 'pro' })
+    expect(stripe.ended).toEqual(['sub_2'])
+    expect(await read(org.id)).toMatchObject({ plan: 'pro', stripeSubscriptionId: 'sub_1' })
+  })
+
+  it('takes a new subscription once the one it replaces has ended', async () => {
+    const org = await organization({
+      plan: 'pro' as Plan,
+      stripeCustomerId: 'cus_moved',
+      stripeSubscriptionId: 'sub_1',
+    })
+    const stripe = stripeWith(org.id, { status: 'canceled', customerId: 'cus_moved' })
+    stripe.subscribe({
+      id: 'sub_2',
+      customerId: 'cus_moved',
+      organizationId: org.id,
+      status: 'active',
+      lookupKey: 'team_yearly',
+    })
+    expect(await apply(stripe, event(null, 'sub_2'))).toMatchObject({ plan: 'team' })
+    expect(stripe.ended).toEqual([])
     expect(await read(org.id)).toMatchObject({ plan: 'team', stripeSubscriptionId: 'sub_2' })
   })
 
   it('takes the organization from the event when the subscription carries none', async () => {
     const org = await organization()
-    const outcome = await applyBillingEvent(data, stripeWith(null), event(org.id))
-    expect(outcome).toMatchObject({ kind: 'applied', organizationId: org.id, plan: 'pro' })
+    expect(await apply(stripeWith(null), event(org.id))).toMatchObject({
+      organization: { id: org.id },
+      plan: 'pro',
+    })
     expect((await read(org.id)).plan).toBe('pro')
   })
 
@@ -154,8 +219,8 @@ describe('applyBillingEvent', () => {
     ['a malformed organization id', event(), 'not-a-uuid'],
   ])('ignores an event with %s, writing nothing', async (_, given, subscriptionOrganization) => {
     const org = await organization()
-    const outcome = await applyBillingEvent(data, stripeWith(subscriptionOrganization), given)
-    expect(outcome.kind).toBe('ignored')
+    expect(await apply(stripeWith(subscriptionOrganization), given)).toBeNull()
+    expect(warned('billing event ignored')).toHaveLength(1)
     expect(await read(org.id)).toMatchObject({ plan: 'free', stripeCustomerId: null })
   })
 })

@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { joined, ownerOf } from '../testing/people'
+import { authApi, createOrganization, joined, ownerOf } from '../testing/people'
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp } from '../testing/app'
 
 const MAC =
@@ -51,11 +51,8 @@ describe('me and account', () => {
       plan: null,
       seats: null,
     })
-    await t.client(headers).onboarding.create({
-      name: '',
-      personName: 'Lucía Gómez',
-      termsAccepted: true,
-    })
+    await authApi(t, headers).post('update-user', { name: 'Lucía Gómez' })
+    await createOrganization(t, headers)
     await expect(t.client(headers).me.get()).resolves.toMatchObject({
       name: 'Lucía Gómez',
       organization: { name: 'Elm', slug: 'elm', plan: 'free' },
@@ -107,17 +104,17 @@ describe('me and account', () => {
     expect(anonymous.status).toBe(401)
   })
 
-  it('reads the name and language fresh, past the cached session', async () => {
-    const headers = new Headers({
-      cookie: await browserCookies('fresh@devices.vc'),
-      origin: TEST_WEB_ORIGIN,
+  it('shows a new name and language at once, through the cookie update-user rewrites', async () => {
+    const cookie = await browserCookies('fresh@devices.vc')
+    const res = await t.request('/api/auth/update-user', {
+      method: 'POST',
+      headers: { cookie, origin: TEST_WEB_ORIGIN, 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Ana Ibarra', language: 'es' }),
     })
-    await t.client(headers).onboarding.create({
-      name: 'Fresh',
-      personName: 'Ana Ibarra',
-      termsAccepted: true,
-    })
-    await t.client(headers).me.account.update({ language: 'es' })
+    expect(res.status).toBe(200)
+    const rewritten = res.headers.getSetCookie().map((set) => set.split(';')[0])
+    expect(rewritten.some((pair) => pair?.includes('session_data='))).toBe(true)
+    const headers = new Headers({ cookie: rewritten.join('; '), origin: TEST_WEB_ORIGIN })
     await expect(t.client(headers).me.get()).resolves.toMatchObject({
       name: 'Ana Ibarra',
       language: 'es',
@@ -143,22 +140,25 @@ describe('me and account', () => {
   it('updates only what is sent, trimmed, and reflects the name in me', async () => {
     const { headers } = await t.signIn({ email: 'up@acme.com', name: 'Old' })
     const other = await t.signIn({ email: 'other@acme.com', name: 'Other' })
-    const api = t.client(headers)
-    await expect(api.me.account.update({})).resolves.toMatchObject({ name: 'Old' })
-    await expect(
-      api.me.account.update({
-        name: '  Ana Pérez ',
-        language: 'es',
-        timeZone: 'Asia/Kolkata',
-        emails: { productNews: true },
-      }),
-    ).resolves.toMatchObject({
+    const update = (body: Record<string, unknown>) => authApi(t, headers).post('update-user', body)
+    expect(await update({ language: 'es' })).toMatchObject({ status: 200 })
+    await expect(t.client(headers).me.account.get()).resolves.toMatchObject({
+      name: 'Old',
+      language: 'es',
+    })
+    expect(
+      await update({ name: '  Ana Pérez ', timeZone: 'Asia/Kolkata', emailProductNews: true }),
+    ).toMatchObject({ status: 200 })
+    await expect(t.client(headers).me.account.get()).resolves.toMatchObject({
       name: 'Ana Pérez',
       language: 'es',
       timeZone: 'Asia/Kolkata',
       emails: { productNews: true },
     })
-    await expect(api.me.get()).resolves.toMatchObject({ name: 'Ana Pérez', language: 'es' })
+    await expect(t.client(headers).me.get()).resolves.toMatchObject({
+      name: 'Ana Pérez',
+      language: 'es',
+    })
     await expect(t.client(other.headers).me.account.get()).resolves.toMatchObject({
       name: 'Other',
       language: 'en',
@@ -172,38 +172,31 @@ describe('me and account', () => {
     ['an unknown language', { language: 'fr' }],
     ['a lower-case zone', { timeZone: 'europe/madrid' }],
     ['an offset', { timeZone: '+02:00' }],
-    ['a non-boolean email choice', { emails: { productNews: 'no' } }],
+    ['a non-boolean email choice', { emailProductNews: 'no' }],
+    ['an email', { email: 'new@acme.com' }],
+    ['a picture', { image: 'https://example.com/me.png' }],
   ])('refuses %s with 400, saving nothing', async (label, body) => {
     const email = `strict-${label.replace(/\W+/g, '-')}@acme.com`
     const { headers } = await t.signIn({ email, name: 'Strict' })
-    await expect(
-      t.client(headers).me.account.update(body as unknown as Record<string, never>),
-    ).rejects.toMatchObject({ status: 400 })
+    expect((await authApi(t, headers).post('update-user', body)).status).toBe(400)
     await expect(t.client(headers).me.account.get()).resolves.toMatchObject({
       name: 'Strict',
+      email,
       language: 'en',
       timeZone: null,
       emails: { productNews: false },
     })
   })
 
-  it("keeps the language off Better Auth's own update-user", async () => {
-    const { headers } = await t.signIn({ email: 'lang@acme.com' })
-    await t.app.request('/api/auth/update-user', {
-      method: 'POST',
-      headers: { ...Object.fromEntries(headers), 'content-type': 'application/json' },
-      body: JSON.stringify({ language: 'es' }),
-    })
-    expect((await t.client(headers).me.account.get()).language).toBe('en')
-  })
-
   describe('delete', () => {
     it('refuses an owner with 409 and keeps them signed in', async () => {
       const owner = await ownerOf(t, 'owner@oak.vc')
-      await expect(t.client(owner.headers).me.delete()).rejects.toMatchObject({
+      expect(await authApi(t, owner.headers).post('delete-user')).toMatchObject({
         status: 409,
-        message:
-          'You own an organization. Delete the organization first, in Settings → Security and data.',
+        body: {
+          message:
+            'You own an organization. Delete the organization first, in Settings → Security and data.',
+        },
       })
       await expect(t.client(owner.headers).me.get()).resolves.toMatchObject({ role: 'owner' })
     })
@@ -212,13 +205,28 @@ describe('me and account', () => {
       const owner = await ownerOf(t, 'owner@pine.vc')
       const admin = await joined(t, owner, 'ana@pine.vc', 'admin')
       const phone = await signInFrom('ana@pine.vc', IPHONE)
-      await t.client(admin.headers).me.delete()
+      const deleted = await authApi(t, admin.headers).post('delete-user')
+      expect(deleted).toMatchObject({ status: 200, body: { success: true } })
       await expect(t.client(admin.headers).me.get()).rejects.toMatchObject({ status: 401 })
       await expect(t.client(phone).me.get()).rejects.toMatchObject({ status: 401 })
       expect(
         (await t.data.forOrganization(owner.organizationId).members.list()).map((m) => m.email),
       ).toEqual(['owner@pine.vc'])
-      await expect(t.client().me.delete()).rejects.toMatchObject({ status: 401 })
+      expect((await authApi(t, new Headers()).post('delete-user')).status).toBe(401)
+    })
+
+    it('asks a session older than a day to sign in again, deleting nothing', async () => {
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date() })
+      const owner = await ownerOf(t, 'owner@larch.vc')
+      const member = await joined(t, owner, 'late@larch.vc')
+      vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000)
+      expect(await authApi(t, member.headers).post('delete-user')).toMatchObject({
+        status: 400,
+        body: { code: 'SESSION_EXPIRED' },
+      })
+      await expect(t.client(member.headers).me.get()).resolves.toMatchObject({
+        email: 'late@larch.vc',
+      })
     })
   })
 })

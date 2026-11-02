@@ -24,13 +24,10 @@ export interface AuthAnswer<T = Record<string, unknown>> {
   body: T & { message?: string; code?: string }
 }
 
-/**
- * Calls Better Auth's organization plugin over HTTP as the web does (`/api/auth/organization/*`):
- * a body POSTs, a query GETs.
- */
-export function orgApi(t: TestApp, headers: Headers) {
+/** Calls Better Auth over HTTP as the web does (`/api/auth/*`): a body POSTs, a query GETs. */
+export function authApi(t: TestApp, headers: Headers, prefix = '') {
   async function call<T>(path: string, init: RequestInit): Promise<AuthAnswer<T>> {
-    const res = await t.request(`/api/auth/organization/${path}`, init)
+    const res = await t.request(`/api/auth/${prefix}${path}`, init)
     const text = await res.text()
     return { status: res.status, body: (text ? JSON.parse(text) : null) as AuthAnswer<T>['body'] }
   }
@@ -46,12 +43,37 @@ export function orgApi(t: TestApp, headers: Headers) {
   }
 }
 
+/** Better Auth's organization plugin (`/api/auth/organization/*`). */
+export const orgApi = (t: TestApp, headers: Headers) => authApi(t, headers, 'organization/')
+
+export interface CreatedOrganization {
+  id: string
+  name: string
+  slug: string
+  plan: Plan
+}
+
+/** Creates an organization as the web does; the auth hook names its slug. */
+export async function createOrganization(
+  t: TestApp,
+  headers: Headers,
+  name = '',
+  extra: Record<string, unknown> = { termsAccepted: true },
+): Promise<CreatedOrganization> {
+  const created = await orgApi(t, headers).post<CreatedOrganization>('create', {
+    name,
+    slug: 'pending',
+    ...extra,
+  })
+  if (created.status !== 200) throw new Error(`create refused: ${JSON.stringify(created)}`)
+  const { id, slug, plan } = created.body
+  return { id, name: created.body.name, slug, plan }
+}
+
 /** A signed-in person who created their organization through the API, then put on `plan`. */
 export async function ownerOf(t: TestApp, email: string, plan: Plan = 'team', name = '') {
   const person = await t.signIn({ email, name })
-  const organization = await t
-    .client(person.headers)
-    .onboarding.create({ name: '', termsAccepted: true })
+  const organization = await createOrganization(t, person.headers)
   if (plan !== 'free') await t.data.forOrganization(organization.id).setPlan(plan)
   return { ...person, email, organization, organizationId: organization.id }
 }

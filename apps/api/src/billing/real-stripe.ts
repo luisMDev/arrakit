@@ -32,6 +32,7 @@ const CHECKOUT_PAID_EVENTS = new Set([
   'checkout.session.async_payment_succeeded',
 ])
 const INVOICE_EVENTS = new Set(['invoice.upcoming', 'invoice.payment_failed', 'invoice.paid'])
+export const PRICE_CACHE_MS = 5 * 60 * 1000
 
 export const planKeyOf = (price: Pick<Stripe.Price, 'lookup_key'>): string | null =>
   price.lookup_key ? price.lookup_key.replace(PRICE_KEY_PREFIX, '') : null
@@ -90,14 +91,19 @@ function subscriptionState(subscription: Stripe.Subscription): SubscriptionState
   }
 }
 
-function memoised<T>(load: () => Promise<T>): () => Promise<T> {
+/** One load in flight at a time, kept for `ttlMs` and dropped when it fails. */
+function memoised<T>(load: () => Promise<T>, ttlMs = Infinity): () => Promise<T> {
   let pending: Promise<T> | null = null
+  let until = 0
   return () => {
-    pending ??= load().catch((err: unknown) => {
-      pending = null
+    if (pending && Date.now() < until) return pending
+    until = Date.now() + ttlMs
+    const loading = load().catch((err: unknown) => {
+      if (pending === loading) pending = null
       throw err
     })
-    return pending
+    pending = loading
+    return loading
   }
 }
 
@@ -167,21 +173,23 @@ export function mapStripeEvent(event: Stripe.Event): BillingEvent | null {
 }
 
 export function realStripeGateway(keys: StripeKeys, stripe = new Stripe(keys.secretKey)) {
-  const prices = new Map<string, () => Promise<Stripe.Price>>()
-  const priceByKey = (key: string): Promise<Stripe.Price> => {
-    let load = prices.get(key)
-    if (!load) {
-      load = memoised(async () => {
-        const [price] = (await stripe.prices.list({ lookup_keys: [key], active: true, limit: 1 }))
-          .data
-        if (!price) throw new Error(`[billing] no active Stripe price with lookup key ${key}`)
-        return price
-      })
-      prices.set(key, load)
-    }
-    return load()
+  const priceByKey = async (key: string): Promise<Stripe.Price> => {
+    const [found] = (await stripe.prices.list({ lookup_keys: [key], active: true, limit: 1 })).data
+    if (!found) throw new Error(`[billing] no active Stripe price with lookup key ${key}`)
+    return found
   }
   const priceOf = ({ plan, cycle }: PaidSubscription) => priceByKey(priceLookupKey(plan, cycle))
+
+  const shownPrices = new Map<string, () => Promise<Stripe.Price>>()
+  const shownPriceOf = (choice: PaidSubscription): Promise<Stripe.Price> => {
+    const key = priceLookupKey(choice.plan, choice.cycle)
+    let cached = shownPrices.get(key)
+    if (!cached) {
+      cached = memoised(() => priceByKey(key), PRICE_CACHE_MS)
+      shownPrices.set(key, cached)
+    }
+    return cached()
+  }
 
   const topUpProduct = async () => {
     const price = await priceByKey(TOP_UP_LOOKUP_KEY)
@@ -328,31 +336,32 @@ export function realStripeGateway(keys: StripeKeys, stripe = new Stripe(keys.sec
     },
 
     async price(choice) {
-      const price = await priceOf(choice)
+      const price = await shownPriceOf(choice)
       const money = priceMoney(price)
       if (!money) throw new Error(`[billing] price ${price.id} has no unit amount`)
       return money
     },
 
-    async previewNow(subscription, choice) {
+    async previewNow(subscription, choice, prorationDate) {
       const price = await priceOf(choice)
       const preview = await stripe.invoices.createPreview({
         subscription: subscription.id,
         subscription_details: {
           items: [{ id: subscription.itemId, price: price.id }],
           proration_behavior: 'always_invoice',
-          proration_date: Math.floor(Date.now() / 1000),
+          proration_date: prorationDate,
         },
       })
       return { amount: preview.amount_due, currency: preview.currency }
     },
 
-    async changeNow(subscription, choice) {
+    async changeNow(subscription, choice, prorationDate) {
       const price = await priceOf(choice)
       await releaseSchedule(subscription)
       const changed = await stripe.subscriptions.update(subscription.id, {
         items: [{ id: subscription.itemId, price: price.id }],
         proration_behavior: 'always_invoice',
+        proration_date: prorationDate,
         payment_behavior: 'error_if_incomplete',
         cancel_at_period_end: false,
       })

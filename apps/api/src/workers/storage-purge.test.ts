@@ -1,6 +1,12 @@
-import { type TestData, insertOrganization, openTestData } from '@arrakit/db/testing'
 import { WORKER_RETRY_POLICY } from '@arrakit/db'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import {
+  type QueuedTestData,
+  type TestData,
+  insertOrganization,
+  openTestData,
+  openTestDataWithQueue,
+} from '@arrakit/db/testing'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { type LogEntry, recordingLogger } from '../observability/logger'
 
@@ -73,4 +79,31 @@ describe('storage purge worker', () => {
       }),
     ])
   })
+})
+
+describe('storage purge on the real queue (pg-boss over PGlite)', () => {
+  let data: QueuedTestData
+  const { log } = recordingLogger()
+
+  beforeAll(async () => {
+    data = await openTestDataWithQueue()
+    await registerStoragePurge(data, log)
+  }, 60_000)
+  afterAll(() => data.close())
+
+  it('empties the organization folder once the queued job runs', async () => {
+    const { id } = await insertOrganization(data, { slug: 'queued-purge-co' })
+    data.storage.put(id, 'companies/c1/a.pdf')
+    data.storage.put(id, 'keep.txt')
+    const paths = async () =>
+      (await data.forOrganization(id).files.list('')).map((file) => file.path)
+    expect(await paths()).toHaveLength(2)
+
+    await queueStoragePurge(data.jobs, { organizationId: id, folder: '' }, log)
+
+    await vi.waitFor(async () => expect(await paths()).toEqual([]), {
+      timeout: 20_000,
+      interval: 100,
+    })
+  }, 30_000)
 })

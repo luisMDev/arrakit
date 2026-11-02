@@ -109,8 +109,17 @@ export interface StripeGateway {
   customer(id: string): Promise<{ email: string | null; card: Card | null }>
   billing(customerId: string, subscriptionId: string | null): Promise<BillingSnapshot>
   price(choice: PaidSubscription): Promise<Money>
-  previewNow(subscription: SubscriptionState, choice: PaidSubscription): Promise<Money>
-  changeNow(subscription: SubscriptionState, choice: PaidSubscription): Promise<SubscriptionState>
+  /** `prorationDate` in Unix seconds: `changeNow` given the same date charges what this answers. */
+  previewNow(
+    subscription: SubscriptionState,
+    choice: PaidSubscription,
+    prorationDate: number,
+  ): Promise<Money>
+  changeNow(
+    subscription: SubscriptionState,
+    choice: PaidSubscription,
+    prorationDate: number,
+  ): Promise<SubscriptionState>
   changeAtRenewal(
     subscription: SubscriptionState,
     choice: PaidSubscription,
@@ -124,9 +133,11 @@ export const STRIPE_UNREACHABLE = "Couldn't reach Stripe. Try again in a minute.
 const CARD_DECLINED = 'Your card was declined. Update it under Payment, then try again.'
 const NOT_SET_UP = 'Payments are not set up yet.'
 
+class StripeNotSetUp extends Error {}
+
 /** Without Stripe keys: every call answers 503 and every webhook is refused. */
 export function unconfiguredStripe(): StripeGateway {
-  const refuse = () => Promise.reject(new ORPCError('SERVICE_UNAVAILABLE', { message: NOT_SET_UP }))
+  const refuse = () => Promise.reject(new StripeNotSetUp(NOT_SET_UP))
   return {
     publishableKey: '',
     checkout: refuse,
@@ -148,28 +159,39 @@ export function unconfiguredStripe(): StripeGateway {
   }
 }
 
+export type StripeFailure = 'PAYMENT_REQUIRED' | 'BAD_GATEWAY' | 'SERVICE_UNAVAILABLE'
+
+/** Builds the error a refused Stripe call surfaces as. */
+export type StripeRefusal = (code: StripeFailure, message: string) => Error
+
+const orpcRefusal: StripeRefusal = (code, message) =>
+  new ORPCError(code, {
+    status: code === 'PAYMENT_REQUIRED' ? PAYMENT_REQUIRED_STATUS : undefined,
+    message,
+  })
+
 const isCardError = (err: unknown) => (err as { type?: string } | null)?.type === 'StripeCardError'
 
 /**
- * Every call that reaches Stripe, logged when it fails and answered as one oRPC error: 402 for a
- * declined card, 502 for anything else. `event` is left as is (the webhook answers 401).
+ * Every call that reaches Stripe, logged when it fails and answered as one error built by
+ * `refuse`: 402 for a declined card, 503 when Stripe is not set up, 502 for anything else.
+ * `event` is left as is (the webhook answers 401).
  */
-export function guardedStripe(gateway: StripeGateway, log: Logger): StripeGateway {
+export function guardedStripe(
+  gateway: StripeGateway,
+  log: Logger,
+  refuse: StripeRefusal = orpcRefusal,
+): StripeGateway {
   const guard =
     (operation: string, call: (...args: unknown[]) => Promise<unknown>) =>
     async (...args: unknown[]) => {
       try {
         return await call(...args)
       } catch (err) {
-        if (err instanceof ORPCError) throw err
+        if (err instanceof StripeNotSetUp) throw refuse('SERVICE_UNAVAILABLE', err.message)
         log.error({ err, operation }, 'Stripe call failed')
-        if (isCardError(err)) {
-          throw new ORPCError('PAYMENT_REQUIRED', {
-            status: PAYMENT_REQUIRED_STATUS,
-            message: CARD_DECLINED,
-          })
-        }
-        throw new ORPCError('BAD_GATEWAY', { message: STRIPE_UNREACHABLE })
+        if (isCardError(err)) throw refuse('PAYMENT_REQUIRED', CARD_DECLINED)
+        throw refuse('BAD_GATEWAY', STRIPE_UNREACHABLE)
       }
     }
   return Object.fromEntries(

@@ -1,13 +1,12 @@
 import { createHash, generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto'
 
-import { mcpResourceURL } from '@arrakit/auth'
+import { MCP_SCOPE, mcpResourceURL } from '@arrakit/auth'
 import { oauthClientResources, oauthClients } from '@arrakit/db/schema'
 import { insertMember } from '@arrakit/db/testing'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp, sessionCookieOf } from '../testing/app'
-import { orgApi, sqlOf } from '../testing/people'
-import { bearerToken } from './verify-access-token'
+import { createOrganization, orgApi, sqlOf } from '../testing/people'
 
 const TEST_MCP_URL = mcpResourceURL(TEST_WEB_ORIGIN)
 const ISSUER = `${TEST_WEB_ORIGIN}/api/auth`
@@ -152,38 +151,6 @@ async function rpcResult(
   return messages.find((message) => 'id' in message) ?? {}
 }
 
-const JWT = 'eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiJ1MSJ9.c2lnbmF0dXJl'
-
-describe('bearerToken', () => {
-  it.each([
-    ['Bearer abc', 'abc'],
-    ['bearer abc', 'abc'],
-    ['BEARER abc', 'abc'],
-    [`Bearer ${JWT}`, JWT],
-    ['Bearer  abc', 'abc'],
-    ['Bearer abc==', 'abc=='],
-  ])('reads %j', (header, token) => {
-    expect(bearerToken(header)).toBe(token)
-  })
-
-  it.each([
-    'Basic abc',
-    'Token abc',
-    'Bearerabc',
-    'Bearer',
-    'Bearer    ',
-    'Bearer a b',
-    'Bearer x, Bearer y',
-    'Bearer a"b',
-    'Bearer a=b',
-    '',
-    undefined,
-    null,
-  ])('refuses %j', (header) => {
-    expect(bearerToken(header)).toBeNull()
-  })
-})
-
 const SIGNED_PARAMS = ['sig', 'exp', 'ba_iat', 'ba_pl', 'ba_param']
 
 describe('the OAuth 2.1 provider for the MCP connector', () => {
@@ -196,9 +163,7 @@ describe('the OAuth 2.1 provider for the MCP connector', () => {
 
   const owner = async (email: string, name: string) => {
     const cookie = await t.magicLinkSignIn(email)
-    const organization = await t
-      .client(new Headers({ cookie }))
-      .onboarding.create({ name, termsAccepted: true })
+    const organization = await createOrganization(t, new Headers({ cookie }), name)
     return { cookie, organization }
   }
 
@@ -412,7 +377,22 @@ describe('the OAuth 2.1 provider for the MCP connector', () => {
 })
 
 const METADATA_PATH = '/.well-known/oauth-protected-resource/api/mcp'
-const CHALLENGE = `Bearer resource_metadata="${TEST_WEB_ORIGIN}${METADATA_PATH}"`
+const POINTER = `resource_metadata="${TEST_WEB_ORIGIN}${METADATA_PATH}"`
+
+/** The RFC 6750 challenge a refused call carries, read back into its parameters. */
+const challengeOf = (res: Response) => {
+  const header = res.headers.get('www-authenticate') ?? ''
+  expect(header).toMatch(/^Bearer /)
+  expect(header).toContain(POINTER)
+  return Object.fromEntries(
+    [...header.matchAll(/(\w+)="([^"]*)"/g)].map(([, name, value]) => [name, value]),
+  )
+}
+
+const expectRefusedToken = async (res: Response) => {
+  expect(res.status).toBe(401)
+  expect(challengeOf(res)).toMatchObject({ error: 'invalid_token', scope: MCP_SCOPE })
+}
 
 /** Every MCP tool and the test in this file that proves who may call it. */
 const TOOL_CASES = ["whoami: any member of the token's organization, read-only"]
@@ -440,9 +420,7 @@ describe('the MCP endpoint', () => {
   const connectedOrganization = async (email: string, organizationName: string) => {
     const cookie = await t.magicLinkSignIn(email)
     const userId = await sessionUserId(t, cookie)
-    const organization = await t
-      .client(new Headers({ cookie }))
-      .onboarding.create({ name: organizationName, termsAccepted: true })
+    const organization = await createOrganization(t, new Headers({ cookie }), organizationName)
     const { clientId, tokens } = await connector(t).connect(cookie)
     return { cookie, userId, organization, clientId, tokens }
   }
@@ -462,23 +440,36 @@ describe('the MCP endpoint', () => {
 
   it('challenges a call with no token, pointing at the metadata that names the issuer', async () => {
     const res = await initialize(undefined)
-    expect(res.status).toBe(401)
-    expect(res.headers.get('www-authenticate')).toBe(CHALLENGE)
     expect(res.headers.get('content-type')).toContain('application/json')
-    expect(await res.json()).toEqual({ error: 'invalid_token' })
+    await expectRefusedToken(res)
 
     const metadata = await t.request(METADATA_PATH)
     expect(metadata.status).toBe(200)
     expect(await metadata.json()).toEqual({
       resource: TEST_MCP_URL,
       authorization_servers: [ISSUER],
+      scopes_supported: [MCP_SCOPE, 'offline_access'],
       bearer_methods_supported: ['header'],
       resource_name: 'Arrakit',
     })
   })
 
+  it.each(['Basic abc', 'Token abc', 'Bearerabc', 'Bearer', 'Bearer    ', 'Bearer a"b'])(
+    'challenges an Authorization header %j',
+    async (authorization) => {
+      const res = await t.request('/api/mcp', {
+        method: 'POST',
+        headers: { authorization, 'content-type': 'application/json' },
+        body: '{}',
+      })
+      await expectRefusedToken(res)
+    },
+  )
+
   it('answers a member token with its tools', async () => {
     const { tokens } = await connectedOrganization('lucia@ardent.vc', 'Ardent Ventures')
+    expect(tokens.scope.split(' ')).toContain(MCP_SCOPE)
+    expect(jwtPayload(tokens.access_token).scope).toContain(MCP_SCOPE)
 
     expect((await initialize(tokens.access_token)).status).toBe(200)
     const res = await mcpCall(t, tokens.access_token, 'tools/list')
@@ -516,8 +507,7 @@ describe('the MCP endpoint', () => {
       {},
       `/api/mcp?access_token=${encodeURIComponent(tokens.access_token)}`,
     )
-    expect(res.status).toBe(401)
-    expect(res.headers.get('www-authenticate')).toBe(CHALLENGE)
+    await expectRefusedToken(res)
   })
 
   describe('a token it did not issue for this endpoint, to this member', () => {
@@ -549,9 +539,25 @@ describe('the MCP endpoint', () => {
         async () => signedHere({ organization_id: randomUUID() }),
       ],
     ])('challenges %s', async (_label, token) => {
-      const res = await mcpCall(t, await token(), 'tools/list')
-      expect(res.status).toBe(401)
-      expect(res.headers.get('www-authenticate')).toBe(`${CHALLENGE}, error="invalid_token"`)
+      await expectRefusedToken(await mcpCall(t, await token(), 'tools/list'))
+    })
+
+    it.each([
+      ['no scope', undefined],
+      ['only the OpenID scopes', 'openid profile email offline_access'],
+    ])(
+      `refuses a token with %s with 403 insufficient_scope, naming ${MCP_SCOPE}`,
+      async (_, scope) => {
+        const res = await mcpCall(t, await signedHere({ scope }), 'tools/list')
+        expect(res.status).toBe(403)
+        expect(challengeOf(res)).toMatchObject({ error: 'insufficient_scope', scope: MCP_SCOPE })
+        expect(await res.json()).toMatchObject({ error: 'insufficient_scope' })
+      },
+    )
+
+    it(`answers a token signed here that carries ${MCP_SCOPE}`, async () => {
+      const res = await mcpCall(t, await signedHere({ scope: `openid ${MCP_SCOPE}` }), 'tools/list')
+      expect(res.status).toBe(200)
     })
 
     it('challenges a token once it has expired', async () => {
@@ -614,8 +620,7 @@ describe('the MCP endpoint', () => {
 
   it('binds a grant to the organization active at consent, and keeps it there after a switch', async () => {
     const first = await connectedOrganization('two@orgs.vc', 'First Orgs')
-    const api = t.client(new Headers({ cookie: first.cookie }))
-    const second = await api.onboarding.create({ name: 'Second Orgs', termsAccepted: true })
+    const second = await createOrganization(t, new Headers({ cookie: first.cookie }), 'Second Orgs')
     const { tokens } = await connector(t).connect(first.cookie)
     expect((await whoami(tokens.access_token))?.structuredContent).toMatchObject({
       organization: { id: second.id },

@@ -2,8 +2,8 @@ import type { Auth } from '@arrakit/auth'
 import {
   type Permissions,
   allows,
+  customRoleMap,
   isStaticRole,
-  parsePermissions,
   permissionsOf,
   rolesOf,
 } from '@arrakit/auth/permissions'
@@ -79,20 +79,26 @@ export interface MemberContext extends SessionContext {
   scope: OrganizationScope
 }
 
-export const requireSession = os.$context<BaseContext>().middleware(async ({ context, next }) => {
-  const result = await context.deps.auth.api.getSession({ headers: context.headers })
-  if (!result) throw new ORPCError('UNAUTHORIZED')
-  return next({ context: { user: result.user, session: result.session } })
-})
+const sessionCheck = (live: boolean) =>
+  os.$context<BaseContext>().middleware(async ({ context, next }) => {
+    const result = await context.deps.auth.api.getSession({
+      headers: context.headers,
+      ...(live ? { query: { disableCookieCache: true } } : {}),
+    })
+    if (!result) throw new ORPCError('UNAUTHORIZED')
+    return next({ context: { user: result.user, session: result.session } })
+  })
+
+/** The session from its cached cookie (up to five minutes old). */
+export const requireSession = sessionCheck(false)
+
+/** The session read from the database: one ended on another device is refused at once. */
+export const requireLiveSession = sessionCheck(true)
 
 /** What `role` grants in the organization, reading its custom roles only when it has one. */
 export async function grantedTo(role: string, scope: OrganizationScope): Promise<Permissions> {
   if (rolesOf(role).every(isStaticRole)) return permissionsOf(role)
-  const custom = await scope.customRoles()
-  return permissionsOf(
-    role,
-    Object.fromEntries(custom.map((row) => [row.role, parsePermissions(row.permission)])),
-  )
+  return permissionsOf(role, customRoleMap(await scope.customRoles()))
 }
 
 /**

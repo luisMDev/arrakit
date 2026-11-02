@@ -12,6 +12,12 @@ export interface PaidSubscription {
   cycle: BillingCycle
 }
 
+/** What a price bills: the plan its lookup key names first, and the cycle when the next part is one. */
+export interface BilledPlan {
+  plan: PaidPlan
+  cycle: BillingCycle | null
+}
+
 export const PRICE_KEY_PREFIX = 'arrakit_'
 
 export const priceLookupKey = (plan: PaidPlan, cycle: BillingCycle): string =>
@@ -19,17 +25,23 @@ export const priceLookupKey = (plan: PaidPlan, cycle: BillingCycle): string =>
 
 const LIVE_STATUSES = new Set(['active', 'trialing', 'past_due'])
 
-export const planOfSubscription = (status: string, lookupKey: string | null): Plan =>
-  (LIVE_STATUSES.has(status) && subscriptionOfLookupKey(lookupKey)?.plan) || 'free'
-
-export function subscriptionOfLookupKey(lookupKey: string | null): PaidSubscription | null {
-  const [plan, cycle, ...rest] = lookupKey?.split('_') ?? []
-  if (rest.length > 0) return null
-  return isPaidPlan(plan) && isBillingCycle(cycle) ? { plan, cycle } : null
+export function billedPlanOf(lookupKey: string | null): BilledPlan | null {
+  const [plan, cycle] = lookupKey?.split('_') ?? []
+  if (!isPaidPlan(plan)) return null
+  return { plan, cycle: isBillingCycle(cycle) ? cycle : null }
 }
 
+export const planOfSubscription = (status: string, lookupKey: string | null): Plan =>
+  (LIVE_STATUSES.has(status) && billedPlanOf(lookupKey)?.plan) || 'free'
+
+export function subscriptionOfLookupKey(lookupKey: string | null): PaidSubscription | null {
+  const billed = billedPlanOf(lookupKey)
+  return billed?.cycle ? { plan: billed.plan, cycle: billed.cycle } : null
+}
+
+/** A plan whose cycle is unknown moves to the chosen cycle of the same plan at its renewal. */
 export function whenChangeApplies(
-  from: PaidSubscription,
+  from: BilledPlan,
   to: PaidSubscription,
 ): 'now' | 'renewal' | null {
   if (PLANS.indexOf(to.plan) > PLANS.indexOf(from.plan)) return 'now'

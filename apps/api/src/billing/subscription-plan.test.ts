@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  billedPlanOf,
   planOfSubscription,
   priceLookupKey,
   subscriptionOfLookupKey,
@@ -29,22 +30,45 @@ describe('planOfSubscription', () => {
     expect(planOfSubscription('active', null)).toBe('free')
     expect(planOfSubscription('active', 'enterprise_yearly')).toBe('free')
     expect(planOfSubscription('active', 'internal_monthly')).toBe('free')
-    expect(planOfSubscription('active', 'pro_weekly')).toBe('free')
   })
+
+  it('reads the plan from a lookup key that names it first, whatever follows', () => {
+    expect(planOfSubscription('active', 'pro_monthly_eur')).toBe('pro')
+    expect(planOfSubscription('active', 'pro_weekly')).toBe('pro')
+    expect(planOfSubscription('active', 'team')).toBe('team')
+  })
+})
+
+describe('billedPlanOf', () => {
+  it('reads the plan a lookup key names first, and the cycle when the next part is one', () => {
+    expect(billedPlanOf('pro_yearly')).toEqual({ plan: 'pro', cycle: 'yearly' })
+    expect(billedPlanOf('team_monthly_eur')).toEqual({ plan: 'team', cycle: 'monthly' })
+    expect(billedPlanOf('pro_weekly')).toEqual({ plan: 'pro', cycle: null })
+    expect(billedPlanOf('team')).toEqual({ plan: 'team', cycle: null })
+  })
+
+  it.each([null, '', 'enterprise_yearly', 'internal_monthly', 'free_yearly'])(
+    'reads no paid plan from %s',
+    (key) => expect(billedPlanOf(key)).toBeNull(),
+  )
 })
 
 describe('subscriptionOfLookupKey', () => {
   it('reads the paid plan and cycle a price bills', () => {
     expect(subscriptionOfLookupKey('pro_yearly')).toEqual({ plan: 'pro', cycle: 'yearly' })
     expect(subscriptionOfLookupKey('team_monthly')).toEqual({ plan: 'team', cycle: 'monthly' })
+    expect(subscriptionOfLookupKey('pro_monthly_eur')).toEqual({ plan: 'pro', cycle: 'monthly' })
   })
 
-  it.each([null, 'enterprise_yearly', 'pro_weekly', 'pro', 'pro_yearly_extra'])(
-    'reads nothing from %s',
-    (key) => {
-      expect(subscriptionOfLookupKey(key)).toBeNull()
-    },
-  )
+  it.each([null, 'enterprise_yearly', 'pro_weekly', 'pro'])('reads nothing from %s', (key) => {
+    expect(subscriptionOfLookupKey(key)).toBeNull()
+  })
+
+  it('agrees with planOfSubscription on the plan of every key it reads', () => {
+    for (const key of ['pro_yearly', 'team_monthly', 'pro_monthly_eur']) {
+      expect(subscriptionOfLookupKey(key)?.plan).toBe(planOfSubscription('active', key))
+    }
+  })
 })
 
 describe('whenChangeApplies', () => {
@@ -67,6 +91,15 @@ describe('whenChangeApplies', () => {
     expect(
       whenChangeApplies({ plan: 'pro', cycle: 'yearly' }, { plan: 'pro', cycle: 'monthly' }),
     ).toBe('renewal')
+  })
+
+  it('moves a plan billed on an unknown cycle to a known cycle of the same plan at its renewal', () => {
+    expect(whenChangeApplies({ plan: 'pro', cycle: null }, { plan: 'pro', cycle: 'yearly' })).toBe(
+      'renewal',
+    )
+    expect(whenChangeApplies({ plan: 'pro', cycle: null }, { plan: 'team', cycle: 'yearly' })).toBe(
+      'now',
+    )
   })
 
   it('changes nothing for the plan and cycle the organization already pays for', () => {

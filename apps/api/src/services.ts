@@ -5,7 +5,7 @@ import { createStripeGateway, guardedStripe } from './billing/stripe-gateway'
 import type { AppDeps } from './deps'
 import { loadApiEnv } from './env'
 import { createMailer } from './mail/mailer'
-import { organizationDeps } from './organizations/organization-deps'
+import { apiRefusal, organizationDeps } from './organizations/organization-deps'
 import { createErrorReporter } from './observability/error-reporter'
 import type { Logger } from './observability/logger'
 
@@ -13,12 +13,17 @@ type DepsParts = Omit<AppDeps, 'auth' | 'data'> & { data: Data; testing?: boolea
 
 export function buildDeps(parts: DepsParts): AppDeps {
   const { authConfig, data, log } = parts
-  const stripe = guardedStripe(parts.stripe, log.child({ component: 'stripe' }))
+  const stripeLog = log.child({ component: 'stripe' })
+  const stripe = guardedStripe(parts.stripe, stripeLog)
   const auth = createAuth({
     config: authConfig,
     data,
     mailer: parts.mailer,
-    organizations: organizationDeps(data, stripe, log.child({ component: 'organizations' })),
+    organizations: organizationDeps(
+      data,
+      guardedStripe(parts.stripe, stripeLog, apiRefusal),
+      log.child({ component: 'organizations' }),
+    ),
     testing: parts.testing,
     logger: betterAuthLogger(log),
   })

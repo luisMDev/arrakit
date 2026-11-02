@@ -17,18 +17,7 @@ export function stripeWebhookRoutes(deps: AppDeps) {
       c.get('log').warn({ reason }, 'webhook refused')
       return c.body(null, 401)
     }
-    if (event) {
-      await settleBillingEvent(
-        {
-          data: deps.data,
-          stripe: deps.stripe,
-          mailer: deps.mailer,
-          webUrl: deps.env.webUrl,
-          log: c.get('log'),
-        },
-        event,
-      )
-    }
+    if (event) await settleBillingEvent(deps, c.get('log'), event)
     return c.body(null, 204)
   })
 }
