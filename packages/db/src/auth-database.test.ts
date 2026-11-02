@@ -13,6 +13,7 @@ const buildAuth = (data: TestData) =>
     basePath: '/api/auth',
     database: data.authDatabase,
     telemetry: { enabled: false },
+    user: { deleteUser: { enabled: true } },
     plugins: [testUtils()],
   })
 
@@ -46,7 +47,7 @@ describe('the Better Auth adapter over the Drizzle schema', () => {
 
   it('ends the sessions of a deleted person', async () => {
     const { userId, headers } = await signedIn('gone@acme.com')
-    expect(await data.deleteAccount(userId)).toBe(true)
+    await auth.api.deleteUser({ headers, body: {} })
 
     expect(await auth.api.getSession({ headers })).toBeNull()
     expect(await data.db.select().from(sessions).where(eq(sessions.userId, userId))).toHaveLength(0)

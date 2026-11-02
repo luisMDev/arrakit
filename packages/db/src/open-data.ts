@@ -1,14 +1,14 @@
 import { sql } from 'drizzle-orm'
+import { fromPglite } from 'pg-boss'
 
 import { authDatabase } from './auth-database'
 import type { DataConfig } from './config'
-import { connect } from './connection'
+import { type Connection, connect } from './connection'
 import { type DataContext, type DataLog, consoleLog } from './context'
 import { accountData } from './data/account'
 import { invitationsData } from './data/invitations'
 import { membershipData } from './data/membership'
 import { organizationsData } from './data/organizations'
-import { inProcessJobs } from './jobs/in-process'
 import { pgBossJobs } from './jobs/pg-boss'
 import type { JobsRuntime } from './jobs/types'
 import { forOrganization } from './organization/index'
@@ -93,6 +93,14 @@ export type Data = ScopedData & {
   storage: Storage
 }
 
+/** pg-boss on the same database: the Postgres URL, or the PGlite instance Drizzle uses. */
+function pgBossOn(connection: Connection, config: DataConfig, log: DataLog): Promise<JobsRuntime> {
+  if (connection.pglite) {
+    return pgBossJobs({ db: fromPglite(connection.pglite), backend: 'pglite' }, log)
+  }
+  return pgBossJobs(config.databaseUrl!, log)
+}
+
 export async function openData(config: DataConfig, options: OpenDataOptions = {}): Promise<Data> {
   const log = options.log ?? consoleLog
   const connection = await connect(config, log)
@@ -104,14 +112,13 @@ export async function openData(config: DataConfig, options: OpenDataOptions = {}
   }
 
   const storage = options.storage ?? (config.s3 ? s3Storage(config.s3) : memoryStorage())
+  if (!options.storage && !config.s3) {
+    log.info('file storage is not configured (no R2_*): nothing is stored, purges find nothing')
+  }
 
   let jobs: JobsRuntime
   try {
-    jobs =
-      options.jobs ??
-      (connection.driver === 'postgres' && config.databaseUrl
-        ? await pgBossJobs(config.databaseUrl, log)
-        : inProcessJobs({ log }))
+    jobs = options.jobs ?? (await pgBossOn(connection, config, log))
   } catch (err) {
     await storage.close()
     await connection.close()

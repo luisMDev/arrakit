@@ -14,9 +14,11 @@ export interface DataContext {
 
 /** Where the data layer reports what it recovers from. A pino logger fits it. */
 export interface DataLog {
+  info(message: string): void
   error(fields: object, message: string): void
 }
 
 export const consoleLog: DataLog = {
+  info: (message) => console.info(`[data] ${message}`),
   error: (fields, message) => console.error(`[data] ${message}`, fields),
 }

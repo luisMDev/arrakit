@@ -63,14 +63,6 @@ export function membersScope(ctx: DataContext, organizationId: OrganizationId) {
           and(eq(invitations.organizationId, organizationId), eq(invitations.id, invitationId)),
         )
     },
-
-    /** Records that `userId` accepted the Terms and the Privacy Policy now. */
-    async acceptTerms(userId: string): Promise<void> {
-      await db
-        .update(members)
-        .set({ termsAcceptedAt: sql`now()` })
-        .where(and(inOrganization, eq(members.userId, userId)))
-    },
   }
 }
 

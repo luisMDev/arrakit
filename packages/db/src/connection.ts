@@ -30,6 +30,8 @@ export interface ConnectionConfig {
 export interface Connection {
   db: Database
   driver: 'postgres' | 'pglite'
+  /** The embedded database behind `db` when the driver is PGlite. */
+  pglite?: PGlite
   /** Applies pending migrations (under an advisory lock on Postgres). Idempotent. */
   migrate(): Promise<void>
   close(): Promise<void>
@@ -74,6 +76,7 @@ export async function connect(config: ConnectionConfig, log: DataLog): Promise<C
   return {
     db: db as unknown as Database,
     driver: 'pglite',
+    pglite: client,
     migrate: () => migratePglite(db, { migrationsFolder }),
     close: () => client.close(),
   }

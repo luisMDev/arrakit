@@ -49,12 +49,15 @@ describe('loadDataConfig', () => {
     )
   })
 
-  it('requires the database and the bucket in production', () => {
+  it('requires the database in production, and the bucket only all or none', () => {
     expect(() => loadDataConfig({ NODE_ENV: 'production' })).toThrow(
-      '[data] missing env: DATABASE_URL, R2_ENDPOINT, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY',
+      '[data] missing env: DATABASE_URL',
     )
-    expect(
-      loadDataConfig({ NODE_ENV: 'production', DATABASE_URL: 'postgres://db/a', ...R2 }).s3,
-    ).toBeDefined()
+    const production = { NODE_ENV: 'production', DATABASE_URL: 'postgres://db/a' }
+    expect(loadDataConfig(production).s3).toBeUndefined()
+    expect(loadDataConfig({ ...production, ...R2 }).s3).toBeDefined()
+    expect(() => loadDataConfig({ ...production, R2_BUCKET: 'arrakit' })).toThrow(
+      '[data] missing env: R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY',
+    )
   })
 })

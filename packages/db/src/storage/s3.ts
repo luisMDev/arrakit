@@ -1,8 +1,8 @@
 import {
   DeleteObjectsCommand,
   HeadBucketCommand,
-  ListObjectsV2Command,
   S3Client,
+  paginateListObjectsV2,
 } from '@aws-sdk/client-s3'
 
 import type { S3Config } from '../config'
@@ -23,19 +23,13 @@ export function s3Storage(config: S3Config, options: { listPageSize?: number } =
 
   async function listKeys(prefix: string): Promise<string[]> {
     const keys: string[] = []
-    let token: string | undefined
-    do {
-      const page = await client.send(
-        new ListObjectsV2Command({
-          Bucket,
-          Prefix: prefix,
-          MaxKeys: listPageSize,
-          ContinuationToken: token,
-        }),
-      )
+    const pages = paginateListObjectsV2(
+      { client, pageSize: listPageSize },
+      { Bucket, Prefix: prefix },
+    )
+    for await (const page of pages) {
       for (const object of page.Contents ?? []) if (object.Key) keys.push(object.Key)
-      token = page.IsTruncated ? page.NextContinuationToken : undefined
-    } while (token)
+    }
     return keys
   }
 

@@ -11,6 +11,9 @@ import { type MemoryStorage, memoryStorage } from './storage/memory'
 /** Data with the recording jobs fake and the in-memory storage. */
 export type TestData = Data & { jobs: MemoryJobs; storage: MemoryStorage }
 
+/** Data with real pg-boss jobs and the in-memory storage. */
+export type QueuedTestData = Data & { storage: MemoryStorage }
+
 /** Opens a fresh in-memory database with migrations applied. Remember `await data.close()`. */
 export async function openTestData(options: OpenDataOptions = {}): Promise<TestData> {
   const data = await openData(
@@ -18,6 +21,17 @@ export async function openTestData(options: OpenDataOptions = {}): Promise<TestD
     { storage: memoryStorage(), jobs: memoryJobs(), ...options },
   )
   return data as TestData
+}
+
+/**
+ * A fresh in-memory database whose jobs run on pg-boss over the same PGlite, as `pnpm dev` does.
+ * Slower than openTestData(): use it only to drive a job end to end.
+ */
+export async function openTestDataWithQueue(
+  options: Omit<OpenDataOptions, 'jobs'> = {},
+): Promise<QueuedTestData> {
+  const data = await openData({ pgliteDir: 'memory://' }, { storage: memoryStorage(), ...options })
+  return data as QueuedTestData
 }
 
 /** Inserts a person and returns their id. */

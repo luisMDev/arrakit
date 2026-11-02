@@ -66,9 +66,13 @@ export function forOrganization(ctx: DataContext, id: string) {
       }),
     files: ctx.storage.forOrganization(organizationId),
     /** The organization's custom roles (Better Auth dynamic access control). */
-    customRoles: (): Promise<{ role: string; permission: string }[]> =>
+    customRoles: (): Promise<{ id: string; role: string; permission: string }[]> =>
       ctx.db
-        .select({ role: organizationRoles.role, permission: organizationRoles.permission })
+        .select({
+          id: organizationRoles.id,
+          role: organizationRoles.role,
+          permission: organizationRoles.permission,
+        })
         .from(organizationRoles)
         .where(eq(organizationRoles.organizationId, organizationId))
         .orderBy(asc(organizationRoles.role)),

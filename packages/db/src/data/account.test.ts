@@ -69,46 +69,31 @@ describe('account', () => {
     expect((await data.account(bo, 'none'))?.signInWith).toBe('microsoft')
   })
 
-  it('writes only the given keys and never touches another person', async () => {
-    const cy = await insertUser(data, 'cy@acme.com', 'Cy')
-    const other = await insertUser(data, 'dee@acme.com', 'Dee')
-    const unchanged = await data.updateAccount(cy, 'none', {})
-    expect(unchanged?.user.name).toBe('Cy')
-    const updated = await data.updateAccount(cy, 'none', {
-      language: 'es',
-      timeZone: 'Europe/Madrid',
-      emails: { productNews: true },
-    })
-    expect(updated?.user).toEqual({
-      name: 'Cy',
-      email: 'cy@acme.com',
-      language: 'es',
-      timeZone: 'Europe/Madrid',
-      emails: { productNews: true },
-    })
-    expect((await data.account(other, 'none'))?.user).toMatchObject({
-      language: 'en',
-      emails: { productNews: false },
-    })
-  })
-
-  it('refuses to delete an owner of any organization', async () => {
+  it('refuses to clear an owner of any organization for deletion', async () => {
     const owner = await insertUser(data, 'owner@oak.vc')
     const first = (await insertOrganization(data, { slug: 'oak-first' })).id
     const second = (await insertOrganization(data, { slug: 'oak-second' })).id
     await insertMember(data, first, owner, 'admin')
     await insertMember(data, second, owner, 'owner')
-    await expect(data.deleteAccount(owner)).rejects.toMatchObject({ code: 'CONFLICT' })
+    await data.db.insert(invitations).values({
+      organizationId: first,
+      email: 'owner@oak.vc',
+      inviterId: owner,
+      expiresAt: new Date(Date.now() + 86_400_000),
+    })
+    expect(await data.clearForAccountDeletion({ id: owner, email: 'owner@oak.vc' })).toBe('owner')
     expect(await data.memberOf(owner)).not.toBeNull()
+    expect(
+      await data.db.select().from(invitations).where(eq(invitations.email, 'owner@oak.vc')),
+    ).toHaveLength(1)
   })
 
-  it('deletes a person with their sessions, memberships and invitations to and from them', async () => {
+  it('clears the invitations addressed to a person, leaving the rest', async () => {
     const org = (await insertOrganization(data, { slug: 'pine' })).id
     const owner = await insertUser(data, 'owner@pine.vc')
     const ana = await insertUser(data, 'ana@pine.vc')
     await insertMember(data, org, owner, 'owner')
     await insertMember(data, org, ana, 'admin')
-    await session(ana, null)
     const expiresAt = new Date(Date.now() + 86_400_000)
     await data.db.insert(invitations).values([
       {
@@ -121,14 +106,15 @@ describe('account', () => {
       { organizationId: org, email: 'kim@pine.vc', inviterId: ana, expiresAt },
       { organizationId: org, email: 'lee@pine.vc', inviterId: owner, expiresAt },
     ])
-    expect(await data.deleteAccount(ana)).toBe(true)
-    expect(await data.deleteAccount(ana)).toBe(false)
-    expect(await data.db.select().from(sessions).where(eq(sessions.userId, ana))).toEqual([])
-    expect(await data.memberOf(owner)).toMatchObject({ role: 'owner' })
+    expect(await data.clearForAccountDeletion({ id: ana, email: 'ana@pine.vc' })).toBe('cleared')
+    expect(await data.clearForAccountDeletion({ id: randomUUID(), email: 'nobody@pine.vc' })).toBe(
+      'cleared',
+    )
+    expect(await data.memberOf(ana)).toMatchObject({ role: 'admin' })
     expect(
-      (await data.db.select().from(invitations).where(eq(invitations.organizationId, org))).map(
-        (i) => i.email,
-      ),
-    ).toEqual(['lee@pine.vc'])
+      (await data.db.select().from(invitations).where(eq(invitations.organizationId, org)))
+        .map((i) => i.email)
+        .sort(),
+    ).toEqual(['kim@pine.vc', 'lee@pine.vc'])
   })
 })

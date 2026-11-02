@@ -1,9 +1,10 @@
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, describe, expect, expectTypeOf, it, vi } from 'vitest'
 
-import { connect } from './connection'
+import { connect, transaction } from './connection'
 import { consoleLog } from './context'
-import type { ScopedData } from './open-data'
+import { WORKER_RETRY_POLICY } from './jobs/types'
+import type { Data, ScopedData } from './open-data'
 import { organizations } from './schema/index'
 import { memoryStorage } from './storage/memory'
 import type { Storage } from './storage/types'
@@ -13,6 +14,7 @@ import {
   insertOrganization,
   insertUser,
   openTestData,
+  openTestDataWithQueue,
 } from './testing'
 
 describe('openTestData', () => {
@@ -24,6 +26,7 @@ describe('openTestData', () => {
   afterAll(() => data.close())
 
   it('applies the migrations and reports healthy', async () => {
+    expect(data).toMatchObject({ driver: 'pglite' })
     await expect(data.health()).resolves.toEqual({
       status: 'ok',
       postgres: 'up',
@@ -84,7 +87,7 @@ describe('health', () => {
   })
 
   it('reports storage down when the bucket probe fails, and logs it', async () => {
-    const log = { error: vi.fn() }
+    const log = { info: vi.fn(), error: vi.fn() }
     const storage: Storage = {
       ...memoryStorage(),
       probe: async () => {
@@ -130,4 +133,40 @@ describe('health', () => {
     expect(took).toBeLessThan(4500)
     await data.close()
   }, 10_000)
+})
+
+describe('jobs on PGlite', () => {
+  let data: Data
+
+  beforeAll(async () => {
+    data = await openTestDataWithQueue({ log: { info: vi.fn(), error: vi.fn() } })
+  }, 60_000)
+  afterAll(() => data.close())
+
+  it('runs pg-boss on the same PGlite Drizzle uses', async () => {
+    const [jobTable] = await data.db
+      .execute(sql`select to_regclass('pgboss.job')::text as name`)
+      .then((result) => (result as unknown as { rows: { name: string | null }[] }).rows)
+    expect(jobTable?.name).toBe('pgboss.job')
+    expect((await data.health()).queue).toBe('up')
+  })
+
+  it('runs a queued job while Drizzle queries the same database', async () => {
+    const seen: string[] = []
+    await data.jobs.defineQueue('echo', WORKER_RETRY_POLICY)
+    await data.jobs.work<{ slug: string }>('echo', async ({ slug }) => {
+      const [row] = await data.db
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.slug, slug))
+      seen.push(row?.name ?? 'missing')
+    })
+
+    await transaction(data.db, async (tx) => {
+      await tx.insert(organizations).values({ slug: 'queued-co', name: 'Queued Co' })
+    })
+    await data.jobs.send('echo', { slug: 'queued-co' })
+
+    await vi.waitFor(() => expect(seen).toEqual(['Queued Co']), { timeout: 20_000, interval: 100 })
+  }, 30_000)
 })

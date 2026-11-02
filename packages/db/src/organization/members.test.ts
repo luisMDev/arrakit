@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { invitations, members } from '../schema/index'
+import { invitations } from '../schema/index'
 import {
   type TestData,
   insertMember,
@@ -79,12 +79,5 @@ describe('organization members', () => {
     expect(await emailSent()).toBe(true)
     await f.members.markInvitationEmailSent(invitation.id, false)
     expect(await emailSent()).toBe(false)
-  })
-
-  it('records when a member accepted the terms', async () => {
-    const f = await organizationOf('hazel')
-    await f.members.acceptTerms(f.owner)
-    const [row] = await data.db.select().from(members).where(eq(members.userId, f.owner))
-    expect(row?.termsAcceptedAt).toBeInstanceOf(Date)
   })
 })

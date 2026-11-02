@@ -3,7 +3,6 @@ import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm'
 
 import type { Database } from '../connection'
 import type { DataContext } from '../context'
-import { DomainError } from '../errors'
 import {
   type AccountLanguage,
   accounts,
@@ -27,13 +26,6 @@ export interface Account {
   signInWith: SignInMethod
   /** Live sessions, the current one first. */
   sessions: { id: string; userAgent: string | null; current: boolean }[]
-}
-
-export interface AccountChanges {
-  name?: string
-  language?: AccountLanguage
-  timeZone?: string
-  emails?: { productNews?: boolean }
 }
 
 const SOCIAL = SIGN_IN_METHODS.filter((method) => method !== 'email')
@@ -87,47 +79,22 @@ export function accountData(ctx: DataContext) {
     account: (userId: string, currentSessionId: string) =>
       readAccount(ctx.db, userId, currentSessionId),
 
-    async updateAccount(
-      userId: string,
-      sessionId: string,
-      changes: AccountChanges,
-    ): Promise<Account | null> {
-      const set = {
-        name: changes.name,
-        language: changes.language,
-        timeZone: changes.timeZone,
-        emailProductNews: changes.emails?.productNews,
-      }
-      if (Object.values(set).some((value) => value !== undefined)) {
-        await ctx.db.update(users).set(set).where(eq(users.id, userId))
-      }
-      return readAccount(ctx.db, userId, sessionId)
-    },
-
-    /** False when the user is gone; a CONFLICT DomainError for an owner of any organization. */
-    async deleteAccount(userId: string): Promise<boolean> {
-      return ctx.db.transaction(async (tx) => {
-        const [person] = await tx
-          .select({ email: users.email })
-          .from(users)
-          .where(eq(users.id, userId))
-          .for('update')
-        if (!person) return false
-        const [owned] = await tx
-          .select({ id: members.id })
-          .from(members)
-          .where(and(eq(members.userId, userId), eq(members.role, 'owner')))
-          .limit(1)
-        if (owned) {
-          throw new DomainError(
-            'CONFLICT',
-            'You own an organization. Delete the organization first, in Settings → Security and data.',
-          )
-        }
-        await tx.delete(invitations).where(eq(invitations.email, normalizeEmail(person.email)))
-        await tx.delete(users).where(eq(users.id, userId))
-        return true
-      })
+    /**
+     * Readies a person's account for deletion: deletes every invitation addressed to them (any
+     * status, any organization). Refuses, deleting nothing, while they own an organization.
+     */
+    async clearForAccountDeletion(user: {
+      id: string
+      email: string
+    }): Promise<'owner' | 'cleared'> {
+      const [owned] = await ctx.db
+        .select({ id: members.id })
+        .from(members)
+        .where(and(eq(members.userId, user.id), eq(members.role, 'owner')))
+        .limit(1)
+      if (owned) return 'owner'
+      await ctx.db.delete(invitations).where(eq(invitations.email, normalizeEmail(user.email)))
+      return 'cleared'
     },
   }
 }
