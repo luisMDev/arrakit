@@ -20,6 +20,7 @@ import {
 import { Field, FieldError, FieldLabel, FieldLegend, FieldSet } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { Separator } from '#/components/ui/separator'
+import { APP_NAME } from '#/config'
 import { authCall } from '#/lib/auth-call'
 import { authClient } from '#/lib/auth-client'
 import { roleLabel, useMember } from '#/lib/current-user'
@@ -103,7 +104,7 @@ export function RolesSection() {
       <Card>
         <CardHeader>
           <CardTitle>{t(`${K}.builtIn`)}</CardTitle>
-          <CardDescription>{t(`${K}.builtInHint`)}</CardDescription>
+          <CardDescription>{t(`${K}.builtInHint`, { appName: APP_NAME })}</CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-sm">{roleLabel('owner,admin,member')}</p>

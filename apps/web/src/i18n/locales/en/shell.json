@@ -35,13 +35,13 @@
     "goHome": "Go to the app →"
   },
   "unavailable": {
-    "unreachableTitle": "Couldn't reach Arrakit.",
+    "unreachableTitle": "Couldn't reach {{appName}}.",
     "unreachableBody": "Nothing is lost. Try again in a moment.",
     "tryAgain": "Try again"
   },
   "notFound": {
     "title": "This page does not exist.",
-    "body": "Check the address, or head back to Arrakit.",
+    "body": "Check the address, or head back to {{appName}}.",
     "home": "Back home"
   },
   "orgSwitcher": {

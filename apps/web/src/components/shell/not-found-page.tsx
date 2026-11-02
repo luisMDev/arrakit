@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '#/components/ui/button'
+import { APP_NAME } from '#/config'
 
 export function NotFoundPage() {
   const { t } = useTranslation()
@@ -10,7 +11,7 @@ export function NotFoundPage() {
     <main className="mx-auto flex w-full max-w-xl flex-col items-start gap-4 p-6">
       <p className="text-sm font-medium text-muted-foreground">404</p>
       <h1 className="text-2xl font-semibold tracking-tight">{t('notFound.title')}</h1>
-      <p className="text-muted-foreground">{t('notFound.body')}</p>
+      <p className="text-muted-foreground">{t('notFound.body', { appName: APP_NAME })}</p>
       <Button asChild>
         <Link to="/">{t('notFound.home')}</Link>
       </Button>

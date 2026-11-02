@@ -35,13 +35,13 @@
     "goHome": "Ir a la app →"
   },
   "unavailable": {
-    "unreachableTitle": "No se ha podido conectar con Arrakit.",
+    "unreachableTitle": "No se ha podido conectar con {{appName}}.",
     "unreachableBody": "No se ha perdido nada. Inténtalo de nuevo en un momento.",
     "tryAgain": "Reintentar"
   },
   "notFound": {
     "title": "Esta página no existe.",
-    "body": "Revisa la dirección o vuelve a Arrakit.",
+    "body": "Revisa la dirección o vuelve a {{appName}}.",
     "home": "Volver al inicio"
   },
   "orgSwitcher": {

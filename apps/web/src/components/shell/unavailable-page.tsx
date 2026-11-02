@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import { Button } from '#/components/ui/button'
+import { APP_NAME } from '#/config'
 import { searchText } from '#/lib/search-params'
 
 import { RootFrame } from './root-layout'
@@ -25,7 +26,9 @@ export function UnavailablePage({ next, onRetry }: { next?: string; onRetry?: ()
 
   return (
     <main className="mx-auto flex w-full max-w-xl flex-col items-start gap-4 p-6">
-      <h1 className="text-2xl font-semibold tracking-tight">{t('unavailable.unreachableTitle')}</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">
+        {t('unavailable.unreachableTitle', { appName: APP_NAME })}
+      </h1>
       <p className="text-muted-foreground">{t('unavailable.unreachableBody')}</p>
       <Button onClick={onRetry ?? (() => void navigate({ href: safeNext(next) }))}>
         {t('unavailable.tryAgain')}

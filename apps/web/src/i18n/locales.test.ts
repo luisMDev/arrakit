@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { APP_NAME } from '#/config'
+
 import { en, loadEs } from './index'
 
 const enFiles = import.meta.glob('./locales/en/*.json', { eager: true, import: 'default' })
@@ -45,5 +47,10 @@ describe('locales', () => {
   it('use the arrakit product name', () => {
     expect(JSON.stringify(enFiles)).not.toContain('SaaS')
     expect(JSON.stringify(esFiles)).not.toContain('SaaS')
+  })
+
+  it('take the product name from APP_NAME instead of writing it', () => {
+    expect(JSON.stringify(enFiles)).not.toContain(APP_NAME)
+    expect(JSON.stringify(esFiles)).not.toContain(APP_NAME)
   })
 })

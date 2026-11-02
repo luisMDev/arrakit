@@ -4,7 +4,7 @@
       "title": "Roles",
       "hint": "Un rol personalizado da los permisos que elijas. Solo puedes dar permisos que tienes.",
       "builtIn": "Roles de serie",
-      "builtInHint": "Propietario, Administrador y Miembro vienen con Arrakit y no se pueden cambiar.",
+      "builtInHint": "Propietario, Administrador y Miembro vienen con {{appName}} y no se pueden cambiar.",
       "custom": "Roles personalizados",
       "empty": "Todavía no hay roles personalizados.",
       "newRole": "Nuevo rol",

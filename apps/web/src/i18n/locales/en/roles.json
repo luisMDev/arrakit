@@ -4,7 +4,7 @@
       "title": "Roles",
       "hint": "A custom role gives the permissions you pick. You can only give permissions you have.",
       "builtIn": "Built-in roles",
-      "builtInHint": "Owner, Admin and Member come with Arrakit and can't be changed.",
+      "builtInHint": "Owner, Admin and Member come with {{appName}} and can't be changed.",
       "custom": "Custom roles",
       "empty": "No custom roles yet.",
       "newRole": "New role",
