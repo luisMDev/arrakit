@@ -6,6 +6,7 @@ export const ORGANIZATION_CLAIM = 'organization_id'
 export const MCP_SCOPE = 'mcp'
 export const COOKIE_PREFIX = 'arrakit'
 export const MICROSOFT_UNVERIFIED = 'email_not_verified'
+const PLACEHOLDER_SECRET_PREFIX = 'change-me'
 
 interface OAuthClientConfig {
   clientId: string
@@ -52,6 +53,10 @@ export function loadAuthConfig(env: Env): AuthConfig {
   const secret = env.BETTER_AUTH_SECRET!
   if (secret.length < 32)
     throw new Error('[auth] BETTER_AUTH_SECRET must be at least 32 characters')
+  if (env.NODE_ENV === 'production' && secret.startsWith(PLACEHOLDER_SECRET_PREFIX))
+    throw new Error(
+      '[auth] BETTER_AUTH_SECRET is a placeholder; set a long random secret in production',
+    )
   const baseURL = originOf(env.BETTER_AUTH_URL!, 'BETTER_AUTH_URL')
   const webOrigin = value('WEB_URL') ? originOf(env.WEB_URL!, 'WEB_URL') : baseURL
 

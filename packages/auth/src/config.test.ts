@@ -37,6 +37,35 @@ describe('loadAuthConfig', () => {
     expect(() => loadAuthConfig({ ...base, BETTER_AUTH_SECRET: 'short' })).toThrow('32')
   })
 
+  it('refuses the placeholder secret in production', () => {
+    expect(() =>
+      loadAuthConfig({
+        ...base,
+        BETTER_AUTH_SECRET: 'change-me-to-a-long-random-string',
+        NODE_ENV: 'production',
+        GOOGLE_CLIENT_ID: 'g',
+        GOOGLE_CLIENT_SECRET: 'gs',
+      }),
+    ).toThrow('is a placeholder')
+  })
+
+  it('accepts the placeholder secret outside production', () => {
+    expect(() =>
+      loadAuthConfig({ ...base, BETTER_AUTH_SECRET: 'change-me-to-a-long-random-string' }),
+    ).not.toThrow()
+  })
+
+  it('accepts a real secret in production', () => {
+    expect(() =>
+      loadAuthConfig({
+        ...base,
+        NODE_ENV: 'production',
+        GOOGLE_CLIENT_ID: 'g',
+        GOOGLE_CLIENT_SECRET: 'gs',
+      }),
+    ).not.toThrow()
+  })
+
   it('refuses a base URL that is not a URL', () => {
     expect(() => loadAuthConfig({ ...base, BETTER_AUTH_URL: 'nope' })).toThrow(
       '[auth] BETTER_AUTH_URL is not a URL: "nope"',
