@@ -1,5 +1,5 @@
 export const AUTH_BASE_PATH = '/api/auth'
-const MCP_PATH = '/api/mcp'
+export const MCP_PATH = '/api/mcp'
 export const MAGIC_LINK_MINUTES = 15
 export const ORGANIZATION_CLAIM = 'organization_id'
 /** The OAuth scope an access token needs to call the MCP server. */

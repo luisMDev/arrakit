@@ -6,6 +6,7 @@ import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { nitro } from 'nitro/vite'
 import { apiProxiedPaths } from './src/lib/api-proxy'
+import { securityRouteRules } from './src/server/security-headers'
 
 // The API (apps/api) serves /api/* and the OAuth metadata under /.well-known/oauth-*.
 // Web and API must look like one site so the Better Auth cookie is first-party, so the
@@ -21,6 +22,7 @@ export default defineConfig({
   preview: { port: 5200, strictPort: true },
   plugins: [
     nitro({
+      routeRules: securityRouteRules,
       handlers: apiProxiedPaths.map((path) => ({
         route: `${path}/**`,
         handler: fileURLToPath(new URL('./src/server/api-proxy-handler.ts', import.meta.url)),

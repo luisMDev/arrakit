@@ -1,4 +1,4 @@
-import { MCP_SCOPE, mcpResourceURL, oauthIssuer } from '@arrakit/auth'
+import { MCP_PATH, MCP_SCOPE, mcpResourceURL, oauthIssuer } from '@arrakit/auth'
 import { APP_NAME } from '@arrakit/emails'
 import {
   type McpHttpHandler,
@@ -15,8 +15,6 @@ import type { AppDeps } from '../deps'
 import { type ConnectorCaller, createMcpServer } from '../mcp/server'
 import { accessTokenVerifier } from '../mcp/verify-access-token'
 import type { Logger } from '../observability/logger'
-
-const MCP_PATH = '/api/mcp'
 
 /**
  * Stateless Streamable HTTP: a fresh server per request, built from the verified caller in

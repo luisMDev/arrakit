@@ -256,6 +256,10 @@ Run from the repo root.
   registered in `apps/web/vite.config.ts` for `apiProxiedPaths`) reads `API_ORIGIN` per request,
   sets `xfwd`, drops the incoming `x-forwarded-for` and sends one client IP (`cf-connecting-ip`
   when present, else the TCP peer); `x-real-ip` passes through.
+- Security headers: the API sets them on every response (`apps/api/src/security-headers.ts`;
+  OAuth/MCP paths stay readable cross-origin). The web adds its own to documents and assets
+  through Nitro `routeRules` (`apps/web/src/server/security-headers.ts`) and leaves the proxied
+  API paths with the API's headers.
 - Mail in dev and e2e goes to Mailpit (`MAILPIT_URL`, HTTP send API) when `RESEND_API_KEY` is
   unset. `pnpm dev` starts it through `scripts/mailpit.sh` (inbox at http://localhost:5025);
   the script uses `mailpit` from PATH or downloads the pinned release into `.data/bin`.

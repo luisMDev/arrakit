@@ -12,6 +12,7 @@ import { requestLog } from './observability/request-log'
 import { router } from './router'
 import { mcpHandler, mcpRoutes } from './routes/mcp'
 import { stripeWebhookRoutes } from './routes/stripe-webhook'
+import { securityHeaders } from './security-headers'
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
@@ -20,6 +21,7 @@ export function createApp(deps: AppDeps, mcp: McpHttpHandler = mcpHandler(deps.l
   const rpc = new RPCHandler(router)
   const authMetadata = oauthProviderAuthServerMetadata(deps.auth)
 
+  app.use(securityHeaders)
   app.get('/health', async (c) => {
     const report = await deps.data.health()
     return c.json(report, report.status === 'ok' ? 200 : 503)

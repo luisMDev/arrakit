@@ -1,4 +1,6 @@
 export {
+  AUTH_BASE_PATH,
+  MCP_PATH,
   MCP_SCOPE,
   ORGANIZATION_CLAIM,
   isTrustedOrigin,
