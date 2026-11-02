@@ -6,7 +6,7 @@ import { authClient } from '#/lib/auth-client'
 
 export type SocialProvider = 'google' | 'microsoft'
 
-export const PROVIDERS_UNKNOWN: AuthProviders = { google: true, microsoft: false }
+export const PROVIDERS_UNKNOWN: AuthProviders = { google: false, microsoft: false }
 
 const OAUTH_AUTHORIZE = '/api/auth/oauth2/authorize?'
 

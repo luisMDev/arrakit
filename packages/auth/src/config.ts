@@ -37,17 +37,16 @@ export function loadAuthConfig(env: Env): AuthConfig {
   const missing: string[] = []
   if (!value('BETTER_AUTH_SECRET')) missing.push('BETTER_AUTH_SECRET')
   if (!value('BETTER_AUTH_URL')) missing.push('BETTER_AUTH_URL')
-  const wantsGoogle =
-    env.NODE_ENV === 'production' || !!value('GOOGLE_CLIENT_ID') || !!value('GOOGLE_CLIENT_SECRET')
-  const wantsMicrosoft = !!value('MICROSOFT_CLIENT_ID') || !!value('MICROSOFT_CLIENT_SECRET')
-  if (wantsGoogle) {
-    for (const name of ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'])
-      if (!value(name)) missing.push(name)
+  const optionalClient = (provider: 'GOOGLE' | 'MICROSOFT'): OAuthClientConfig | undefined => {
+    const clientId = value(`${provider}_CLIENT_ID`)
+    const clientSecret = value(`${provider}_CLIENT_SECRET`)
+    if (clientId && clientSecret) return { clientId, clientSecret }
+    if (clientId) missing.push(`${provider}_CLIENT_SECRET`)
+    if (clientSecret) missing.push(`${provider}_CLIENT_ID`)
+    return undefined
   }
-  if (wantsMicrosoft) {
-    for (const name of ['MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET'])
-      if (!value(name)) missing.push(name)
-  }
+  const google = optionalClient('GOOGLE')
+  const microsoft = optionalClient('MICROSOFT')
   if (missing.length > 0) throw new Error(`[auth] missing env: ${missing.join(', ')}`)
 
   const secret = env.BETTER_AUTH_SECRET!
@@ -65,12 +64,8 @@ export function loadAuthConfig(env: Env): AuthConfig {
     baseURL,
     webOrigin,
     trustedOrigins: [...new Set([baseURL, webOrigin])],
-    google: wantsGoogle
-      ? { clientId: env.GOOGLE_CLIENT_ID!, clientSecret: env.GOOGLE_CLIENT_SECRET! }
-      : undefined,
-    microsoft: wantsMicrosoft
-      ? { clientId: env.MICROSOFT_CLIENT_ID!, clientSecret: env.MICROSOFT_CLIENT_SECRET! }
-      : undefined,
+    google,
+    microsoft,
   }
 }
 

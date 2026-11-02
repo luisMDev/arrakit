@@ -8,7 +8,7 @@ const base = { BETTER_AUTH_SECRET: SECRET, BETTER_AUTH_URL: 'http://localhost:52
 describe('loadAuthConfig', () => {
   it('names every missing variable in one error', () => {
     expect(() => loadAuthConfig({ NODE_ENV: 'production' })).toThrow(
-      '[auth] missing env: BETTER_AUTH_SECRET, BETTER_AUTH_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET',
+      '[auth] missing env: BETTER_AUTH_SECRET, BETTER_AUTH_URL',
     )
   })
 
@@ -18,10 +18,8 @@ describe('loadAuthConfig', () => {
     )
   })
 
-  it('requires Google in production', () => {
-    expect(() => loadAuthConfig({ ...base, NODE_ENV: 'production' })).toThrow(
-      '[auth] missing env: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET',
-    )
+  it('boots in production without Google', () => {
+    expect(loadAuthConfig({ ...base, NODE_ENV: 'production' }).google).toBeUndefined()
   })
 
   it('never takes half a pair', () => {
@@ -37,33 +35,32 @@ describe('loadAuthConfig', () => {
     expect(() => loadAuthConfig({ ...base, BETTER_AUTH_SECRET: 'short' })).toThrow('32')
   })
 
-  it('refuses the placeholder secret in production', () => {
-    expect(() =>
-      loadAuthConfig({
-        ...base,
-        BETTER_AUTH_SECRET: 'change-me-to-a-long-random-string',
-        NODE_ENV: 'production',
-        GOOGLE_CLIENT_ID: 'g',
-        GOOGLE_CLIENT_SECRET: 'gs',
-      }),
-    ).toThrow('is a placeholder')
+  describe('in production', () => {
+    const production = { ...base, NODE_ENV: 'production' }
+
+    it.each(['change-me-to-a-long-random-string', `change-me-${'x'.repeat(32)}`])(
+      'refuses the placeholder secret %s',
+      (secret) => {
+        expect(() => loadAuthConfig({ ...production, BETTER_AUTH_SECRET: secret })).toThrow(
+          '[auth] BETTER_AUTH_SECRET is a placeholder; set a long random secret in production',
+        )
+      },
+    )
+
+    it('takes a real secret', () => {
+      expect(loadAuthConfig(production).secret).toBe(SECRET)
+    })
   })
 
-  it('accepts the placeholder secret outside production', () => {
-    expect(() =>
-      loadAuthConfig({ ...base, BETTER_AUTH_SECRET: 'change-me-to-a-long-random-string' }),
-    ).not.toThrow()
-  })
-
-  it('accepts a real secret in production', () => {
-    expect(() =>
-      loadAuthConfig({
-        ...base,
-        NODE_ENV: 'production',
-        GOOGLE_CLIENT_ID: 'g',
-        GOOGLE_CLIENT_SECRET: 'gs',
-      }),
-    ).not.toThrow()
+  it('takes the example secret outside production', () => {
+    for (const NODE_ENV of [undefined, 'development', 'test'])
+      expect(
+        loadAuthConfig({
+          ...base,
+          NODE_ENV,
+          BETTER_AUTH_SECRET: 'change-me-to-a-long-random-string',
+        }).secret,
+      ).toBe('change-me-to-a-long-random-string')
   })
 
   it('refuses a base URL that is not a URL', () => {

@@ -48,6 +48,7 @@ async function renderPage({
 const emailInput = () => screen.getByRole('textbox', { name: 'Work email' })
 const continueButton = () => screen.getByRole('button', { name: 'Continue' })
 const googleButton = () => screen.getByRole('button', { name: 'Continue with Google' })
+const googleShown = () => screen.findByRole('button', { name: 'Continue with Google' })
 
 async function typeAndContinue(email: string) {
   await userEvent.type(emailInput(), email)
@@ -65,7 +66,7 @@ describe('SignupPage', () => {
     expect(emailInput()).toHaveAttribute('placeholder', 'Your work email')
     expect(screen.getByText("No password. We'll email you a link to sign in.")).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    await waitFor(() => expect(googleButton()).toBeInTheDocument())
+    await googleShown()
   })
 
   it.each([
@@ -88,11 +89,12 @@ describe('SignupPage', () => {
     else expect(screen.queryByText('OR')).not.toBeInTheDocument()
   })
 
-  it('shows Google until the providers answer', async () => {
+  it('shows no provider until the providers answer', async () => {
     answer('authProviders/get', () => new Promise(() => undefined))
     await renderPage()
-    expect(googleButton()).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Continue with Microsoft' })).toBeNull()
+    expect(continueButton()).toBeInTheDocument()
+    for (const name of ['Google', 'Microsoft'])
+      expect(screen.queryByRole('button', { name: `Continue with ${name}` })).toBeNull()
   })
 
   it.each([
@@ -205,6 +207,7 @@ describe('SignupPage', () => {
     const pending = deferred<boolean>()
     sendLink.mockReturnValue(pending.promise)
     await renderPage()
+    await googleShown()
     await userEvent.type(emailInput(), 'ana@acme.com')
     await userEvent.click(continueButton())
     expect(continueButton()).toBeDisabled()
@@ -218,6 +221,7 @@ describe('SignupPage', () => {
     const start = deferred<string>()
     startSocial.mockReturnValueOnce(start.promise)
     await renderPage()
+    await googleShown()
     await userEvent.click(googleButton())
     await userEvent.click(googleButton())
     expect(startSocial).toHaveBeenCalledTimes(1)
@@ -230,6 +234,7 @@ describe('SignupPage', () => {
 
   it('re-enables the buttons when the page comes back from the bfcache', async () => {
     await renderPage()
+    await googleShown()
     await userEvent.click(googleButton())
     expect(googleButton()).toBeDisabled()
     const notPersisted = new Event('pageshow') as PageTransitionEvent
@@ -245,6 +250,7 @@ describe('SignupPage', () => {
 
   it('lands back on /signin in sign-in mode, for the link and for Google', async () => {
     await renderPage({ mode: 'returning', search: { plan: 'team', cycle: 'monthly' } })
+    await googleShown()
     await userEvent.click(googleButton())
     expect(startSocial).toHaveBeenCalledWith('google', '/signin')
     act(() => {
