@@ -7,10 +7,13 @@
   "scripts": {
     "dev": "turbo run dev //#mailpit",
     "mailpit": "scripts/mailpit.sh --listen localhost:5025 --smtp localhost:5026",
+    "init:project": "node scripts/init.ts",
     "build": "turbo run build",
-    "typecheck": "turbo run typecheck",
+    "typecheck": "turbo run typecheck //#typecheck:scripts",
+    "typecheck:scripts": "tsc -p scripts",
     "lint": "turbo run lint",
-    "test": "turbo run test",
+    "test": "turbo run test //#test:scripts",
+    "test:scripts": "vitest run --dir scripts",
     "test:e2e": "turbo run test:e2e",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

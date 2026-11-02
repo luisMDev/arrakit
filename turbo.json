@@ -44,6 +44,12 @@
       "cache": false,
       "persistent": true
     },
+    "//#typecheck:scripts": {
+      "inputs": ["scripts/**", "packages/tsconfig/**"]
+    },
+    "//#test:scripts": {
+      "inputs": ["scripts/**"]
+    },
     "//#mailpit": {
       "cache": false,
       "persistent": true
