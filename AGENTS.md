@@ -98,6 +98,7 @@ Run from the repo root; the scripts in `package.json` are the full list.
 | `pnpm --filter @arrakit/<pkg> <script>`      | One workspace's script                       |
 | `pnpm --filter @arrakit/db db:generate`      | Generate a Drizzle migration from the schema |
 | `pnpm format`                                | Prettier                                     |
+| `pnpm init:project --name "<Product>"`       | Rename product name, slug and npm scope      |
 
 ## Conventions
 
@@ -155,7 +156,8 @@ Run from the repo root; the scripts in `package.json` are the full list.
 
 ## Make it yours
 
-- Product name: `APP_NAME`, locale texts, and the icons in each app's `public/`.
+- Product name, slug and npm scope: `pnpm init:project` (`scripts/init.ts`), before creating
+  Stripe prices. Then locale texts and the icons in each app's `public/`.
 - Plans and prices: `packages/plans`, then the API's Stripe prices script.
 - A new product module: procedures in `packages/contract`, a router in apps/api, tables in the
   `packages/db` schema (with `organization_id`, reached only through `forOrganization()`),

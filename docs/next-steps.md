@@ -1,32 +1,47 @@
-Qué haría, por prioridad
+What I would do next, by priority
 
-1. Añadir un script init que renombre scope, marca, prefijos y los textos que aún llevan "Arrakit" literal.
-2. Un módulo de ejemplo "projects" completo, que fije el patrón canónico: schema, su scope en forOrganization() (o un guard genérico de tenancy), contrato, router, tool MCP, pantalla con react-hook-form, entrada en una sidebar extensible y tests.
-3. Separar como opcionales los créditos, el storage+jobs, MCP/OAuth y billing. Quitar el CHECK de planes del SQL.
+1. A complete example "projects" module that sets the canonical pattern: schema, its scope in
+   `forOrganization()` (or a generic tenancy guard), contract, router, MCP tool, a screen with
+   react-hook-form, an entry in an extensible sidebar, and tests.
+2. Make credits, storage + jobs, MCP/OAuth and billing optional. Drop the plans CHECK from the SQL.
 
-Producción
+Production
 
-- No hay rate limiting compartido entre instancias (Better Auth no configura rateLimit ni secondaryStorage), ni audit log. La web no tiene una CSP completa (sin script-src/connect-src; necesitaría nonces en TanStack Start y probarla con Stripe).
-- Tampoco existen panel de admin, API keys para clientes, datos de seed ni exportación de datos (RGPD).
+- No rate limiting shared across instances (Better Auth configures neither `rateLimit` nor
+  `secondaryStorage`), and no audit log. The web has no full CSP (no `script-src`/`connect-src`;
+  it would need nonces in TanStack Start and testing against Stripe).
+- No admin panel, customer API keys, seed data or data export (GDPR).
 
 Frontend
 
-- La landing tiene el copy escrito en apps/landing/src/pages/index.astro (aún con textos de relleno) y no comparte tema con la web.
-- El shell no tiene navegación extensible: los enlaces están fijos en apps/web/src/components/shell/app-menu.tsx:42-63. Los componentes sidebar y sheet están instalados pero sin usar, y no hay navegación móvil.
+- The landing copy is written in `apps/landing/src/pages/index.astro` (still placeholder text) and
+  the landing does not share the web's theme.
+- The shell has no extensible navigation: the links are hard-coded in
+  `apps/web/src/components/shell/app-menu.tsx`. The `sidebar` and `sheet` components are installed
+  but unused, and there is no mobile navigation.
 
-Arrancar un producto nuevo
+Starting a new product
 
-- No hay script de renombrado. "arrakit" aparece 409 veces en 167 ficheros (fuera de docs/).
-- Algunas apariciones no son solo cosméticas. COOKIE_PREFIX='arrakit' (packages/auth/src/config.ts:7) es el prefijo de las cookies de sesión. PRICE_KEY_PREFIX='arrakit_' (apps/api/src/billing/subscription-plan.ts:21) es la clave con la que se buscan los precios en Stripe: si se cambia después de crearlos, deja de encontrarlos.
-- Casi todos los textos de i18n interpolan {{appName}}, pero quedan 6 "Arrakit" literales en roles.json y shell.json (en y es).
+- `pnpm init:project` renames the product name, slug and npm scope. Two of the renamed values are
+  functional: the slug prefixes the session cookie (`COOKIE_PREFIX` in `packages/auth/src/config.ts`)
+  and the Stripe price lookup keys (`PRICE_KEY_PREFIX` in `apps/api/src/billing/subscription-plan.ts`).
+  Renaming after the prices exist means creating them again; the script warns about both.
 
-Lo más relevante del backend:
+Backend
 
-- Tenancy por convención: no hay guard genérico. forOrganization() (packages/db/src/organization/index.ts:31) expone métodos a mano por dominio, y el aislamiento entre organizaciones depende de que cada consulta lleve bien su filtro por organizationId.
-- Módulo nuevo = muchos sitios que tocar (schema, scope, contrato, router, pantalla, i18n, tests), entre ellos las herramientas MCP escritas a mano (apps/api/src/mcp/server.ts).
-- Piezas de producto acopladas:
-  - El sistema de créditos se mete en el contrato base de todos los procedimientos: el error PAYMENT_REQUIRED con su metric en packages/contract/src/common.ts:28.
-  - El número de asientos del plan se mete en la gestión de miembros (packages/auth/src/organization.ts:54 y 113-118).
-  - Los planes están fijados con un CHECK en SQL (organizations_plan_check en packages/db/src/schema/organizations.ts:24), así que cambiarlos exige una migración.
-- Infraestructura sin uso real: unas 156 líneas de almacenamiento de ficheros (packages/db/src/storage, sin tests) que ningún endpoint usa para subir o leer; solo las usa el worker de purga al borrar una organización.
-- Difícil de quitar: créditos, MCP/OAuth (apps/api/src/main.ts monta siempre mcpHandler, no se puede desactivar con configuración) y, sobre todo, el modo multi-organización.
+- Tenancy by convention: there is no generic guard. `forOrganization()`
+  (`packages/db/src/organization/index.ts`) exposes hand-written methods per domain, and isolation
+  between organizations depends on every query filtering by `organizationId`.
+- A new module touches many places (schema, scope, contract, router, screen, i18n, tests),
+  including the hand-written MCP tools (`apps/api/src/mcp/server.ts`).
+- Coupled product pieces:
+  - Credits are part of every procedure's base contract: the `PAYMENT_REQUIRED` error with its
+    metric in `packages/contract/src/common.ts`.
+  - The plan's seat count is part of member management (`packages/auth/src/organization.ts`).
+  - Plans are fixed by a SQL CHECK (`organizations_plan_check` in
+    `packages/db/src/schema/organizations.ts`), so changing them needs a migration.
+- Infrastructure without real use: file storage (`packages/db/src/storage`, tested, about 160
+  lines without the tests) has no endpoint that uploads or reads files; only the purge worker uses
+  it when an organization is deleted.
+- Hard to remove: credits, MCP/OAuth (`createApp` in `apps/api/src/app.ts` always mounts the MCP
+  routes; no setting turns them off) and, above all, multi-organization mode.

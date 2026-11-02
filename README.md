@@ -111,10 +111,12 @@ pnpm format:check
 
 ## Make it yours
 
-- The product's name: `VITE_APP_NAME` (`apps/web/src/config.ts`), `APP_NAME` in
-  `packages/emails/src/index.ts` and `apps/landing/src/lib/config.ts`, the texts in
-  `apps/web/src/i18n/locales/*/*.json`, `apps/landing` and the icons in `apps/web/public` and
-  `apps/landing/public`.
+- The product's name, slug and npm scope, everywhere at once:
+  `pnpm init:project --name "Acme Cloud" [--slug acme-cloud] [--scope acme] [--dry-run]`, then
+  `pnpm install`. Run it before creating Stripe prices: they are found by a lookup key that starts
+  with the slug, and the session cookie is named after it too.
+- The rest of the brand: the texts in `apps/web/src/i18n/locales/*/*.json` (they take the name
+  from `APP_NAME`), `apps/landing` and the icons in `apps/web/public` and `apps/landing/public`.
 - The plans and their prices: `packages/plans/src/index.ts`, then the Stripe prices with
   `pnpm --filter @arrakit/api stripe:prices`.
 - The product itself: its procedures in a contract file under `packages/contract/src` and a router
