@@ -29,18 +29,30 @@ export async function pgBossJobs(
         retryDelay: policy.retryDelay,
         retryBackoff: policy.retryBackoff,
         expireInSeconds: policy.expireInSeconds ?? DEFAULT_EXPIRE_IN_SECONDS,
+        policy: policy.exclusivity ?? 'standard',
         deadLetter: dead,
       })
     },
-    async send(name, data) {
-      const id = await boss.send(name, data)
-      if (!id) throw new Error(`[data] pg-boss did not queue a job on ${name}`)
+    async send(name, data, options = {}) {
+      const id = await boss.send(name, data, options)
+      if (!id && !options.singletonKey) {
+        throw new Error(`[data] pg-boss did not queue a job on ${name}`)
+      }
       return id
     },
     async work(name, handler) {
       await boss.work<object>(name, { pollingIntervalSeconds: 2, batchSize: 1 }, async (jobs) => {
         for (const job of jobs) await handler(job.data as never)
       })
+    },
+    async deadLetter(name, data) {
+      await boss.send(deadLetterOf(name), data)
+    },
+    async schedule(name, cron, data, options) {
+      await boss.schedule(name, cron, data, options)
+    },
+    async unschedule(name) {
+      await boss.unschedule(name)
     },
     async probe() {
       if (stopped) throw new Error('[data] pg-boss is stopped')

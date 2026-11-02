@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { pgBossJobs } from './pg-boss'
 import { consoleLog } from '../context'
-import { type JobsRuntime, deadLetterOf } from './types'
+import { type JobsRuntime, WORKER_RETRY_POLICY, deadLetterOf } from './types'
 
 /**
  * The real pg-boss runtime (packages/db/src/jobs/pg-boss.ts), not a fake. It always runs on PGlite
@@ -92,7 +92,7 @@ describe.each(targets)('pgBossJobs on $name', (target) => {
       state: string
       data: object
     }[]
-  const stateOf = async (queue: string, id: string) =>
+  const stateOf = async (queue: string, id: string | null) =>
     (await jobsOn(queue)).find((job) => job.id === id)?.state
 
   it('retries a failing job, then dead-letters its payload', async () => {
@@ -144,6 +144,54 @@ describe.each(targets)('pgBossJobs on $name', (target) => {
       expire_seconds: 120,
       dead_letter: deadLetterOf(queue),
     })
+  })
+
+  it('stores startAfter, priority and singletonKey with the job', async () => {
+    const queue = queueName()
+    await jobs.defineQueue(queue, WORKER_RETRY_POLICY)
+    const startAfter = new Date(Date.now() + 3_600_000)
+    const id = await jobs.send(queue, { n: 3 }, { startAfter, priority: 7, singletonKey: 'k1' })
+    const [row] = (await sql(
+      'SELECT start_after, priority, singleton_key FROM pgboss.job WHERE id = $1',
+      [id],
+    )) as { start_after: Date; priority: number; singleton_key: string }[]
+    expect(row).toMatchObject({ priority: 7, singleton_key: 'k1' })
+    expect(Math.abs(new Date(row!.start_after).getTime() - startAfter.getTime())).toBeLessThan(1000)
+  })
+
+  it('answers null for a duplicate singletonKey on an exclusive queue', async () => {
+    const queue = queueName()
+    await jobs.defineQueue(queue, { ...WORKER_RETRY_POLICY, exclusivity: 'exclusive' })
+    const first = await jobs.send(queue, { n: 4 }, { singletonKey: 'org-1', startAfter: 3600 })
+    expect(first).toEqual(expect.any(String))
+    expect(await jobs.send(queue, { n: 5 }, { singletonKey: 'org-1' })).toBeNull()
+    expect(await jobs.send(queue, { n: 6 }, { singletonKey: 'org-2' })).toEqual(expect.any(String))
+    const [row] = (await sql('SELECT policy FROM pgboss.queue WHERE name = $1', [queue])) as {
+      policy: string
+    }[]
+    expect(row?.policy).toBe('exclusive')
+  })
+
+  it('dead-letters a payload straight away', async () => {
+    const queue = queueName()
+    await jobs.defineQueue(queue, WORKER_RETRY_POLICY)
+    await jobs.deadLetter(queue, { n: 9 })
+    expect((await jobsOn(deadLetterOf(queue))).map((job) => job.data)).toEqual([{ n: 9 }])
+    expect(await jobsOn(queue)).toEqual([])
+  })
+
+  it('schedules a queue with its cron, payload and time zone, and unschedules it', async () => {
+    const queue = queueName()
+    await jobs.defineQueue(queue, WORKER_RETRY_POLICY)
+    await jobs.schedule(queue, '0 3 * * *', { n: 7 }, { tz: 'Europe/Madrid' })
+    await jobs.schedule(queue, '0 4 * * *', { n: 8 }, { tz: 'Europe/Madrid' })
+    const schedules = () =>
+      sql('SELECT cron, timezone, data FROM pgboss.schedule WHERE name = $1', [queue])
+    expect(await schedules()).toEqual([
+      { cron: '0 4 * * *', timezone: 'Europe/Madrid', data: { n: 8 } },
+    ])
+    await jobs.unschedule(queue)
+    expect(await schedules()).toEqual([])
   })
 
   it('fails the probe once stopped, and stop is idempotent', async () => {
