@@ -71,7 +71,6 @@ creates it with its custom-amount price); the webhook credits `checkout.session.
 | `packages/plans`    | Plans, prices, metrics and the usage arithmetic                       |
 | `packages/address`  | Email, slug, organization-name and time-zone rules                    |
 | `packages/emails`   | Email layout and templates                                            |
-| `docs/spec/`        | The behaviour of every feature                                        |
 
 The layout, package boundaries and rules are in [AGENTS.md](AGENTS.md).
 

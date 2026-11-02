@@ -1,6 +1,6 @@
 Qué haría, por prioridad
 
-1. Limpiar la herencia de saas-base: reescribir AGENTS.md (hoy se presenta como clon de saas-base) y escribir la documentación del producto, porque las specs y docs/gaps se han borrado. Añadir un script init que renombre scope, marca, prefijos y los textos que aún llevan "Arrakit" literal.
+1. Añadir un script init que renombre scope, marca, prefijos y los textos que aún llevan "Arrakit" literal.
 2. Un módulo de ejemplo "projects" completo, que fije el patrón canónico: schema, su scope en forOrganization() (o un guard genérico de tenancy), contrato, router, tool MCP, pantalla con react-hook-form, entrada en una sidebar extensible y tests.
 3. Separar como opcionales los créditos, el storage+jobs, MCP/OAuth y billing. Quitar el CHECK de planes del SQL.
 
@@ -19,8 +19,6 @@ Arrancar un producto nuevo
 - No hay script de renombrado. "arrakit" aparece 409 veces en 167 ficheros (fuera de docs/).
 - Algunas apariciones no son solo cosméticas. COOKIE_PREFIX='arrakit' (packages/auth/src/config.ts:7) es el prefijo de las cookies de sesión. PRICE_KEY_PREFIX='arrakit_' (apps/api/src/billing/subscription-plan.ts:21) es la clave con la que se buscan los precios en Stripe: si se cambia después de crearlos, deja de encontrarlos.
 - Casi todos los textos de i18n interpolan {{appName}}, pero quedan 6 "Arrakit" literales en roles.json y shell.json (en y es).
-- AGENTS.md empieza con "clone of saas-base at /home/luismdev/…". "saas-base" aparece 10 veces fuera de docs/: 7 en AGENTS.md y 3 en apps/ (comentarios en plans-page.tsx, api-proxy-handler.ts y styles.css).
-- Los documentos de migración (docs/gaps/, docs/ownership.md y docs/spec/) se borran en este cambio; falta documentación del producto que los sustituya.
 
 Lo más relevante del backend:
 
