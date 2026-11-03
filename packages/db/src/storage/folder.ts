@@ -23,3 +23,18 @@ export function folderPrefix(organizationId: string, folder: string): string {
   }
   return key
 }
+
+/** The bucket key of one object; the path must not end with `/`. */
+export function objectKey(organizationId: string, path: string): string {
+  const key = `${toOrganizationId(organizationId)}/${path}`
+  if (!usablePath(path) || Buffer.byteLength(key, 'utf8') > MAX_KEY_BYTES) {
+    throw new Error(`[data] not a usable object path: ${JSON.stringify(path)}`)
+  }
+  return key
+}
+
+/** `Content-Disposition: attachment` for any file name (RFC 6266 / RFC 5987). */
+export function attachmentDisposition(fileName: string): string {
+  const fallback = fileName.replace(/[^\x20-\x7e]|["\\]/g, '_')
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+}

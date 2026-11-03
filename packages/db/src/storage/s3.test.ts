@@ -1,7 +1,10 @@
 import {
+  CreateBucketCommand,
+  DeleteObjectCommand,
   DeleteObjectsCommand,
   HeadBucketCommand,
   ListObjectsV2Command,
+  PutBucketCorsCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -101,5 +104,84 @@ describe('s3Storage', () => {
     const sent = mockS3(() => ({}))
     await s3Storage(config).probe()
     expect(sent[0]).toEqual({ name: HeadBucketCommand.name, input: { Bucket: 'files' } })
+  })
+
+  it('presigns an upload bound to the content type and length, and a named download', async () => {
+    const files = s3Storage(config).forOrganization(ORG)
+    const upload = await files.presignPut('files/1', {
+      contentType: 'application/pdf',
+      contentLength: 1234,
+      expiresInSeconds: 900,
+    })
+    const put = new URL(upload.url)
+    expect(put.origin + put.pathname).toBe(`${config.endpoint}/files/${ORG}/files/1`)
+    expect(put.searchParams.get('X-Amz-Expires')).toBe('900')
+    expect(put.searchParams.get('X-Amz-SignedHeaders')?.split(';')).toEqual(
+      expect.arrayContaining(['content-length', 'content-type', 'host']),
+    )
+    expect(upload.headers).toEqual({ 'content-type': 'application/pdf' })
+
+    const download = await files.presignGet('files/1', {
+      downloadName: 'Q3 report.pdf',
+      expiresInSeconds: 300,
+    })
+    const get = new URL(download.url)
+    expect(get.searchParams.get('response-content-disposition')).toBe(
+      `attachment; filename="Q3 report.pdf"; filename*=UTF-8''Q3%20report.pdf`,
+    )
+  })
+
+  it('heads an object, undefined when the bucket answers 404', async () => {
+    let found = true
+    mockS3(() => {
+      if (found) return { ContentLength: 7, ContentType: 'text/plain' }
+      throw Object.assign(new Error('NotFound'), { $metadata: { httpStatusCode: 404 } })
+    })
+    const files = s3Storage(config).forOrganization(ORG)
+    expect(await files.head('files/1')).toEqual({ size: 7, contentType: 'text/plain' })
+    found = false
+    expect(await files.head('files/1')).toBeUndefined()
+  })
+
+  it('rethrows head failures other than 404', async () => {
+    mockS3(() => {
+      throw Object.assign(new Error('denied'), { $metadata: { httpStatusCode: 403 } })
+    })
+    await expect(s3Storage(config).forOrganization(ORG).head('files/1')).rejects.toThrow('denied')
+  })
+
+  it('removes one object by its key', async () => {
+    const sent = mockS3(() => ({}))
+    await s3Storage(config).forOrganization(ORG).remove('files/1')
+    expect(sent).toEqual([
+      { name: DeleteObjectCommand.name, input: { Bucket: 'files', Key: `${ORG}/files/1` } },
+    ])
+  })
+
+  it('prepares a local bucket: created only when missing, open to any origin', async () => {
+    let exists = false
+    const sent = mockS3((call) => {
+      if (call.name === HeadBucketCommand.name && !exists) {
+        throw Object.assign(new Error('NotFound'), { $metadata: { httpStatusCode: 404 } })
+      }
+      return {}
+    })
+    await s3Storage(config).prepareLocalBucket()
+    expect(sent.map((call) => call.name)).toEqual([
+      HeadBucketCommand.name,
+      CreateBucketCommand.name,
+      PutBucketCorsCommand.name,
+    ])
+    expect(sent[2]?.input).toMatchObject({
+      CORSConfiguration: { CORSRules: [{ AllowedOrigins: ['*'], AllowedMethods: ['GET', 'PUT'] }] },
+    })
+
+    sent.length = 0
+    exists = true
+    await s3Storage(config).prepareLocalBucket()
+    expect(sent.map((call) => call.name)).toEqual([
+      HeadBucketCommand.name,
+      PutBucketCorsCommand.name,
+    ])
   })
 })
