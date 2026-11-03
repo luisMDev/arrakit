@@ -11,7 +11,7 @@ test('an owner creates a second organization, switches between them, and each sh
   await payFor(page, organizationId, 'team_monthly')
 
   await page.goto('/app')
-  const switcher = page.getByRole('button', { name: 'Organization: Halden Capital' })
+  const switcher = page.getByRole('button', { name: 'Account menu' })
   await expect(switcher).toContainText('Halden Capital · Team')
 
   await switcher.click()
@@ -20,9 +20,7 @@ test('an owner creates a second organization, switches between them, and each sh
   await dialog.getByRole('textbox', { name: 'Organization name' }).fill('Birch Labs')
   await dialog.getByRole('button', { name: 'Create' }).click()
   await expect(page.getByText('Birch Labs is ready.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Organization: Birch Labs' })).toContainText(
-    'Birch Labs · Free',
-  )
+  await expect(switcher).toContainText('Birch Labs · Free')
   expect(await rpc<MeView>(page, 'me/get')).toMatchObject({
     organization: { name: 'Birch Labs' },
     plan: 'free',
@@ -31,12 +29,10 @@ test('an owner creates a second organization, switches between them, and each sh
   await page.goto('/app/settings?section=general')
   await expect(page.getByRole('textbox', { name: 'Organization name' })).toHaveValue('Birch Labs')
 
-  await page.getByRole('button', { name: 'Organization: Birch Labs' }).click()
+  await switcher.click()
   await page.getByRole('menuitemradio', { name: /Halden Capital/ }).click()
   await expect(page).toHaveURL(/\/app$/)
-  await expect(page.getByRole('button', { name: 'Organization: Halden Capital' })).toContainText(
-    'Halden Capital · Team',
-  )
+  await expect(switcher).toContainText('Halden Capital · Team')
   expect(await rpc<MeView>(page, 'me/get')).toMatchObject({
     organization: { name: 'Halden Capital' },
     plan: 'team',

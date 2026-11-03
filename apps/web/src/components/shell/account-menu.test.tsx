@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest'
 import { orpc } from '#/lib/orpc'
 import { answer, answerAuth, meAs, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
-import { OrgSwitcher } from './org-switcher'
+import { SidebarProvider } from '#/components/ui/sidebar'
+
+import { AccountMenu } from './account-menu'
 
 setupTestApi()
 
@@ -17,36 +19,50 @@ const BIRCH = {
   plan: 'free' as const,
 }
 
+const renderMenu = (url: string) =>
+  renderAt(
+    <SidebarProvider>
+      <AccountMenu />
+    </SidebarProvider>,
+    { url },
+  )
+
+const trigger = () => screen.findByRole('button', { name: 'Account menu' })
+
 const open = async () => {
-  await userEvent.click(await screen.findByRole('button', { name: 'Organization: Acme' }))
+  await userEvent.click(await trigger())
   return screen.findByRole('menu')
 }
 
-describe('OrgSwitcher', () => {
-  it('shows the organization and its plan, and lists every organization with the current one checked', async () => {
+describe('AccountMenu', () => {
+  it('shows the person, the organization and its plan, and lists every organization with the current one checked', async () => {
     answerAuth('organization/list', [ACME, BIRCH])
-    renderAt(<OrgSwitcher />, { url: '/app' })
-    expect(await screen.findByRole('button', { name: 'Organization: Acme' })).toHaveTextContent(
-      'Acme · Team',
-    )
-    const menu = await open()
-    expect(await within(menu).findByRole('menuitemradio', { name: /Birch/ })).toHaveTextContent(
+    renderMenu('/app')
+    const button = await trigger()
+    expect(button).toHaveTextContent('L')
+    expect(button).toHaveTextContent('Lucía Gómez')
+    expect(button).toHaveTextContent('Acme · Team')
+    const opened = await open()
+    expect(opened).toHaveTextContent('lucia@acme.com')
+    expect(await within(opened).findByRole('menuitemradio', { name: /Birch/ })).toHaveTextContent(
       'BirchFree',
     )
-    expect(within(menu).getByRole('menuitemradio', { name: /Acme/ })).toHaveAttribute(
+    expect(within(opened).getByRole('menuitemradio', { name: /Acme/ })).toHaveAttribute(
       'aria-checked',
       'true',
     )
-    expect(within(menu).getByRole('menuitem', { name: 'Create organization' })).toBeInTheDocument()
+    expect(
+      within(opened).getByRole('menuitem', { name: 'Create organization' }),
+    ).toBeInTheDocument()
   })
 
   it('switches organization, reloads the screens and opens the app', async () => {
     answerAuth('organization/list', [ACME, BIRCH])
     const activated = answerAuth('organization/set-active', BIRCH)
     const loads = answer('me/get', meAs({ organization: BIRCH, plan: 'free' }))
-    const { location, queryClient } = renderAt(<OrgSwitcher />, { url: '/app/settings' })
-    const menu = await open()
-    await userEvent.click(await within(menu).findByRole('menuitemradio', { name: /Birch/ }))
+    const { location, queryClient } = renderMenu('/app/settings')
+    const opened = await open()
+    await userEvent.click(await within(opened).findByRole('menuitemradio', { name: /Birch/ }))
     await waitFor(() => expect(location()).toBe('/app'))
     expect(activated).toEqual([{ input: { organizationId: BIRCH.id } }])
     expect(loads.length).toBeGreaterThan(0)
@@ -64,14 +80,14 @@ describe('OrgSwitcher', () => {
       await new Promise((r) => setTimeout(r, 30))
       return meAs({ organization: BIRCH, plan: 'free' })
     })
-    const { queryClient } = renderAt(<OrgSwitcher />, { url: '/app/settings' })
+    const { queryClient } = renderMenu('/app/settings')
     const { queryKey } = orpc.me.get.queryOptions()
     const missing: unknown[] = []
     queryClient.getQueryCache().subscribe(() => {
       if (queryClient.getQueryData(queryKey) === undefined) missing.push(queryKey)
     })
-    const menu = await open()
-    await userEvent.click(await within(menu).findByRole('menuitemradio', { name: /Birch/ }))
+    const opened = await open()
+    await userEvent.click(await within(opened).findByRole('menuitemradio', { name: /Birch/ }))
     await waitFor(() =>
       expect(queryClient.getQueryData(queryKey)).toMatchObject({ organization: { name: 'Birch' } }),
     )
@@ -83,20 +99,20 @@ describe('OrgSwitcher', () => {
     answerAuth('organization/list', [ACME, BIRCH])
     answerAuth('organization/set-active', BIRCH)
     answer('me/get', 500)
-    renderAt(<OrgSwitcher />, { url: '/app/settings' })
-    const menu = await open()
-    await userEvent.click(await within(menu).findByRole('menuitemradio', { name: /Birch/ }))
+    renderMenu('/app/settings')
+    const opened = await open()
+    await userEvent.click(await within(opened).findByRole('menuitemradio', { name: /Birch/ }))
     expect(await screen.findByText("Couldn't switch organizations. Try again.")).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Organization: Acme' })).toBeInTheDocument()
+    expect(await trigger()).toHaveTextContent('Acme · Team')
   })
 
   it('toasts a failed switch', async () => {
     quiet()
     answerAuth('organization/list', [ACME, BIRCH])
     answerAuth('organization/set-active', 500)
-    renderAt(<OrgSwitcher />, { url: '/app' })
-    const menu = await open()
-    await userEvent.click(await within(menu).findByRole('menuitemradio', { name: /Birch/ }))
+    renderMenu('/app')
+    const opened = await open()
+    await userEvent.click(await within(opened).findByRole('menuitemradio', { name: /Birch/ }))
     expect(await screen.findByText("Couldn't switch organizations. Try again.")).toBeInTheDocument()
   })
 
@@ -108,9 +124,9 @@ describe('OrgSwitcher', () => {
     })
     const activated = answerAuth('organization/set-active', BIRCH)
     answer('me/get', meAs({ organization: BIRCH, plan: 'free' }))
-    const { location } = renderAt(<OrgSwitcher />, { url: '/app/settings' })
-    const menu = await open()
-    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Create organization' }))
+    const { location } = renderMenu('/app/settings')
+    const opened = await open()
+    await userEvent.click(within(opened).getByRole('menuitem', { name: 'Create organization' }))
     const form = await screen.findByRole('dialog', { name: 'Create an organization' })
     await userEvent.click(within(form).getByRole('button', { name: 'Create' }))
     expect(await within(form).findByText("Enter the organization's name.")).toBeInTheDocument()
@@ -126,9 +142,9 @@ describe('OrgSwitcher', () => {
     quiet()
     answerAuth('organization/list', [ACME])
     answerAuth('organization/create', 500)
-    renderAt(<OrgSwitcher />, { url: '/app' })
-    const menu = await open()
-    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Create organization' }))
+    renderMenu('/app')
+    const opened = await open()
+    await userEvent.click(within(opened).getByRole('menuitem', { name: 'Create organization' }))
     const form = await screen.findByRole('dialog')
     await userEvent.type(within(form).getByLabelText('Organization name'), 'Birch')
     await userEvent.click(within(form).getByRole('button', { name: 'Create' }))

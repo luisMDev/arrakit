@@ -8,7 +8,8 @@ import { orpc } from '#/lib/orpc'
 import { answer, answerAuth, meAs, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
 import { AccountSection, devicesLine } from './account-section'
-import { SettingsPage, settingsSearch } from './settings-page'
+import { SettingsPage } from './settings-page'
+import { settingsSearch } from './settings-sections'
 
 setupTestApi()
 afterEach(async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { signupSearch } from '#/components/auth/signup-page'
-import { settingsSearch } from '#/components/settings/settings-page'
+import { settingsSearch } from '#/components/settings/settings-sections'
 import { unavailableSearch } from '#/components/shell/unavailable-page'
 import { choiceSearch } from '#/lib/checkout-choice'
 import { welcomeSearch } from '#/lib/guards'

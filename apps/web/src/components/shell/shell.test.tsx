@@ -6,16 +6,22 @@ import { answer, meAs, quiet, setupTestApi } from '#/test/rpc'
 
 import { renderApp } from './testing'
 
-const signOut = vi.hoisted(() => vi.fn())
-vi.mock('#/lib/auth-client', () => ({ authClient: { signOut } }))
+const { signOut, listOrganizations } = vi.hoisted(() => ({
+  signOut: vi.fn(),
+  listOrganizations: vi.fn(),
+}))
+vi.mock('#/lib/auth-client', () => ({
+  authClient: { signOut, organization: { list: listOrganizations } },
+}))
 
 setupTestApi({ onUnhandledFrame: 'error' })
 
 async function open(url = '/app', me = meAs()) {
   answer('me/get', me)
+  listOrganizations.mockResolvedValue({ data: [me.organization], error: null })
   const app = renderApp(url)
   const menuButton = await screen.findByRole('button', { name: 'Account menu' })
-  const menu = () => document.querySelector<HTMLElement>('#app-menu')
+  const menu = () => screen.queryByRole('menu')
   const user = userEvent.setup()
   const openMenu = async () => {
     await user.click(menuButton)
@@ -26,54 +32,64 @@ async function open(url = '/app', me = meAs()) {
 
 const sidebar = () => screen.getByRole('navigation', { name: 'Navigation' })
 const sidebarLink = (name: string) => within(sidebar()).getByRole('link', { name })
+const settingsNav = () => screen.getByRole('navigation', { name: 'Settings' })
+const panel = () => document.querySelector<HTMLElement>('[data-panel]')!
 const destinations = () =>
   within(sidebar())
     .getAllByRole('link')
     .map((link) => link.textContent)
 
 describe('Signed-in shell', () => {
-  it("shows the organization and its plan next to the person's initial", async () => {
+  it('shows the person, the organization and its plan at the foot of the sidebar', async () => {
     const { menuButton } = await open()
-    expect(screen.getByRole('navigation', { name: 'Account' })).toHaveTextContent('Acme · Team')
+    expect(menuButton.closest('[data-sidebar="footer"]')).not.toBeNull()
     expect(menuButton).toHaveTextContent('L')
+    expect(menuButton).toHaveTextContent('Lucía Gómez')
+    expect(menuButton).toHaveTextContent('Acme · Team')
     expect(menuButton).toHaveAttribute('aria-expanded', 'false')
-    expect(menuButton).toHaveAttribute('aria-controls', 'app-menu')
   })
 
-  it('renders exactly one header with the wordmark', async () => {
+  it('has no header in the app: the wordmark and the toggle head the sidebar', async () => {
     await open()
-    expect(document.querySelectorAll('header')).toHaveLength(1)
+    expect(document.querySelectorAll('header')).toHaveLength(0)
+    const head = document.querySelector<HTMLElement>('[data-sidebar="header"]')!
+    expect(within(head).getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/app')
+    expect(head).toHaveTextContent('Arrakit')
     expect(
-      within(document.querySelector('header')!).getByRole('link', { name: 'Home' }),
-    ).toHaveAttribute('href', '/app')
+      within(head).getByRole('button', { name: 'Show or hide navigation' }),
+    ).toBeInTheDocument()
   })
 
-  it('opens the app menu with the person, the organization, the theme and sign out', async () => {
+  it('opens the account menu with the person, the organizations, the theme and sign out', async () => {
     const { openMenu, menuButton } = await open()
     const menu = await openMenu()
     expect(menuButton).toHaveAttribute('aria-expanded', 'true')
     expect(menu).toHaveTextContent('Lucía Gómez')
-    expect(menu).toHaveTextContent('Acme · Team')
-    expect(within(menu).getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument()
-    expect(within(menu).getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
-    expect(within(menu).queryByRole('link')).toBeNull()
+    expect(menu).toHaveTextContent('lucia@acme.com')
+    expect(await within(menu).findByRole('menuitemradio', { name: /Acme/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    for (const item of ['Create organization', 'Theme', 'Sign out'])
+      expect(within(menu).getByRole('menuitem', { name: item })).toBeInTheDocument()
   })
 
-  it('switches to dark mode from the menu and remembers it', async () => {
+  it('switches to dark mode from the theme submenu and remembers it', async () => {
     const { openMenu, user } = await open()
-    const menu = await openMenu()
-    const theme = within(menu).getByRole('radiogroup', { name: 'Theme' })
-    expect(within(theme).getByRole('radio', { name: 'System' })).toBeChecked()
-
-    await user.click(within(theme).getByRole('radio', { name: 'Dark' }))
-
-    expect(document.documentElement).toHaveClass('dark')
+    await user.click(within(await openMenu()).getByRole('menuitem', { name: 'Theme' }))
+    expect(await screen.findByRole('menuitemradio', { name: 'System' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    screen.getByRole('menuitemradio', { name: 'Dark' }).focus()
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(document.documentElement).toHaveClass('dark'))
     expect(localStorage.getItem('arrakit.theme')).toBe('dark')
-    expect(within(theme).getByRole('radio', { name: 'Dark' })).toBeChecked()
-    expect(menu).toBeInTheDocument()
 
-    await user.click(within(theme).getByRole('radio', { name: 'Light' }))
-    expect(document.documentElement).not.toHaveClass('dark')
+    await user.click(within(await openMenu()).getByRole('menuitem', { name: 'Theme' }))
+    ;(await screen.findByRole('menuitemradio', { name: 'Light' })).focus()
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(document.documentElement).not.toHaveClass('dark'))
     localStorage.removeItem('arrakit.theme')
   })
 
@@ -85,8 +101,9 @@ describe('Signed-in shell', () => {
     expect(menuButton).toHaveFocus()
 
     await openMenu()
-    await user.click(document.body)
-    expect(menu()).toBeNull()
+    // The open menu is modal: Radix turns off pointer events outside it until it closes.
+    await userEvent.setup({ pointerEventsCheck: 0 }).click(document.body)
+    await waitFor(() => expect(menu()).toBeNull())
   })
 
   it('lists every destination in the sidebar, in the order the app declares them', async () => {
@@ -94,35 +111,62 @@ describe('Signed-in shell', () => {
     expect(destinations()).toEqual(['Home', 'Workspaces', 'Settings', 'Members', 'Billing'])
   })
 
-  it('navigates from the sidebar and marks where the person is', async () => {
+  it('marks where the person is in the sidebar', async () => {
     const { location, user } = await open()
     expect(sidebarLink('Home')).toHaveAttribute('aria-current', 'page')
-    await user.click(sidebarLink('Settings'))
-    expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
-    expect(location()).toBe('/app/settings')
-    expect(sidebarLink('Settings')).toHaveAttribute('aria-current', 'page')
+    await user.click(sidebarLink('Workspaces'))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Workspaces' })).toBeInTheDocument()
+    expect(location()).toBe('/app/workspaces')
+    expect(sidebarLink('Workspaces')).toHaveAttribute('aria-current', 'page')
     expect(sidebarLink('Home')).not.toHaveAttribute('aria-current')
+  })
+
+  it("swaps the sidebar for Settings' sections, sliding them in, and Back slides the app's in", async () => {
+    const { location, user } = await open()
+    expect(panel()).not.toHaveClass('animate-in')
+    await user.click(sidebarLink('Settings'))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Navigation' })).toBeNull()
+    const settings = settingsNav()
+    expect(within(settings).getByRole('link', { name: 'Account' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(panel()).toHaveAttribute('data-panel', 'settings')
+    expect(panel()).toHaveClass('animate-in', 'slide-in-from-right-8')
+
+    await user.click(within(settings).getByRole('link', { name: 'Back' }))
+    expect(await screen.findByRole('heading', { name: 'Hi, Lucía Gómez.' })).toBeInTheDocument()
+    expect(location()).toBe('/app')
+    expect(sidebarLink('Home')).toHaveAttribute('aria-current', 'page')
+    expect(panel()).toHaveAttribute('data-panel', 'app')
+    expect(panel()).toHaveClass('animate-in', 'slide-in-from-left-8')
   })
 
   it.each([
     ['Settings', '/app/settings', 'Account'],
     ['Members', '/app/settings?section=members', 'Members'],
     ['Billing', '/app/settings?section=billing', 'Billing'],
-  ])('reaches %s with its section heading, marking only it', async (item, path, section) => {
+  ])('reaches %s, marking its section in the Settings sidebar', async (item, path, section) => {
     const { location, user } = await open()
     await user.click(sidebarLink(item))
     expect(await screen.findByRole('heading', { level: 2, name: section })).toBeInTheDocument()
     expect(location()).toBe(path)
-    const marked = within(sidebar())
+    const marked = within(settingsNav())
       .getAllByRole('link')
       .filter((link) => link.ariaCurrent)
-    expect(marked.map((link) => link.textContent)).toEqual([item])
+    expect(marked.map((link) => link.textContent)).toEqual([section])
   })
 
-  it('marks Settings for a settings section without its own destination', async () => {
+  it('opens straight on a settings section with its sidebar, without sliding it in', async () => {
     await open('/app/settings?section=teams')
     await screen.findByRole('heading', { level: 1, name: 'Settings' })
-    expect(sidebarLink('Settings')).toHaveAttribute('aria-current', 'page')
+    expect(within(settingsNav()).getByRole('link', { name: 'Teams' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(panel()).not.toHaveClass('animate-in')
   })
 
   it('opens Workspaces from the sidebar', async () => {
@@ -152,7 +196,9 @@ describe('Signed-in shell', () => {
 
   it('collapses the sidebar to icons and opens it again from the toggle', async () => {
     const { user } = await open()
-    const toggle = screen.getByRole('button', { name: 'Show or hide navigation' })
+    const toggle = within(
+      document.querySelector<HTMLElement>('[data-sidebar="header"]')!,
+    ).getByRole('button', { name: 'Show or hide navigation' })
     const state = () => document.querySelector('[data-slot="sidebar"]')?.getAttribute('data-state')
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
     expect(state()).toBe('expanded')
@@ -167,9 +213,12 @@ describe('Signed-in shell', () => {
     const width = window.innerWidth
     window.innerWidth = 390
     try {
-      const { location, user } = await open()
+      answer('me/get', meAs())
+      const { location } = renderApp('/app')
+      const user = userEvent.setup()
+      const toggle = await screen.findByRole('button', { name: 'Show or hide navigation' })
       expect(screen.queryByRole('navigation', { name: 'Navigation' })).toBeNull()
-      const toggle = screen.getByRole('button', { name: 'Show or hide navigation' })
+      expect(screen.queryByRole('button', { name: 'Account menu' })).toBeNull()
       expect(toggle).toHaveAttribute('aria-expanded', 'false')
 
       await user.click(toggle)
@@ -197,7 +246,7 @@ describe('Signed-in shell', () => {
     signOut.mockResolvedValue({ data: { success: true }, error: null })
     const { openMenu, location, user, queryClient } = await open()
     answer('me/get', 401)
-    await user.click(within(await openMenu()).getByRole('button', { name: 'Sign out' }))
+    await user.click(within(await openMenu()).getByRole('menuitem', { name: 'Sign out' }))
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
     expect(location()).toBe('/signin')
     expect(
@@ -212,7 +261,7 @@ describe('Signed-in shell', () => {
     quiet()
     signOut.mockResolvedValue({ data: null, error: { status: 500, message: 'boom' } })
     const { openMenu, location, user } = await open()
-    await user.click(within(await openMenu()).getByRole('button', { name: 'Sign out' }))
+    await user.click(within(await openMenu()).getByRole('menuitem', { name: 'Sign out' }))
     expect(await screen.findByText("Couldn't sign you out. Try again.")).toBeInTheDocument()
     expect(location()).toBe('/app')
   })

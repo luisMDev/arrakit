@@ -7,7 +7,8 @@ import { describe, expect, it } from 'vitest'
 import { answer, answerAuth, meAs, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
 import { MembersSection, assignableRoles, daysSince } from './members-section'
-import { SettingsPage, settingsSearch } from './settings-page'
+import { SettingsPage } from './settings-page'
+import { settingsSearch } from './settings-sections'
 
 setupTestApi()
 

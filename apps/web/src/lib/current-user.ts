@@ -60,13 +60,13 @@ export function useCurrentUser() {
   }
 }
 
-type Member = Me & {
+export type Member = Me & {
   organization: NonNullable<Me['organization']>
   role: NonNullable<Me['role']>
   plan: NonNullable<Me['plan']>
 }
 
-const isMember = (user: Me | null): user is Member =>
+export const isMember = (user: Me | null): user is Member =>
   Boolean(user?.organization && user.role && user.plan)
 
 /** The current person under /app, where `requireUser` made sure they have an organization. */

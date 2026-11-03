@@ -9,34 +9,43 @@ test('a signed-in owner moves around the app from the sidebar', async ({ page })
   await expect(page.getByRole('heading', { level: 1, name: 'Hi, Ana Ruiz.' })).toBeVisible()
   await expect(page.getByText('Acme is on Free.', { exact: false })).toBeVisible()
   await expect(page).toHaveTitle('Arrakit · Home')
-  await expect(page.locator('header')).toHaveCount(1)
-  await expect(page.locator('header').getByRole('link', { name: 'Home' })).toHaveAttribute(
-    'href',
-    '/app',
-  )
+  await expect(page.locator('header')).toHaveCount(0)
+  const sidebarHead = page.locator('[data-sidebar="header"]')
+  await expect(sidebarHead.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/app')
 
   const menuButton = page.getByRole('button', { name: 'Account menu' })
-  await expect(menuButton).toHaveText('A')
+  await expect(menuButton).toContainText('Ana Ruiz')
+  await expect(menuButton).toContainText('Acme · Free')
   const viewTransitionName = (selector: string) =>
     page.locator(selector).evaluate((element) => getComputedStyle(element).viewTransitionName)
-  expect(await viewTransitionName('header')).toBe('site-header')
-  expect(await viewTransitionName('nav[aria-label="Account"]')).toBe('app-bar')
   expect(await viewTransitionName('[data-slot="sidebar-container"]')).toBe('app-sidebar')
 
   const sidebar = page.getByRole('navigation', { name: 'Navigation' })
   await expect(sidebar.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
 
-  for (const [item, path, section] of [
-    ['Settings', '/app/settings', 'Account'],
-    ['Members', '/app/settings\\?section=members', 'Members'],
-    ['Billing', '/app/settings\\?section=billing', 'Billing'],
+  await sidebar.getByRole('link', { name: 'Settings' }).click()
+  await expect(page).toHaveURL(/\/app\/settings$/)
+  await expect(sidebar).toHaveCount(0)
+  const settings = page.getByRole('navigation', { name: 'Settings' })
+  await expect(settings.getByRole('link', { name: 'Account' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  for (const [section, path] of [
+    ['Members', '/app/settings\\?section=members'],
+    ['Billing', '/app/settings\\?section=billing'],
   ] as const) {
-    await sidebar.getByRole('link', { name: item }).click()
+    await settings.getByRole('link', { name: section }).click()
     await expect(page).toHaveURL(new RegExp(`${path}$`))
-    await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible()
     await expect(page.getByRole('heading', { level: 2, name: section })).toBeVisible()
-    await expect(sidebar.getByRole('link', { name: item })).toHaveAttribute('aria-current', 'page')
+    await expect(settings.getByRole('link', { name: section })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
   }
+  await settings.getByRole('link', { name: 'Back' }).click()
+  await expect(page).toHaveURL(/\/app$/)
+  await expect(sidebar.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
 
   const toggle = page.getByRole('button', { name: 'Show or hide navigation' })
   await toggle.click()
@@ -49,7 +58,7 @@ test('a signed-in owner moves around the app from the sidebar', async ({ page })
   await expect(page.getByRole('heading', { name: 'This page does not exist.' })).toBeVisible()
 
   await menuButton.click()
-  await page.locator('#app-menu').getByRole('button', { name: 'Sign out' }).click()
+  await page.getByRole('menuitem', { name: 'Sign out' }).click()
   await expect(page).toHaveURL(/\/signin$/)
   await page.goto('/app')
   await expect(page).toHaveURL(/\/signin$/)

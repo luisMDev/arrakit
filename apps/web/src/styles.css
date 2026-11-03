@@ -123,6 +123,14 @@
   }
 }
 
+/* The sidebar slides its own panels in; the page's cross-fade would show both panels at once. */
+::view-transition-old(app-sidebar) {
+  display: none;
+}
+::view-transition-new(app-sidebar) {
+  animation: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(*),
   ::view-transition-new(*),

@@ -5,7 +5,11 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { answer, answerAuth, meAs, renderAt, setupTestApi } from '#/test/rpc'
 
-import { type SettingsSection, SettingsPage, settingsSearch } from './settings-page'
+import { SidebarProvider } from '#/components/ui/sidebar'
+
+import { SettingsSidebarNav } from './settings-nav'
+import { SettingsPage } from './settings-page'
+import { type SettingsSection, settingsSearch } from './settings-sections'
 
 setupTestApi()
 beforeEach(() => {
@@ -29,10 +33,21 @@ const renderAs = (
   section: SettingsSection = 'account',
   permissions?: Me['permissions'],
 ) =>
-  renderAt((search) => <SettingsPage section={settingsSearch.parse(search).section} />, {
-    me: meAs({ role, ...(permissions ? { permissions } : {}) }),
-    url: `/app/settings?section=${section}`,
-  })
+  renderAt(
+    (search) => {
+      const { section: current } = settingsSearch.parse(search)
+      return (
+        <SidebarProvider>
+          <SettingsSidebarNav />
+          <SettingsPage section={current} />
+        </SidebarProvider>
+      )
+    },
+    {
+      me: meAs({ role, ...(permissions ? { permissions } : {}) }),
+      url: `/app/settings?section=${section}`,
+    },
+  )
 
 const organizationLinks = () =>
   within(within(nav()).getByRole('group', { name: 'Organization settings' }))
@@ -41,7 +56,7 @@ const organizationLinks = () =>
 
 const nav = () => screen.getByRole('navigation', { name: 'Settings' })
 
-describe('SettingsPage', () => {
+describe('SettingsPage with its sidebar', () => {
   it('groups the sections and marks the current one', async () => {
     renderAs('owner')
     await screen.findByRole('heading', { level: 2, name: 'Account' })

@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { answer, meAs, setupTestApi } from '#/test/rpc'
@@ -34,15 +34,16 @@ describe('Root layout', () => {
   )
 
   it.each(['/app', '/app/settings', '/app?tab=1'])(
-    'links the wordmark to Home from %s',
+    'drops the site header in the app, where the sidebar links the wordmark to Home (%s)',
     async (url) => {
       answer('me/get', meAs())
       renderApp(url)
       await screen.findByRole('button', { name: 'Account menu' })
-      const header = document.querySelector('header')!
-      expect(header.querySelector('a')).toHaveAttribute('href', '/app')
-      expect(header.querySelector('a')).toHaveAccessibleName('Home')
-      expect(header).toHaveTextContent('Arrakit')
+      expect(document.querySelectorAll('header')).toHaveLength(0)
+      const head = document.querySelector<HTMLElement>('[data-sidebar="header"]')!
+      const wordmark = within(head).getByRole('link', { name: 'Home' })
+      expect(wordmark).toHaveAttribute('href', '/app')
+      expect(wordmark).toHaveTextContent('Arrakit')
     },
   )
 })

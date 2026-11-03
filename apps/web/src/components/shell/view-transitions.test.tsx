@@ -28,14 +28,10 @@ describe('View transitions', () => {
     expect(document.querySelector('header')).toHaveClass('[view-transition-name:site-header]')
   })
 
-  it('keeps the app bar out of the page fade', async () => {
+  it('keeps the sidebar out of the page fade', async () => {
     answer('me/get', meAs())
     renderApp('/app')
     await screen.findByRole('button', { name: 'Account menu' })
-    expect(screen.getByRole('navigation', { name: 'Account' })).toHaveClass(
-      '[view-transition-name:app-bar]',
-    )
-    expect(document.querySelector('header')).toHaveClass('[view-transition-name:site-header]')
     expect(document.querySelector('[data-slot="sidebar-container"]')).toHaveClass(
       '[view-transition-name:app-sidebar]',
     )
