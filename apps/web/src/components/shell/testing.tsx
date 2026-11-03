@@ -36,6 +36,12 @@ vi.mock('#/components/settings/settings-page', async (importOriginal) => ({
 vi.mock('#/components/workspaces/workspaces-page', () => ({
   WorkspacesPage: () => <Heading title="Workspaces" />,
 }))
+vi.mock('#/components/workspaces/workspace-page', () => ({
+  WorkspacePage: () => <Heading title="Workspace" />,
+}))
+vi.mock('#/components/files/files-page', () => ({
+  FilesPage: () => <Heading title="Files" />,
+}))
 vi.mock('#/components/organizations/join-page', () => ({
   JoinPage: () => <Heading title="Join" />,
 }))

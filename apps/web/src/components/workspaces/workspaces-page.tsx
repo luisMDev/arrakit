@@ -1,5 +1,6 @@
 import type { Workspace } from '@arrakit/contract'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { FolderKanban, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -84,7 +85,15 @@ function WorkspaceCard({ workspace, onEdit }: { workspace: Workspace; onEdit: ()
   return (
     <Card data-workspace={workspace.name}>
       <CardHeader>
-        <CardTitle>{workspace.name}</CardTitle>
+        <CardTitle>
+          <Link
+            to="/app/workspaces/$workspaceId"
+            params={{ workspaceId: workspace.id }}
+            className="hover:underline"
+          >
+            {workspace.name}
+          </Link>
+        </CardTitle>
         <CardDescription className="flex flex-col gap-1">
           {workspace.description ? <span>{workspace.description}</span> : null}
           <span>{t(`${K}.createdOn`, { date: fullDay(workspace.createdOn) })}</span>

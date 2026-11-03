@@ -1,0 +1,49 @@
+{
+  "files": {
+    "title": "Files",
+    "hint": "Documents shared by everyone in {{organization}}. Workspace files are on each workspace's page.",
+    "empty": "No files yet.",
+    "notLoaded": "Couldn't load the files. Reload the page.",
+    "dropHint": "Drag files here, or choose them from your device.",
+    "choose": "Choose files",
+    "uploading": "Uploads",
+    "progressOf": "Uploading {{file}}",
+    "dismissOf": "Dismiss {{file}}",
+    "name": "Name",
+    "size": "Size",
+    "uploadedBy": "Uploaded by",
+    "uploadedOn": "Uploaded",
+    "someone": "Someone who left",
+    "actions": "Actions",
+    "actionsOf": "Actions for {{file}}",
+    "download": "Download",
+    "rename": "Rename",
+    "delete": "Delete",
+    "confirmDeleteTitle": "Delete {{file}}?",
+    "uploaded": "{{file}} uploaded.",
+    "renamed": "Renamed to {{file}}.",
+    "notRenamed": "Couldn't rename the file. Try again.",
+    "deleted": "{{file}} deleted.",
+    "notDeleted": "Couldn't delete the file. Try again.",
+    "notDownloaded": "Couldn't download the file. Try again.",
+    "upload": {
+      "badName": "This file name can't be used. Rename the file and try again.",
+      "typeRefused": "This type of file can't be uploaded. Allowed: {{extensions}}.",
+      "tooLarge": "This file is larger than the {{size}} limit.",
+      "refused": "This file can't be uploaded.",
+      "noSpace": "Your organization is out of storage. Add credits in Settings → Billing.",
+      "notAllowed": "You don't have permission to upload files here.",
+      "taken": "A file named {{file}} is already here. Rename it and try again.",
+      "failed": "Couldn't upload the file. Try again."
+    },
+    "renameForm": {
+      "title": "Rename file",
+      "name": "Name",
+      "enterName": "Enter the file's name.",
+      "nameTooLong": "Keep the name under {{max}} characters.",
+      "keepType": "Keep the .{{extension}} extension.",
+      "save": "Rename",
+      "cancel": "Cancel"
+    }
+  }
+}

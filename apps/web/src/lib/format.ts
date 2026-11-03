@@ -29,3 +29,21 @@ export function fullDay(day: string): string {
 
 export const listing = (items: readonly string[]): string =>
   new Intl.ListFormat(locale(), { style: 'long', type: 'conjunction' }).format(items)
+
+const SIZE_UNITS = ['byte', 'kilobyte', 'megabyte', 'gigabyte'] as const
+
+/** "512 byte", "1.5 MB", "50 MB": decimal units, one decimal past bytes. */
+export function fileSize(bytes: number): string {
+  let value = bytes
+  let unit = 0
+  while (value >= 1000 && unit < SIZE_UNITS.length - 1) {
+    value /= 1000
+    unit += 1
+  }
+  return new Intl.NumberFormat(locale(), {
+    style: 'unit',
+    unit: SIZE_UNITS[unit],
+    unitDisplay: 'short',
+    maximumFractionDigits: unit === 0 ? 0 : 1,
+  }).format(value)
+}

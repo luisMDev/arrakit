@@ -1,5 +1,13 @@
 import { type LinkOptions, linkOptions } from '@tanstack/react-router'
-import { CreditCard, FolderKanban, House, type LucideIcon, Settings, Users } from 'lucide-react'
+import {
+  CreditCard,
+  Files,
+  FolderKanban,
+  House,
+  type LucideIcon,
+  Settings,
+  Users,
+} from 'lucide-react'
 
 import type { Access } from '#/lib/current-user'
 
@@ -20,6 +28,12 @@ export const APP_NAV: AppNavItem[] = [
     icon: FolderKanban,
     link: linkOptions({ to: '/app/workspaces' }),
     shows: (access) => access.can({ workspace: ['read'] }),
+  },
+  {
+    label: 'files',
+    icon: Files,
+    link: linkOptions({ to: '/app/files' }),
+    shows: (access) => access.can({ file: ['read'] }),
   },
   { label: 'settings', icon: Settings, link: linkOptions({ to: '/app/settings', search: {} }) },
   {

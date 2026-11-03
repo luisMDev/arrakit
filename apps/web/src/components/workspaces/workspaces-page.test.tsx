@@ -36,6 +36,10 @@ describe('WorkspacesPage', () => {
     expect(card('Marketing')).toHaveTextContent('Campaigns and launches')
     expect(card('Marketing')).toHaveTextContent('Created Nov 2, 2026')
     expect(screen.getByText(/Everyone in Acme sees its workspaces/)).toBeInTheDocument()
+    expect(within(card('Marketing')).getByRole('link', { name: 'Marketing' })).toHaveAttribute(
+      'href',
+      `/app/workspaces/${MARKETING.id}`,
+    )
   })
 
   it('says when there are none yet', async () => {

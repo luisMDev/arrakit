@@ -29,6 +29,9 @@
     "saved": "{{workspace}} guardado.",
     "notSaved": "No se pudo guardar el espacio de trabajo. Inténtalo de nuevo.",
     "deleted": "{{workspace}} eliminado.",
-    "notDeleted": "No se pudo eliminar el espacio de trabajo. Inténtalo de nuevo."
+    "notDeleted": "No se pudo eliminar el espacio de trabajo. Inténtalo de nuevo.",
+    "back": "Todos los espacios",
+    "files": "Archivos",
+    "notLoadedOne": "No se pudo cargar el espacio de trabajo. Recarga la página."
   }
 }

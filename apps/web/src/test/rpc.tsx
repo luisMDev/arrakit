@@ -101,6 +101,30 @@ export function answer(path: string, ...answers: Reply[]) {
   )
 }
 
+export interface StoredUpload {
+  contentType: string | null
+  bytes: number
+}
+
+/** Answers PUTs to a presigned storage `url` with `status`; returns what each one sent. */
+export function answerStorage(url: string, status = 200) {
+  const uploads: StoredUpload[] = []
+  const cors = {
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'PUT',
+    'access-control-allow-headers': '*',
+  }
+  api.use(
+    http.options(url, () => new HttpResponse(null, { status: 204, headers: cors })),
+    http.put(url, async ({ request }) => {
+      const bytes = (await request.arrayBuffer()).byteLength
+      uploads.push({ contentType: request.headers.get('content-type'), bytes })
+      return new HttpResponse(null, { status, headers: cors })
+    }),
+  )
+  return uploads
+}
+
 type AuthReply =
   | unknown
   | number

@@ -108,7 +108,14 @@ describe('Signed-in shell', () => {
 
   it('lists every destination in the sidebar, in the order the app declares them', async () => {
     await open()
-    expect(destinations()).toEqual(['Home', 'Workspaces', 'Settings', 'Members', 'Billing'])
+    expect(destinations()).toEqual([
+      'Home',
+      'Workspaces',
+      'Files',
+      'Settings',
+      'Members',
+      'Billing',
+    ])
   })
 
   it('marks where the person is in the sidebar', async () => {
@@ -184,14 +191,42 @@ describe('Signed-in shell', () => {
     expect(destinations()).not.toContain('Workspaces')
   })
 
+  it('opens Files from the sidebar', async () => {
+    const { location, user } = await open()
+    await user.click(sidebarLink('Files'))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Files' })).toBeInTheDocument()
+    expect(location()).toBe('/app/files')
+  })
+
+  it('hides Files from a role without file read, and sends it Home from there', async () => {
+    const auditor = meAs({ role: 'auditor', permissions: { workspace: ['read'] } })
+    const { location } = await open('/app/files', auditor)
+    expect(await screen.findByRole('heading', { name: 'Hi, Lucía Gómez.' })).toBeInTheDocument()
+    expect(location()).toBe('/app')
+    expect(destinations()).not.toContain('Files')
+  })
+
+  it('opens a workspace on its own page', async () => {
+    const { location } = await open('/app/workspaces/0f8fad5b-d9cb-469f-a165-70867728950e')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Workspace' })).toBeInTheDocument()
+    expect(location()).toBe('/app/workspaces/0f8fad5b-d9cb-469f-a165-70867728950e')
+  })
+
   it('leaves Billing and Members out of the sidebar of a member', async () => {
     await open('/app', meAs({ role: 'member' }))
-    expect(destinations()).toEqual(['Home', 'Workspaces', 'Settings'])
+    expect(destinations()).toEqual(['Home', 'Workspaces', 'Files', 'Settings'])
   })
 
   it("shows Members and Billing in the sidebar of the organization's admin", async () => {
     await open('/app', meAs({ role: 'admin' }))
-    expect(destinations()).toEqual(['Home', 'Workspaces', 'Settings', 'Members', 'Billing'])
+    expect(destinations()).toEqual([
+      'Home',
+      'Workspaces',
+      'Files',
+      'Settings',
+      'Members',
+      'Billing',
+    ])
   })
 
   it('collapses the sidebar to icons and opens it again from the toggle', async () => {

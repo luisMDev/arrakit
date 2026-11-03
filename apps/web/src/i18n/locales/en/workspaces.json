@@ -29,6 +29,9 @@
     "saved": "{{workspace}} saved.",
     "notSaved": "Couldn't save the workspace. Try again.",
     "deleted": "{{workspace}} deleted.",
-    "notDeleted": "Couldn't delete the workspace. Try again."
+    "notDeleted": "Couldn't delete the workspace. Try again.",
+    "back": "All workspaces",
+    "files": "Files",
+    "notLoadedOne": "Couldn't load the workspace. Reload the page."
   }
 }

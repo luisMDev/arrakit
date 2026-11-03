@@ -13,8 +13,12 @@ describe('app navigation', () => {
     expect(labels(navFor(accessOf(meAs({ role: 'member' }))))).toEqual([
       'home',
       'workspaces',
+      'files',
       'settings',
     ])
+    expect(
+      labels(navFor(accessOf(meAs({ role: 'archivist', permissions: { file: ['read'] } })))),
+    ).toEqual(['home', 'files', 'settings'])
     expect(labels(navFor(accessOf(meAs({ role: 'nobody', permissions: {} }))))).toEqual([
       'home',
       'settings',

@@ -21,6 +21,7 @@ describe('locales', () => {
       'auth.json',
       'billing.json',
       'common.json',
+      'files.json',
       'members.json',
       'oauth.json',
       'onboarding.json',

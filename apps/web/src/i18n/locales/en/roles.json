@@ -39,11 +39,13 @@
         "ac": "Roles",
         "billing": "Billing",
         "usage": "Usage",
-        "workspace": "Workspaces"
+        "workspace": "Workspaces",
+        "file": "Files"
       },
       "actions": {
         "create": "Create",
         "read": "View",
+        "upload": "Upload",
         "update": "Change",
         "delete": "Delete",
         "cancel": "Cancel",

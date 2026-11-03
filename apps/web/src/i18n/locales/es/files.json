@@ -1,0 +1,49 @@
+{
+  "files": {
+    "title": "Archivos",
+    "hint": "Documentos que comparte todo {{organization}}. Los archivos de cada espacio de trabajo están en su página.",
+    "empty": "Todavía no hay archivos.",
+    "notLoaded": "No se pudieron cargar los archivos. Recarga la página.",
+    "dropHint": "Arrastra archivos aquí o elígelos desde tu dispositivo.",
+    "choose": "Elegir archivos",
+    "uploading": "Subidas",
+    "progressOf": "Subiendo {{file}}",
+    "dismissOf": "Descartar {{file}}",
+    "name": "Nombre",
+    "size": "Tamaño",
+    "uploadedBy": "Subido por",
+    "uploadedOn": "Subido",
+    "someone": "Alguien que ya no está",
+    "actions": "Acciones",
+    "actionsOf": "Acciones de {{file}}",
+    "download": "Descargar",
+    "rename": "Renombrar",
+    "delete": "Eliminar",
+    "confirmDeleteTitle": "¿Eliminar {{file}}?",
+    "uploaded": "{{file}} subido.",
+    "renamed": "Renombrado a {{file}}.",
+    "notRenamed": "No se pudo renombrar el archivo. Inténtalo de nuevo.",
+    "deleted": "{{file}} eliminado.",
+    "notDeleted": "No se pudo eliminar el archivo. Inténtalo de nuevo.",
+    "notDownloaded": "No se pudo descargar el archivo. Inténtalo de nuevo.",
+    "upload": {
+      "badName": "Este nombre de archivo no se puede usar. Renómbralo e inténtalo de nuevo.",
+      "typeRefused": "Este tipo de archivo no se puede subir. Se permiten: {{extensions}}.",
+      "tooLarge": "Este archivo supera el límite de {{size}}.",
+      "refused": "Este archivo no se puede subir.",
+      "noSpace": "Tu organización se ha quedado sin almacenamiento. Añade créditos en Ajustes → Facturación.",
+      "notAllowed": "No tienes permiso para subir archivos aquí.",
+      "taken": "Ya hay un archivo llamado {{file}}. Renómbralo e inténtalo de nuevo.",
+      "failed": "No se pudo subir el archivo. Inténtalo de nuevo."
+    },
+    "renameForm": {
+      "title": "Renombrar archivo",
+      "name": "Nombre",
+      "enterName": "Escribe el nombre del archivo.",
+      "nameTooLong": "El nombre debe tener menos de {{max}} caracteres.",
+      "keepType": "Mantén la extensión .{{extension}}.",
+      "save": "Renombrar",
+      "cancel": "Cancelar"
+    }
+  }
+}
