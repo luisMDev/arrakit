@@ -180,6 +180,19 @@ describe.each(targets)('pgBossJobs on $name', (target) => {
     expect(await jobsOn(queue)).toEqual([])
   })
 
+  it('sends a published event to every subscribed queue, and to none when nobody listens', async () => {
+    const [first, second] = [queueName(), queueName()]
+    const event = `event_${randomUUID()}`
+    for (const queue of [first, second]) {
+      await jobs.defineQueue(queue, WORKER_RETRY_POLICY)
+      await jobs.subscribe(event, queue)
+    }
+    await jobs.publish(event, { n: 4 })
+    await jobs.publish(`nobody_${randomUUID()}`, { n: 5 })
+    expect((await jobsOn(first)).map((job) => job.data)).toEqual([{ n: 4 }])
+    expect((await jobsOn(second)).map((job) => job.data)).toEqual([{ n: 4 }])
+  })
+
   it('schedules a queue with its cron, payload and time zone, and unschedules it', async () => {
     const queue = queueName()
     await jobs.defineQueue(queue, WORKER_RETRY_POLICY)

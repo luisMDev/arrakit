@@ -6,6 +6,7 @@ import type { DataConfig } from './config'
 import { type Connection, connect } from './connection'
 import { type DataContext, type DataLog, consoleLog } from './context'
 import { accountData } from './data/account'
+import { filesData } from './data/files'
 import { invitationsData } from './data/invitations'
 import { membershipData } from './data/membership'
 import { organizationsData } from './data/organizations'
@@ -73,6 +74,7 @@ function buildData(ctx: DataContext, close: () => Promise<void>, driver: 'postgr
     ...organizationsData(ctx),
     ...invitationsData(ctx),
     ...accountData(ctx),
+    ...filesData(ctx),
     forOrganization: (id: string) => forOrganization(ctx, id),
     jobs: ctx.jobs,
     authDatabase: authDatabase(ctx.db),
@@ -111,9 +113,17 @@ export async function openData(config: DataConfig, options: OpenDataOptions = {}
     throw err
   }
 
-  const storage = options.storage ?? (config.s3 ? s3Storage(config.s3) : memoryStorage())
+  const bucket = !options.storage && config.s3 ? s3Storage(config.s3) : undefined
+  const storage = options.storage ?? bucket ?? memoryStorage()
   if (!options.storage && !config.s3) {
-    log.info('file storage is not configured (no R2_*): nothing is stored, purges find nothing')
+    log.info('file storage is not configured (no R2_*): uploads are kept in memory only')
+  }
+  try {
+    if (config.s3?.localBucket) await bucket?.prepareLocalBucket()
+  } catch (err) {
+    await storage.close()
+    await connection.close()
+    throw err
   }
 
   let jobs: JobsRuntime

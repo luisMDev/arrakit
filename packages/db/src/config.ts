@@ -6,6 +6,8 @@ export interface S3Config {
   region: string
   accessKeyId: string
   secretAccessKey: string
+  /** Create the bucket on boot, open to any origin (`R2_LOCAL_BUCKET=1`, local S3 only). */
+  localBucket?: boolean
 }
 
 export interface DataConfig extends ConnectionConfig {
@@ -48,6 +50,7 @@ export function loadDataConfig(env: Env): DataConfig {
             region: value('R2_REGION') ?? 'auto',
             accessKeyId: env.R2_ACCESS_KEY_ID!,
             secretAccessKey: env.R2_SECRET_ACCESS_KEY!,
+            localBucket: value('R2_LOCAL_BUCKET') === '1',
           }
         : undefined,
   }

@@ -4,6 +4,7 @@ import {
   DEFAULT_EXPIRE_IN_SECONDS,
   deadLetterOf,
   type JobsRuntime,
+  type PublishOptions,
   type QueuePolicy,
   type ScheduleOptions,
   type SendOptions,
@@ -16,6 +17,12 @@ export interface SentJob {
   options: SendOptions
 }
 
+export interface PublishedEvent {
+  event: string
+  data: object
+  options: PublishOptions
+}
+
 export interface ScheduledJob {
   cron: string
   data: object
@@ -26,12 +33,18 @@ export interface MemoryJobs extends JobsRuntime {
   queues: Map<string, Required<QueuePolicy>>
   workers: Map<string, (data: object) => Promise<void>>
   sent: SentJob[]
+  published: PublishedEvent[]
+  /** Queues by event. */
+  subscriptions: Map<string, Set<string>>
   schedules: Map<string, ScheduledJob>
   /** Runs the registered worker on every job of `name` not run yet, ignoring `startAfter`. */
   run(name: string): Promise<void>
 }
 
-/** Records what is sent; it does not apply `startAfter`, `priority` or the queue's exclusivity. */
+/**
+ * Records what is sent; it does not apply `startAfter`, `priority` or the queue's exclusivity, and
+ * a published event is sent at once, even when its transaction later rolls back.
+ */
 export function memoryJobs(): MemoryJobs {
   let stopped = false
   const done = new Set<string>()
@@ -39,6 +52,8 @@ export function memoryJobs(): MemoryJobs {
     queues: new Map(),
     workers: new Map(),
     sent: [],
+    published: [],
+    subscriptions: new Map(),
     schedules: new Map(),
     async defineQueue(name, policy) {
       fake.queues.set(name, {
@@ -54,6 +69,14 @@ export function memoryJobs(): MemoryJobs {
     },
     async work(name, handler) {
       fake.workers.set(name, handler as (data: object) => Promise<void>)
+    },
+    async subscribe(event, queue) {
+      const queues = fake.subscriptions.get(event) ?? new Set()
+      fake.subscriptions.set(event, queues.add(queue))
+    },
+    async publish(event, data, options = {}) {
+      fake.published.push({ event, data, options })
+      for (const queue of fake.subscriptions.get(event) ?? []) await fake.send(queue, data)
     },
     async deadLetter(name, data) {
       await fake.send(deadLetterOf(name), data)

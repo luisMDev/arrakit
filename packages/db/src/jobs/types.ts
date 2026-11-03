@@ -1,3 +1,5 @@
+import type { Database } from '../connection'
+
 /**
  * How many jobs sharing a `singletonKey` the queue accepts (pg-boss queue policies). With
  * `standard` the key does not deduplicate.
@@ -25,6 +27,11 @@ export interface SendOptions {
   priority?: number
 }
 
+export interface PublishOptions {
+  /** Queue the event inside this transaction: it exists only if the transaction commits. */
+  tx?: Database
+}
+
 export interface ScheduleOptions {
   /** IANA time zone the cron expression is read in. Defaults to UTC. */
   tz?: string
@@ -42,6 +49,10 @@ export interface Jobs {
    */
   send(name: string, data: object, options?: SendOptions): Promise<string | null>
   work<T extends object>(name: string, handler: (data: T) => Promise<void>): Promise<void>
+  /** Every event published from now on is also sent to `queue` (which must be defined). */
+  subscribe(event: string, queue: string): Promise<void>
+  /** Sends `data` to every queue subscribed to `event`; none subscribed is not an error. */
+  publish(event: string, data: object, options?: PublishOptions): Promise<void>
   /** Queues `data` straight onto `<name>__dead`, for a job that retrying cannot fix. */
   deadLetter(name: string, data: object): Promise<void>
   /** Sends `data` to `name` on every cron occurrence, replacing the queue's previous schedule. */

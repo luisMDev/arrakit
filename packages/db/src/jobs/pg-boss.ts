@@ -1,7 +1,11 @@
-import { type ConstructorOptions, PgBoss } from 'pg-boss'
+import { sql } from 'drizzle-orm'
+import { type ConstructorOptions, PgBoss, fromDrizzle } from 'pg-boss'
 
 import type { DataLog } from '../context'
 import { DEFAULT_EXPIRE_IN_SECONDS, type JobsRuntime, deadLetterOf } from './types'
+
+// Drizzle types execute()'s rows as unknown; pg-boss's adapter reads them as rows.
+type DrizzleTransaction = Parameters<typeof fromDrizzle>[0]
 
 /**
  * pg-boss in its own `pgboss` schema. `source` is a Postgres URL, or pg-boss constructor options
@@ -44,6 +48,20 @@ export async function pgBossJobs(
       await boss.work<object>(name, { pollingIntervalSeconds: 2, batchSize: 1 }, async (jobs) => {
         for (const job of jobs) await handler(job.data as never)
       })
+    },
+    async subscribe(event, queue) {
+      await boss.subscribe(event, queue)
+    },
+    async publish(event, data, { tx } = {}) {
+      if (!tx) return boss.publish(event, data)
+      // boss.publish() reads the subscriptions on its own connection, which waits forever behind
+      // an open transaction on PGlite's single one; read them and send through the transaction.
+      const db = fromDrizzle(tx as DrizzleTransaction, sql)
+      const { rows } = await db.executeSql(
+        'SELECT name FROM pgboss.subscription WHERE event = $1 ORDER BY name',
+        [event],
+      )
+      for (const { name } of rows as { name: string }[]) await boss.send(name, data, { db })
     },
     async deadLetter(name, data) {
       await boss.send(deadLetterOf(name), data)

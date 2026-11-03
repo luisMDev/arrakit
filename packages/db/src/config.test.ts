@@ -39,8 +39,10 @@ describe('loadDataConfig', () => {
       region: 'auto',
       accessKeyId: R2.R2_ACCESS_KEY_ID,
       secretAccessKey: R2.R2_SECRET_ACCESS_KEY,
+      localBucket: false,
     })
     expect(loadDataConfig({ ...R2, R2_REGION: 'eu' }).s3?.region).toBe('eu')
+    expect(loadDataConfig({ ...R2, R2_LOCAL_BUCKET: '1' }).s3?.localBucket).toBe(true)
   })
 
   it('names every missing R2 variable of a partial set in one error; empty counts as missing', () => {
