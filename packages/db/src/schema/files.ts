@@ -6,8 +6,7 @@ import { createdAt, updatedAt } from './columns'
 import { organizations } from './organizations'
 import { workspaces } from './workspaces'
 
-export const FILE_STATUSES = ['pending', 'ready'] as const
-export type FileStatus = (typeof FILE_STATUSES)[number]
+const FILE_STATUSES = ['pending', 'ready'] as const
 
 /** Uploaded files; `workspace_id` null means the file belongs to the organization itself. */
 export const files = pgTable(
@@ -37,5 +36,8 @@ export const files = pgTable(
       )
       .where(sql`${t.status} = 'ready'`),
     index('files_organization_id_workspace_id_index').on(t.organizationId, t.workspaceId),
+    index('files_pending_created_at_index')
+      .on(t.createdAt)
+      .where(sql`${t.status} = 'pending'`),
   ],
 )

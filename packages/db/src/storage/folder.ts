@@ -38,3 +38,6 @@ export function attachmentDisposition(fileName: string): string {
   const fallback = fileName.replace(/[^\x20-\x7e]|["\\]/g, '_')
   return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
 }
+
+/** `seconds` from now, when a presigned URL stops working. */
+export const expiryIn = (seconds: number): Date => new Date(Date.now() + seconds * 1000)

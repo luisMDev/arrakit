@@ -22,3 +22,16 @@ export function isUniqueViolation(err: unknown): boolean {
   }
   return false
 }
+
+/** Runs `write`, turning a unique violation into `refusal()`. */
+export async function refusingDuplicates<T>(
+  write: () => Promise<T>,
+  refusal: () => DomainError,
+): Promise<T> {
+  try {
+    return await write()
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err
+    throw refusal()
+  }
+}

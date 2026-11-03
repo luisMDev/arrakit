@@ -1,8 +1,9 @@
-import { sql } from 'drizzle-orm'
+import { BYTES_PER_GB as GB } from '@arrakit/plans'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { transaction } from '../connection'
 import { FILE_EVENTS } from '../files/events'
+import { STORAGE_PURGE_QUEUE } from '../jobs/types'
 import {
   type QueuedTestData,
   type TestData,
@@ -10,10 +11,10 @@ import {
   insertUser,
   openTestData,
   openTestDataWithQueue,
+  rawSql,
 } from '../testing'
 import { objectPathOf, workspaceFolderOf } from './files'
 
-const GB = 1_000_000_000
 const pdf = (name: string, sizeBytes = 10) => ({ name, contentType: 'application/pdf', sizeBytes })
 
 describe('organization files', () => {
@@ -204,7 +205,7 @@ describe('organization files', () => {
     )
   })
 
-  it('removing a workspace removes its files, frees their storage and publishes their deletion', async () => {
+  it('removing a workspace removes its files, frees their storage, publishes their deletion and queues their purge', async () => {
     const f = await organizationOf('ivy')
     const file = await f.files.reserve({
       ...pdf('a.pdf', 2 * GB),
@@ -219,6 +220,11 @@ describe('organization files', () => {
     expect(await f.files.get(file.id)).toBeUndefined()
     expect(await storageLevel(f)).toBe(0)
     expect(data.jobs.published.slice(start).map((e) => e.event)).toEqual([FILE_EVENTS.deleted])
+    expect(data.jobs.sent.at(-1)).toMatchObject({
+      name: STORAGE_PURGE_QUEUE,
+      data: { organizationId: f.organizationId, folder: workspaceFolderOf(f.workspace.id) },
+      options: { tx: expect.anything() },
+    })
     expect(await f.scope.workspaces.remove(f.workspace.id)).toBe(false)
   })
 
@@ -240,10 +246,10 @@ describe('file events on pg-boss', () => {
   afterAll(() => data.close())
 
   const queued = async (queue: string) => {
-    const result = (await data.db.execute(
-      sql`select count(*) as n from pgboss.job where name = ${queue}`,
-    )) as unknown as { rows: { n: string }[] }
-    return Number(result.rows[0]!.n)
+    const { rows } = await rawSql(data)('select count(*) as n from pgboss.job where name = $1', [
+      queue,
+    ])
+    return Number(rows[0]!.n)
   }
 
   it('queues an event for its subscribers only when the change commits', async () => {

@@ -61,3 +61,13 @@ export async function insertMember(
 ): Promise<void> {
   await data.db.insert(members).values({ organizationId, userId, role })
 }
+
+interface RawClient {
+  query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>
+}
+
+/** Raw SQL against the test database, for state no scope creates (backdated rows, queue tables). */
+export function rawSql(data: Data) {
+  const client = (data.db as unknown as { $client: RawClient }).$client
+  return (text: string, params: unknown[] = []) => client.query(text, params)
+}

@@ -13,13 +13,11 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 import type { S3Config } from '../config'
-import { attachmentDisposition, folderPrefix, objectKey } from './folder'
+import { attachmentDisposition, expiryIn, folderPrefix, objectKey } from './folder'
 import type { OrganizationObjects, Storage } from './types'
 
 const isNotFound = (err: unknown) =>
   (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode === 404
-
-const expiry = (seconds: number) => new Date(Date.now() + seconds * 1000)
 
 export interface S3Storage extends Storage {
   prepareLocalBucket(): Promise<void>
@@ -92,7 +90,7 @@ export function s3Storage(config: S3Config, options: { listPageSize?: number } =
         return {
           url,
           headers: { 'content-type': contentType },
-          expiresAt: expiry(expiresInSeconds),
+          expiresAt: expiryIn(expiresInSeconds),
         }
       },
       async presignGet(path, { downloadName, expiresInSeconds }) {
@@ -102,7 +100,7 @@ export function s3Storage(config: S3Config, options: { listPageSize?: number } =
           ResponseContentDisposition: attachmentDisposition(downloadName),
         })
         const url = await getSignedUrl(client, command, { expiresIn: expiresInSeconds })
-        return { url, expiresAt: expiry(expiresInSeconds) }
+        return { url, expiresAt: expiryIn(expiresInSeconds) }
       },
       async head(path) {
         try {

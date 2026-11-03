@@ -1,11 +1,13 @@
 import { sql } from 'drizzle-orm'
 import { type ConstructorOptions, PgBoss, fromDrizzle } from 'pg-boss'
 
+import type { Database } from '../connection'
 import type { DataLog } from '../context'
 import { DEFAULT_EXPIRE_IN_SECONDS, type JobsRuntime, deadLetterOf } from './types'
 
 // Drizzle types execute()'s rows as unknown; pg-boss's adapter reads them as rows.
 type DrizzleTransaction = Parameters<typeof fromDrizzle>[0]
+const inTransaction = (tx: Database) => fromDrizzle(tx as DrizzleTransaction, sql)
 
 /**
  * pg-boss in its own `pgboss` schema. `source` is a Postgres URL, or pg-boss constructor options
@@ -37,8 +39,8 @@ export async function pgBossJobs(
         deadLetter: dead,
       })
     },
-    async send(name, data, options = {}) {
-      const id = await boss.send(name, data, options)
+    async send(name, data, { tx, ...options } = {}) {
+      const id = await boss.send(name, data, tx ? { ...options, db: inTransaction(tx) } : options)
       if (!id && !options.singletonKey) {
         throw new Error(`[data] pg-boss did not queue a job on ${name}`)
       }
@@ -56,7 +58,7 @@ export async function pgBossJobs(
       if (!tx) return boss.publish(event, data)
       // boss.publish() reads the subscriptions on its own connection, which waits forever behind
       // an open transaction on PGlite's single one; read them and send through the transaction.
-      const db = fromDrizzle(tx as DrizzleTransaction, sql)
+      const db = inTransaction(tx)
       const { rows } = await db.executeSql(
         'SELECT name FROM pgboss.subscription WHERE event = $1 ORDER BY name',
         [event],

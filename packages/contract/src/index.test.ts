@@ -16,7 +16,6 @@ describe('contract', () => {
     ])
     expect(Object.keys(contract.workspaces)).toEqual(['list', 'get', 'create', 'update', 'delete'])
     expect(Object.keys(contract.files)).toEqual([
-      'policy',
       'list',
       'requestUpload',
       'completeUpload',

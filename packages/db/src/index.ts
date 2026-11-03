@@ -15,25 +15,22 @@ export {
   objectPathOf,
   workspaceFolderOf,
   type FileRow,
-  type ListedFile,
-  type OrganizationFiles,
 } from './organization/files'
 export {
   FILE_EVENTS,
   type FileEvent,
   type FileEventName,
   type FileEventPayloads,
-  type FileRenamedEvent,
 } from './files/events'
 export type { Membership } from './data/membership'
 export type { Account } from './data/account'
 export { authDatabase } from './auth-database'
 export {
+  STORAGE_PURGE_QUEUE,
   WORKER_RETRY_POLICY,
   type Jobs,
-  type PublishOptions,
   type QueuePolicy,
   type ScheduleOptions,
   type SendOptions,
 } from './jobs/types'
-export type { ObjectHead, PresignedDownload, PresignedUpload, Storage } from './storage/types'
+export type { Storage } from './storage/types'

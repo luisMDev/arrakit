@@ -1,4 +1,4 @@
-import { attachmentDisposition, folderPrefix, objectKey } from './folder'
+import { attachmentDisposition, expiryIn, folderPrefix, objectKey } from './folder'
 import type { ObjectHead, OrganizationObjects, Storage } from './types'
 
 export interface MemoryObject extends ObjectHead {
@@ -11,8 +11,6 @@ export interface MemoryStorage extends Storage {
   /** Stores an object as a finished upload would. */
   put(organizationId: string, path: string, bytes?: Uint8Array, contentType?: string): void
 }
-
-const expiry = (seconds: number) => new Date(Date.now() + seconds * 1000)
 
 export function memoryStorage(): MemoryStorage {
   const objects = new Map<string, MemoryObject>()
@@ -39,14 +37,14 @@ export function memoryStorage(): MemoryStorage {
         return {
           url: `memory://${keyOf(path)}`,
           headers: { 'content-type': contentType },
-          expiresAt: expiry(expiresInSeconds),
+          expiresAt: expiryIn(expiresInSeconds),
         }
       },
       async presignGet(path, { downloadName, expiresInSeconds }) {
         const disposition = encodeURIComponent(attachmentDisposition(downloadName))
         return {
           url: `memory://${keyOf(path)}?response-content-disposition=${disposition}`,
-          expiresAt: expiry(expiresInSeconds),
+          expiresAt: expiryIn(expiresInSeconds),
         }
       },
       async head(path) {

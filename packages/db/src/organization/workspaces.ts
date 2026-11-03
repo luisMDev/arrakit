@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
 
 import type { DataContext } from '../context'
-import { DomainError, isUniqueViolation } from '../errors'
+import { DomainError, refusingDuplicates } from '../errors'
 import type { OrganizationId } from '../organization-id'
 import { workspaces } from '../schema/index'
 import type { OrganizationFiles } from './files'
@@ -13,14 +13,8 @@ interface WorkspaceInput {
   description: string
 }
 
-async function refusingDuplicates<T>(name: string, write: () => Promise<T>): Promise<T> {
-  try {
-    return await write()
-  } catch (err) {
-    if (!isUniqueViolation(err)) throw err
-    throw new DomainError('CONFLICT', `A workspace named ${name} already exists.`)
-  }
-}
+const nameTaken = (name: string) =>
+  new DomainError('CONFLICT', `A workspace named ${name} already exists.`)
 
 export function workspacesScope(
   ctx: DataContext,
@@ -47,26 +41,32 @@ export function workspacesScope(
 
     /** Refuses a name another workspace of the organization has, ignoring case (CONFLICT). */
     create(input: WorkspaceInput & { createdBy: string }): Promise<WorkspaceRow> {
-      return refusingDuplicates(input.name, async () => {
-        const [row] = await db
-          .insert(workspaces)
-          .values({ ...input, organizationId })
-          .returning()
-        return row!
-      })
+      return refusingDuplicates(
+        async () => {
+          const [row] = await db
+            .insert(workspaces)
+            .values({ ...input, organizationId })
+            .returning()
+          return row!
+        },
+        () => nameTaken(input.name),
+      )
     },
 
     /** Undefined when the organization has no such workspace; CONFLICT on a taken name. */
     update(id: string, input: WorkspaceInput): Promise<WorkspaceRow | undefined> {
-      return refusingDuplicates(input.name, async () => {
-        const [row] = await db.update(workspaces).set(input).where(byId(id)).returning()
-        return row
-      })
+      return refusingDuplicates(
+        async () => {
+          const [row] = await db.update(workspaces).set(input).where(byId(id)).returning()
+          return row
+        },
+        () => nameTaken(input.name),
+      )
     },
 
     /**
-     * False when the organization has no such workspace. Its files go with it (file.deleted for
-     * each); their objects are the caller's to purge.
+     * False when the organization has no such workspace. Its files go with it: file.deleted for
+     * each, and their objects are purged in the background.
      */
     remove: (id: string): Promise<boolean> =>
       files.removingWorkspace(id, async (tx) => {

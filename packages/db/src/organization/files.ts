@@ -3,8 +3,9 @@ import { type SQL, and, asc, eq, isNull, lt, sql } from 'drizzle-orm'
 
 import { type Database, transaction } from '../connection'
 import type { DataContext } from '../context'
-import { DomainError, isUniqueViolation } from '../errors'
+import { DomainError, refusingDuplicates } from '../errors'
 import { FILE_EVENTS, type FileEvent, type FileEventPayloads } from '../files/events'
+import { STORAGE_PURGE_QUEUE } from '../jobs/types'
 import type { OrganizationId } from '../organization-id'
 import { files, users, workspaces } from '../schema/index'
 import type { OrganizationUsage } from './usage'
@@ -113,15 +114,6 @@ export function filesScope(
     if (!found) throw new DomainError('NOT_FOUND', NO_SUCH_WORKSPACE)
   }
 
-  async function refusingDuplicates<T>(name: string, write: () => Promise<T>): Promise<T> {
-    try {
-      return await write()
-    } catch (err) {
-      if (!isUniqueViolation(err)) throw err
-      throw nameTaken(name)
-    }
-  }
-
   return {
     /** Uploaded (ready) files of one scope, by name. */
     list: (workspaceId: string | null): Promise<ListedFile[]> =>
@@ -157,32 +149,36 @@ export function filesScope(
 
     /** Marks a pending file uploaded and publishes file.uploaded; undefined when not pending. */
     complete: (id: string): Promise<FileRow | undefined> =>
-      refusingDuplicates('this name', () =>
-        transaction(db, async (tx) => {
-          const [row] = await tx
-            .update(files)
-            .set({ status: 'ready' })
-            .where(and(byId(id), eq(files.status, 'pending')))
-            .returning()
-          if (row) await publish(tx, FILE_EVENTS.uploaded, eventOf(row))
-          return row
-        }),
+      refusingDuplicates(
+        () =>
+          transaction(db, async (tx) => {
+            const [row] = await tx
+              .update(files)
+              .set({ status: 'ready' })
+              .where(and(byId(id), eq(files.status, 'pending')))
+              .returning()
+            if (row) await publish(tx, FILE_EVENTS.uploaded, eventOf(row))
+            return row
+          }),
+        () => nameTaken('this name'),
       ),
 
     /** Undefined when there is no such uploaded file; CONFLICT on a name in use. */
     rename: (id: string, name: string): Promise<FileRow | undefined> =>
-      refusingDuplicates(name, () =>
-        transaction(db, async (tx) => {
-          const [before] = await tx
-            .select()
-            .from(files)
-            .where(and(byId(id), eq(files.status, 'ready')))
-            .for('update')
-          if (!before) return undefined
-          const [row] = await tx.update(files).set({ name }).where(byId(id)).returning()
-          await publish(tx, FILE_EVENTS.renamed, { ...eventOf(row!), previousName: before.name })
-          return row
-        }),
+      refusingDuplicates(
+        () =>
+          transaction(db, async (tx) => {
+            const [before] = await tx
+              .select()
+              .from(files)
+              .where(and(byId(id), eq(files.status, 'ready')))
+              .for('update')
+            if (!before) return undefined
+            const [row] = await tx.update(files).set({ name }).where(byId(id)).returning()
+            await publish(tx, FILE_EVENTS.renamed, { ...eventOf(row!), previousName: before.name })
+            return row
+          }),
+        () => nameTaken(name),
       ),
 
     /** Deletes the row (any status); publishes file.deleted for an uploaded one. */
@@ -203,19 +199,23 @@ export function filesScope(
       ),
 
     /**
-     * Runs `removeWorkspace` with the workspace's files: when it removes the workspace, publishes
-     * file.deleted for each uploaded one and frees their storage. The rows go by cascade.
+     * Runs `removeWorkspace`; when it removes the workspace, publishes file.deleted for each of its
+     * uploaded files, frees their storage and queues the purge of its objects. The rows go by
+     * cascade.
      */
     removingWorkspace: (
       workspaceId: string,
       removeWorkspace: (tx: Database) => Promise<boolean>,
     ): Promise<boolean> =>
       changingStorage(async (tx) => {
-        const owned = await tx.select().from(files).where(inScope(workspaceId))
+        const uploaded = await tx
+          .select()
+          .from(files)
+          .where(and(inScope(workspaceId), eq(files.status, 'ready')))
         if (!(await removeWorkspace(tx))) return false
-        for (const file of owned) {
-          if (file.status === 'ready') await publish(tx, FILE_EVENTS.deleted, eventOf(file))
-        }
+        for (const file of uploaded) await publish(tx, FILE_EVENTS.deleted, eventOf(file))
+        const folder = workspaceFolderOf(workspaceId)
+        await ctx.jobs.send(STORAGE_PURGE_QUEUE, { organizationId, folder }, { tx })
         return true
       }),
   }

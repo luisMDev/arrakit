@@ -25,6 +25,8 @@ export interface SendOptions {
   singletonKey?: string
   /** Higher runs first. */
   priority?: number
+  /** Queue the job inside this transaction: it exists only if the transaction commits. */
+  tx?: Database
 }
 
 export interface PublishOptions {
@@ -70,6 +72,9 @@ export interface JobsRuntime extends Jobs {
 }
 
 export const deadLetterOf = (name: string) => `${name}__dead`
+
+/** Removes an organization's objects under a folder: `{ organizationId, folder }`. */
+export const STORAGE_PURGE_QUEUE = 'storage-purge'
 
 export const DEFAULT_EXPIRE_IN_SECONDS = 900
 

@@ -61,11 +61,9 @@ export {
   workspaceUpdateSchema,
 } from './workspaces'
 export {
-  type FilePolicyView,
-  type FileScope,
   type FileView,
-  type UploadRequest,
   type UploadTicket,
+  downloadLinkSchema,
   fileIdSchema,
   fileNameSchema,
   fileSchema,

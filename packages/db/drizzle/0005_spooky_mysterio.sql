@@ -1,0 +1,1 @@
+CREATE INDEX "files_pending_created_at_index" ON "files" USING btree ("created_at") WHERE "files"."status" = 'pending';
