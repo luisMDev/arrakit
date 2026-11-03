@@ -19,15 +19,19 @@ describe('permissions', () => {
       allows(admin, { member: ['update'], billing: ['manage'], ac: ['create', 'delete'] }),
     ).toBe(true)
     expect(allows(admin, { workspace: ['read', 'create', 'update', 'delete'] })).toBe(true)
+    expect(allows(admin, { file: ['read', 'upload', 'update', 'delete'] })).toBe(true)
     expect(allows(admin, { organization: ['delete'] })).toBe(false)
   })
 
-  it('lets a member read usage and roles, and read and create workspaces', () => {
+  it('lets a member read usage and roles, read and create workspaces, read and upload files', () => {
     const member = permissionsOf('member')
     expect(allows(member, { usage: ['read'], ac: ['read'] })).toBe(true)
     expect(allows(member, { workspace: ['read', 'create'] })).toBe(true)
     expect(allows(member, { workspace: ['update'] })).toBe(false)
     expect(allows(member, { workspace: ['delete'] })).toBe(false)
+    expect(allows(member, { file: ['read', 'upload'] })).toBe(true)
+    expect(allows(member, { file: ['update'] })).toBe(false)
+    expect(allows(member, { file: ['delete'] })).toBe(false)
     expect(allows(member, { billing: ['read'] })).toBe(false)
     expect(allows(member, { invitation: ['create'] })).toBe(false)
   })
@@ -38,6 +42,7 @@ describe('permissions', () => {
       ac: ['read'],
       usage: ['read'],
       workspace: ['read', 'create'],
+      file: ['read', 'upload'],
       billing: ['read'],
     })
     expect(permissionsOf('superadmin')).toEqual({})

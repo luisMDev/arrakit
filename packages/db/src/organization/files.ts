@@ -1,0 +1,224 @@
+import { storageGbFor } from '@arrakit/plans'
+import { type SQL, and, asc, eq, isNull, lt, sql } from 'drizzle-orm'
+
+import { type Database, transaction } from '../connection'
+import type { DataContext } from '../context'
+import { DomainError, isUniqueViolation } from '../errors'
+import { FILE_EVENTS, type FileEvent, type FileEventPayloads } from '../files/events'
+import type { OrganizationId } from '../organization-id'
+import { files, users, workspaces } from '../schema/index'
+import type { OrganizationUsage } from './usage'
+
+export type FileRow = typeof files.$inferSelect
+
+export interface ListedFile extends FileRow {
+  uploaderName: string | null
+}
+
+export interface NewFile {
+  workspaceId: string | null
+  name: string
+  contentType: string
+  sizeBytes: number
+  uploadedBy: string
+}
+
+/** Where a file's bytes live, relative to the organization prefix. */
+export const objectPathOf = (file: Pick<FileRow, 'id' | 'workspaceId'>): string =>
+  file.workspaceId ? `${workspaceFolderOf(file.workspaceId)}files/${file.id}` : `files/${file.id}`
+
+/** The folder holding every object of a workspace. */
+export const workspaceFolderOf = (workspaceId: string): string => `workspaces/${workspaceId}/`
+
+const nameTaken = (name: string) =>
+  new DomainError('CONFLICT', `A file named ${name} already exists here.`)
+
+export const NO_SUCH_WORKSPACE = 'No such workspace in your organization.'
+
+export function filesScope(
+  ctx: DataContext,
+  organizationId: OrganizationId,
+  usage: OrganizationUsage,
+) {
+  const { db } = ctx
+  const inOrganization = eq(files.organizationId, organizationId)
+  const byId = (id: string) => and(inOrganization, eq(files.id, id))
+  const inScope = (workspaceId: string | null) =>
+    and(
+      inOrganization,
+      workspaceId ? eq(files.workspaceId, workspaceId) : isNull(files.workspaceId),
+    )
+  const sameName = (workspaceId: string | null, name: string) =>
+    and(
+      inScope(workspaceId),
+      eq(files.status, 'ready'),
+      eq(sql`lower(${files.name})`, name.toLowerCase()),
+    )
+
+  const listed = (where: SQL | undefined) =>
+    db
+      .select({ file: files, uploaderName: users.name })
+      .from(files)
+      .leftJoin(users, eq(users.id, files.uploadedBy))
+      .where(where)
+      .$dynamic()
+  const withUploaderName = ({
+    file,
+    uploaderName,
+  }: {
+    file: FileRow
+    uploaderName: string | null
+  }) => ({ ...file, uploaderName })
+
+  async function storedLevel(tx: Database): Promise<number> {
+    const [row] = await tx
+      .select({ bytes: sql<string>`coalesce(sum(${files.sizeBytes}), 0)` })
+      .from(files)
+      .where(inOrganization)
+    return storageGbFor(Number(row!.bytes))
+  }
+
+  function eventOf(file: FileRow): FileEvent {
+    return {
+      organizationId,
+      workspaceId: file.workspaceId,
+      fileId: file.id,
+      name: file.name,
+      contentType: file.contentType,
+      sizeBytes: file.sizeBytes,
+      uploadedBy: file.uploadedBy,
+      occurredAt: ctx.now().toISOString(),
+    }
+  }
+
+  const publish = <E extends keyof FileEventPayloads>(
+    tx: Database,
+    event: E,
+    payload: FileEventPayloads[E],
+  ) => ctx.jobs.publish(event, payload, { tx })
+
+  /** Changes the stored bytes and refreshes the storage_gb level in one locked transaction. */
+  const changingStorage = <R>(work: (tx: Database) => Promise<R>): Promise<R> =>
+    usage.setLevelWith('storage_gb', async (tx) => {
+      const result = await work(tx)
+      return { level: await storedLevel(tx), result }
+    })
+
+  async function assertWorkspace(tx: Database, workspaceId: string | null) {
+    if (!workspaceId) return
+    const [found] = await tx
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(and(eq(workspaces.organizationId, organizationId), eq(workspaces.id, workspaceId)))
+    if (!found) throw new DomainError('NOT_FOUND', NO_SUCH_WORKSPACE)
+  }
+
+  async function refusingDuplicates<T>(name: string, write: () => Promise<T>): Promise<T> {
+    try {
+      return await write()
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err
+      throw nameTaken(name)
+    }
+  }
+
+  return {
+    /** Uploaded (ready) files of one scope, by name. */
+    list: (workspaceId: string | null): Promise<ListedFile[]> =>
+      listed(and(inScope(workspaceId), eq(files.status, 'ready')))
+        .orderBy(asc(sql`lower(${files.name})`), asc(files.id))
+        .then((rows) => rows.map(withUploaderName)),
+
+    /** Any status; undefined when the organization has no such file. */
+    get: async (id: string): Promise<ListedFile | undefined> => {
+      const [row] = await listed(byId(id))
+      return row && withUploaderName(row)
+    },
+
+    /**
+     * A pending file whose bytes count against storage_gb until it is completed or expired.
+     * NOT_FOUND for a workspace of another organization, CONFLICT for a name in use,
+     * PAYMENT_REQUIRED when it does not fit.
+     */
+    reserve: (input: NewFile): Promise<FileRow> =>
+      changingStorage(async (tx) => {
+        await assertWorkspace(tx, input.workspaceId)
+        const [taken] = await tx
+          .select({ id: files.id })
+          .from(files)
+          .where(sameName(input.workspaceId, input.name))
+        if (taken) throw nameTaken(input.name)
+        const [row] = await tx
+          .insert(files)
+          .values({ ...input, organizationId, status: 'pending' })
+          .returning()
+        return row!
+      }),
+
+    /** Marks a pending file uploaded and publishes file.uploaded; undefined when not pending. */
+    complete: (id: string): Promise<FileRow | undefined> =>
+      refusingDuplicates('this name', () =>
+        transaction(db, async (tx) => {
+          const [row] = await tx
+            .update(files)
+            .set({ status: 'ready' })
+            .where(and(byId(id), eq(files.status, 'pending')))
+            .returning()
+          if (row) await publish(tx, FILE_EVENTS.uploaded, eventOf(row))
+          return row
+        }),
+      ),
+
+    /** Undefined when there is no such uploaded file; CONFLICT on a name in use. */
+    rename: (id: string, name: string): Promise<FileRow | undefined> =>
+      refusingDuplicates(name, () =>
+        transaction(db, async (tx) => {
+          const [before] = await tx
+            .select()
+            .from(files)
+            .where(and(byId(id), eq(files.status, 'ready')))
+            .for('update')
+          if (!before) return undefined
+          const [row] = await tx.update(files).set({ name }).where(byId(id)).returning()
+          await publish(tx, FILE_EVENTS.renamed, { ...eventOf(row!), previousName: before.name })
+          return row
+        }),
+      ),
+
+    /** Deletes the row (any status); publishes file.deleted for an uploaded one. */
+    remove: (id: string): Promise<FileRow | undefined> =>
+      changingStorage(async (tx) => {
+        const [row] = await tx.delete(files).where(byId(id)).returning()
+        if (row?.status === 'ready') await publish(tx, FILE_EVENTS.deleted, eventOf(row))
+        return row
+      }),
+
+    /** Deletes pending files created before `before`; their objects are the caller's to remove. */
+    expirePending: (before: Date): Promise<FileRow[]> =>
+      changingStorage((tx) =>
+        tx
+          .delete(files)
+          .where(and(inOrganization, eq(files.status, 'pending'), lt(files.createdAt, before)))
+          .returning(),
+      ),
+
+    /**
+     * Runs `removeWorkspace` with the workspace's files: when it removes the workspace, publishes
+     * file.deleted for each uploaded one and frees their storage. The rows go by cascade.
+     */
+    removingWorkspace: (
+      workspaceId: string,
+      removeWorkspace: (tx: Database) => Promise<boolean>,
+    ): Promise<boolean> =>
+      changingStorage(async (tx) => {
+        const owned = await tx.select().from(files).where(inScope(workspaceId))
+        if (!(await removeWorkspace(tx))) return false
+        for (const file of owned) {
+          if (file.status === 'ready') await publish(tx, FILE_EVENTS.deleted, eventOf(file))
+        }
+        return true
+      }),
+  }
+}
+
+export type OrganizationFiles = ReturnType<typeof filesScope>

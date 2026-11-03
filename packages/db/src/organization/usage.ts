@@ -52,9 +52,20 @@ export interface OrganizationUsage {
     options: { idempotencyKey: string },
   ): Promise<MetricUsage>
   set(metric: Metric, value: number): Promise<MetricUsage>
+  /**
+   * Runs `work` inside the usage lock, then sets the capacity `metric` to the level it returns, in
+   * the same transaction. A level over the limit (and above the current one) throws
+   * UsageLimitError and rolls `work` back.
+   */
+  setLevelWith<R>(metric: Metric, work: (tx: Database) => Promise<LevelChange<R>>): Promise<R>
   credit(cents: number, options: { idempotencyKey: string }): Promise<boolean>
   reverse(cents: number, options: ReverseOptions): Promise<boolean>
   topUps(): Promise<TopUp[]>
+}
+
+export interface LevelChange<R> {
+  level: number
+  result: R
 }
 
 interface ReverseOptions {
@@ -220,6 +231,32 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
     }))
   }
 
+  async function setLevel<R>(
+    metric: Metric,
+    work: (tx: Database) => Promise<LevelChange<R>>,
+  ): Promise<{ usage: MetricUsage; result: R }> {
+    if (metricOf(metric).kind !== 'capacity') {
+      throw new Error(`[data] ${metric} is a consumable metric, not capacity`)
+    }
+    return locked(async (l) => {
+      const { level: value, result } = await work(l.tx)
+      wholeAtLeast(value, 0, 'a level')
+      const usage = (await lockedUsage(l)).get(metric)!
+      const limit = usage.limit ?? 0
+      if (value > usage.used && value > limit) {
+        throw new UsageLimitError(metric, value - usage.used, usage.available)
+      }
+      await l.tx
+        .insert(usageLevels)
+        .values({ organizationId, metric, value })
+        .onConflictDoUpdate({
+          target: [usageLevels.organizationId, usageLevels.metric],
+          set: { value, updatedAt: sql`now()` },
+        })
+      return { usage: { ...usage, used: value, available: Math.max(0, limit - value) }, result }
+    })
+  }
+
   return {
     async summary() {
       const usage = await currentUsage()
@@ -280,26 +317,14 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
       })
     },
 
-    async set(metric, value) {
-      if (metricOf(metric).kind !== 'capacity') {
-        throw new Error(`[data] ${metric} is a consumable metric, not capacity`)
-      }
-      wholeAtLeast(value, 0, 'a level')
-      return locked(async (l) => {
-        const usage = (await lockedUsage(l)).get(metric)!
-        const limit = usage.limit ?? 0
-        if (value > usage.used && value > limit) {
-          throw new UsageLimitError(metric, value - usage.used, usage.available)
-        }
-        await l.tx
-          .insert(usageLevels)
-          .values({ organizationId, metric, value })
-          .onConflictDoUpdate({
-            target: [usageLevels.organizationId, usageLevels.metric],
-            set: { value, updatedAt: sql`now()` },
-          })
-        return { ...usage, used: value, available: Math.max(0, limit - value) }
-      })
+    set(metric, value) {
+      return setLevel(metric, async () => ({ level: value, result: undefined })).then(
+        ({ usage }) => usage,
+      )
+    },
+
+    async setLevelWith(metric, work) {
+      return (await setLevel(metric, work)).result
     },
 
     async credit(cents, { idempotencyKey }) {

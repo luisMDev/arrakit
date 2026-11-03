@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as schema from '../schema/index'
 import {
   creditLedger,
+  files,
   invitations,
   oauthAccessTokens,
   oauthClients,
@@ -201,9 +202,18 @@ describe('organizations', () => {
         await data.db
           .insert(organizationRoles)
           .values({ organizationId: id, role: 'finance', permission: '{"billing":["read"]}' })
-        await data.db
+        const [workspace] = await data.db
           .insert(workspaces)
           .values({ organizationId: id, name: 'Deals', createdBy: organization.owner })
+          .returning()
+        await data.db.insert(files).values({
+          organizationId: id,
+          workspaceId: workspace!.id,
+          name: 'deck.pdf',
+          contentType: 'application/pdf',
+          sizeBytes: 10,
+          status: 'ready',
+        })
         return id
       }
       const doomed = await seed('walnut')

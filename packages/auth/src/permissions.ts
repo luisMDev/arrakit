@@ -11,6 +11,7 @@ export const statements = {
   billing: ['read', 'manage'],
   usage: ['read'],
   workspace: ['read', 'create', 'update', 'delete'],
+  file: ['read', 'upload', 'update', 'delete'],
 } as const
 
 export type Resource = keyof typeof statements
@@ -24,14 +25,21 @@ export const roles = {
     billing: ['read', 'manage'],
     usage: ['read'],
     workspace: statements.workspace,
+    file: statements.file,
   }),
   admin: ac.newRole({
     ...adminAc.statements,
     billing: ['read', 'manage'],
     usage: ['read'],
     workspace: statements.workspace,
+    file: statements.file,
   }),
-  member: ac.newRole({ ...memberAc.statements, usage: ['read'], workspace: ['read', 'create'] }),
+  member: ac.newRole({
+    ...memberAc.statements,
+    usage: ['read'],
+    workspace: ['read', 'create'],
+    file: ['read', 'upload'],
+  }),
 }
 
 export const STATIC_ROLES = ['owner', 'admin', 'member'] as const

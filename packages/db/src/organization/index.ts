@@ -6,6 +6,7 @@ import type { Database } from '../connection'
 import type { DataContext } from '../context'
 import { type OrganizationId, toOrganizationId } from '../organization-id'
 import { organizationRoles, organizations, teamMembers, teams, users } from '../schema/index'
+import { filesScope } from './files'
 import { membersScope } from './members'
 import { usageScope } from './usage'
 import { workspacesScope } from './workspaces'
@@ -44,6 +45,9 @@ export function forOrganization(ctx: DataContext, id: string) {
     return row
   }
 
+  const usage = usageScope(ctx, organizationId)
+  const files = filesScope(ctx, organizationId, usage)
+
   return {
     /** The organization's own row, or undefined when it is gone. */
     organization: () => organizationRow(ctx.db, organizationId),
@@ -65,7 +69,7 @@ export function forOrganization(ctx: DataContext, id: string) {
       updateOrganization({
         stripeCustomerId: sql`coalesce(${organizations.stripeCustomerId}, ${customerId})`,
       }),
-    files: ctx.storage.forOrganization(organizationId),
+    objects: ctx.storage.forOrganization(organizationId),
     /** The organization's custom roles (Better Auth dynamic access control). */
     customRoles: (): Promise<{ id: string; role: string; permission: string }[]> =>
       ctx.db
@@ -87,8 +91,9 @@ export function forOrganization(ctx: DataContext, id: string) {
         .where(and(eq(teamMembers.teamId, teamId), eq(teams.organizationId, organizationId)))
         .orderBy(asc(teamMembers.createdAt), asc(teamMembers.id)),
     members: membersScope(ctx, organizationId),
-    usage: usageScope(ctx, organizationId),
-    workspaces: workspacesScope(ctx, organizationId),
+    usage,
+    files,
+    workspaces: workspacesScope(ctx, organizationId, files),
   }
 }
 
