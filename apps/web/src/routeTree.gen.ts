@@ -25,6 +25,7 @@ import { Route as AppMembersRouteImport } from './routes/app/members'
 import { Route as AppPlansRouteImport } from './routes/app/plans'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppWelcomeRouteImport } from './routes/app/welcome'
+import { Route as AppWorkspacesRouteImport } from './routes/app/workspaces'
 import { Route as JoinInvitationIdRouteImport } from './routes/join.$invitationId'
 import { Route as OauthConsentRouteImport } from './routes/oauth/consent'
 import { Route as OauthSigninRouteImport } from './routes/oauth/signin'
@@ -109,6 +110,11 @@ const AppWelcomeRoute = AppWelcomeRouteImport.update({
   path: '/welcome',
   getParentRoute: () => AppRoute,
 } as any)
+const AppWorkspacesRoute = AppWorkspacesRouteImport.update({
+  id: '/workspaces',
+  path: '/workspaces',
+  getParentRoute: () => AppRoute,
+} as any)
 const JoinInvitationIdRoute = JoinInvitationIdRouteImport.update({
   id: '/join/$invitationId',
   path: '/join/$invitationId',
@@ -141,6 +147,7 @@ export interface FileRoutesByFullPath {
   '/app/plans': typeof AppPlansRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/welcome': typeof AppWelcomeRoute
+  '/app/workspaces': typeof AppWorkspacesRoute
   '/join/$invitationId': typeof JoinInvitationIdRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/oauth/signin': typeof OauthSigninRoute
@@ -161,6 +168,7 @@ export interface FileRoutesByTo {
   '/app/plans': typeof AppPlansRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/welcome': typeof AppWelcomeRoute
+  '/app/workspaces': typeof AppWorkspacesRoute
   '/join/$invitationId': typeof JoinInvitationIdRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/oauth/signin': typeof OauthSigninRoute
@@ -183,6 +191,7 @@ export interface FileRoutesById {
   '/app/plans': typeof AppPlansRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/welcome': typeof AppWelcomeRoute
+  '/app/workspaces': typeof AppWorkspacesRoute
   '/join/$invitationId': typeof JoinInvitationIdRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/oauth/signin': typeof OauthSigninRoute
@@ -206,6 +215,7 @@ export interface FileRouteTypes {
     | '/app/plans'
     | '/app/settings'
     | '/app/welcome'
+    | '/app/workspaces'
     | '/join/$invitationId'
     | '/oauth/consent'
     | '/oauth/signin'
@@ -226,6 +236,7 @@ export interface FileRouteTypes {
     | '/app/plans'
     | '/app/settings'
     | '/app/welcome'
+    | '/app/workspaces'
     | '/join/$invitationId'
     | '/oauth/consent'
     | '/oauth/signin'
@@ -247,6 +258,7 @@ export interface FileRouteTypes {
     | '/app/plans'
     | '/app/settings'
     | '/app/welcome'
+    | '/app/workspaces'
     | '/join/$invitationId'
     | '/oauth/consent'
     | '/oauth/signin'
@@ -381,6 +393,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWelcomeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/workspaces': {
+      id: '/app/workspaces'
+      path: '/workspaces'
+      fullPath: '/app/workspaces'
+      preLoaderRoute: typeof AppWorkspacesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/join/$invitationId': {
       id: '/join/$invitationId'
       path: '/join/$invitationId'
@@ -413,6 +432,7 @@ interface AppRouteChildren {
   AppPlansRoute: typeof AppPlansRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppWelcomeRoute: typeof AppWelcomeRoute
+  AppWorkspacesRoute: typeof AppWorkspacesRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
@@ -424,6 +444,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppPlansRoute: AppPlansRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppWelcomeRoute: AppWelcomeRoute,
+  AppWorkspacesRoute: AppWorkspacesRoute,
   AppIndexRoute: AppIndexRoute,
 }
 

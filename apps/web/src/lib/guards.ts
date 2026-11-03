@@ -1,4 +1,5 @@
 import { isAccountLanguage } from '@arrakit/address'
+import type { Permissions } from '@arrakit/auth/permissions'
 import type { Me, PaidChoice } from '@arrakit/contract'
 import { isPaidPlan } from '@arrakit/plans'
 import type { QueryClient } from '@tanstack/react-query'
@@ -63,6 +64,13 @@ export async function skipWhenSignedIn({ context, location, search }: GuardArgs)
   if (!me.organization) throw redirect({ to: '/profile', search: choice ?? {} })
   throw redirect(appLanding(choice))
 }
+
+/** A screen for those whose role grants `wanted`; others go Home. `requireUser` loaded the person. */
+export const requirePermission =
+  (wanted: Permissions) =>
+  ({ context }: Pick<GuardArgs, 'context'>) => {
+    if (!grants(cachedMe(context.queryClient) ?? null, wanted)) throw redirect({ to: '/app' })
+  }
 
 /** Checkout is for a paid plan and someone who manages billing; `requireUser` loaded the person. */
 export function canCheckout({ context, search }: Omit<GuardArgs, 'location'>): {

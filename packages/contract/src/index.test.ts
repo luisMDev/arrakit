@@ -11,7 +11,9 @@ describe('contract', () => {
       'plans',
       'billing',
       'usage',
+      'workspaces',
     ])
+    expect(Object.keys(contract.workspaces)).toEqual(['list', 'create', 'update', 'delete'])
     expect(Object.keys(contract.me)).toEqual(['get', 'account'])
     expect(Object.keys(contract.billing)).toContain('topUp')
   })

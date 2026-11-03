@@ -4,6 +4,7 @@ import { member, pub } from './orpc/base'
 import { meRouter } from './routers/account'
 import { billingRouter } from './routers/billing'
 import { usageRouter } from './routers/usage'
+import { workspacesRouter } from './routers/workspaces'
 
 export const router = pub.router({
   authProviders: {
@@ -21,4 +22,5 @@ export const router = pub.router({
   plans: { list: pub.plans.list.handler(() => soldOffers()) },
   billing: billingRouter,
   usage: usageRouter,
+  workspaces: workspacesRouter,
 })

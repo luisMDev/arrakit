@@ -10,6 +10,7 @@ export const statements = {
   ...defaultStatements,
   billing: ['read', 'manage'],
   usage: ['read'],
+  workspace: ['read', 'create', 'update', 'delete'],
 } as const
 
 export type Resource = keyof typeof statements
@@ -18,9 +19,19 @@ export type Permissions = { [R in Resource]?: readonly (typeof statements)[R][nu
 export const ac = createAccessControl(statements)
 
 export const roles = {
-  owner: ac.newRole({ ...ownerAc.statements, billing: ['read', 'manage'], usage: ['read'] }),
-  admin: ac.newRole({ ...adminAc.statements, billing: ['read', 'manage'], usage: ['read'] }),
-  member: ac.newRole({ ...memberAc.statements, usage: ['read'] }),
+  owner: ac.newRole({
+    ...ownerAc.statements,
+    billing: ['read', 'manage'],
+    usage: ['read'],
+    workspace: statements.workspace,
+  }),
+  admin: ac.newRole({
+    ...adminAc.statements,
+    billing: ['read', 'manage'],
+    usage: ['read'],
+    workspace: statements.workspace,
+  }),
+  member: ac.newRole({ ...memberAc.statements, usage: ['read'], workspace: ['read', 'create'] }),
 }
 
 export const STATIC_ROLES = ['owner', 'admin', 'member'] as const

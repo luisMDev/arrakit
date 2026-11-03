@@ -18,12 +18,16 @@ describe('permissions', () => {
     expect(
       allows(admin, { member: ['update'], billing: ['manage'], ac: ['create', 'delete'] }),
     ).toBe(true)
+    expect(allows(admin, { workspace: ['read', 'create', 'update', 'delete'] })).toBe(true)
     expect(allows(admin, { organization: ['delete'] })).toBe(false)
   })
 
-  it('lets a member read usage and roles only', () => {
+  it('lets a member read usage and roles, and read and create workspaces', () => {
     const member = permissionsOf('member')
     expect(allows(member, { usage: ['read'], ac: ['read'] })).toBe(true)
+    expect(allows(member, { workspace: ['read', 'create'] })).toBe(true)
+    expect(allows(member, { workspace: ['update'] })).toBe(false)
+    expect(allows(member, { workspace: ['delete'] })).toBe(false)
     expect(allows(member, { billing: ['read'] })).toBe(false)
     expect(allows(member, { invitation: ['create'] })).toBe(false)
   })
@@ -33,6 +37,7 @@ describe('permissions', () => {
     expect(permissionsOf('member,finance', custom)).toEqual({
       ac: ['read'],
       usage: ['read'],
+      workspace: ['read', 'create'],
       billing: ['read'],
     })
     expect(permissionsOf('superadmin')).toEqual({})

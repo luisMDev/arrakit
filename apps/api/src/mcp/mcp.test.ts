@@ -5,8 +5,9 @@ import { oauthClientResources, oauthClients } from '@arrakit/db/schema'
 import { insertMember } from '@arrakit/db/testing'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { NOT_PERMITTED } from '../orpc/context'
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp, sessionCookieOf } from '../testing/app'
-import { createOrganization, orgApi, sqlOf } from '../testing/people'
+import { createOrganization, joinAs, orgApi, sqlOf } from '../testing/people'
 
 const TEST_MCP_URL = mcpResourceURL(TEST_WEB_ORIGIN)
 const ISSUER = `${TEST_WEB_ORIGIN}/api/auth`
@@ -395,7 +396,11 @@ const expectRefusedToken = async (res: Response) => {
 }
 
 /** Every MCP tool and the test in this file that proves who may call it. */
-const TOOL_CASES = ["whoami: any member of the token's organization, read-only"]
+const TOOL_CASES = [
+  "whoami: any member of the token's organization, read-only",
+  "list_workspaces: a role with workspace read, the token's organization only",
+  'create_workspace: a role with workspace create; a taken name is a tool error',
+]
 
 const base64url = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url')
 
@@ -475,7 +480,11 @@ describe('the MCP endpoint', () => {
     const res = await mcpCall(t, tokens.access_token, 'tools/list')
     expect(res.status).toBe(200)
     const tools = (await rpcResult(res)).result?.tools as { name: string; title: string }[]
-    expect(tools.map((tool) => tool.name)).toEqual(['whoami'])
+    expect(tools.map((tool) => tool.name)).toEqual([
+      'whoami',
+      'list_workspaces',
+      'create_workspace',
+    ])
     expect(tools[0]?.title).toBe('Who am I')
     expect(tools.map((tool) => tool.name)).toEqual(TOOL_CASES.map((line) => line.split(':')[0]))
   })
@@ -496,6 +505,81 @@ describe('the MCP endpoint', () => {
       role: 'owner',
     })
     expect(result?.content).toEqual([{ type: 'text', text: 'Birch Ventures (owner)' }])
+  })
+
+  const callTool = async (token: string, name: string, args: Record<string, unknown> = {}) => {
+    const res = await mcpCall(t, token, 'tools/call', { name, arguments: args })
+    expect(res.status).toBe(200)
+    return (await rpcResult(res)).result
+  }
+
+  it("lists and creates workspaces in the token's organization only", async () => {
+    const { tokens, organization, userId } = await connectedOrganization(
+      'ines@larch.vc',
+      'Larch Ventures',
+    )
+    const other = await connectedOrganization('owner@pine.vc', 'Pine Ventures')
+    await callTool(other.tokens.access_token, 'create_workspace', {
+      name: 'Elsewhere',
+      description: '',
+    })
+
+    expect((await callTool(tokens.access_token, 'list_workspaces'))?.structuredContent).toEqual({
+      workspaces: [],
+    })
+    const created = await callTool(tokens.access_token, 'create_workspace', {
+      name: ' Deals ',
+      description: 'Pipeline',
+    })
+    expect(created?.isError).toBeFalsy()
+    expect(created?.structuredContent).toMatchObject({ name: 'Deals', description: 'Pipeline' })
+    expect(created?.content).toEqual([{ type: 'text', text: 'Created Deals.' }])
+
+    const listed = await callTool(tokens.access_token, 'list_workspaces')
+    expect(listed?.structuredContent).toMatchObject({ workspaces: [{ name: 'Deals' }] })
+    expect(listed?.content).toEqual([{ type: 'text', text: 'Deals' }])
+    const [stored] = await t.data.forOrganization(organization.id).workspaces.list()
+    expect(stored?.createdBy).toBe(userId)
+  })
+
+  it('answers a taken workspace name or a blank one as a tool error', async () => {
+    const { tokens } = await connectedOrganization('omar@spruce.vc', 'Spruce Ventures')
+    await callTool(tokens.access_token, 'create_workspace', { name: 'Ops', description: '' })
+
+    const taken = await callTool(tokens.access_token, 'create_workspace', {
+      name: 'OPS',
+      description: '',
+    })
+    expect(taken?.isError).toBe(true)
+    expect(taken?.content).toEqual([
+      { type: 'text', text: 'A workspace named OPS already exists.' },
+    ])
+    const blank = await callTool(tokens.access_token, 'create_workspace', {
+      name: '  ',
+      description: '',
+    })
+    expect(blank?.isError).toBe(true)
+  })
+
+  it("refuses the workspace tools to a role that doesn't grant them", async () => {
+    const owner = await connectedOrganization('owner@teak.vc', 'Teak Capital')
+    await orgApi(t, new Headers({ cookie: owner.cookie })).post('create-role', {
+      role: 'auditor',
+      permission: { usage: ['read'] },
+      organizationId: owner.organization.id,
+    })
+    const auditor = await joinAs(t, owner.organization.id, 'auditor@teak.vc', 'auditor')
+    const { tokens } = await connector(t).connect(auditor.headers.get('cookie')!)
+
+    for (const [name, args] of [
+      ['list_workspaces', {}],
+      ['create_workspace', { name: 'Audit', description: '' }],
+    ] as const) {
+      const result = await callTool(tokens.access_token, name, args)
+      expect(result?.isError).toBe(true)
+      expect(result?.content).toEqual([{ type: 'text', text: NOT_PERMITTED }])
+    }
+    expect(await t.data.forOrganization(owner.organization.id).workspaces.list()).toEqual([])
   })
 
   it('challenges a token in the URL instead of the header', async () => {

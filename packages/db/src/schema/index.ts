@@ -2,6 +2,7 @@ export * from './auth'
 export * from './oauth'
 export * from './organizations'
 export * from './usage'
+export * from './workspaces'
 
 export const TENANCY_EXCEPTIONS = [
   'organizations',

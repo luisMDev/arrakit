@@ -7,7 +7,7 @@ import type { ChoiceSearch } from '#/lib/checkout-choice'
 import { orpc } from '#/lib/orpc'
 import { meAs, testQueryClient } from '#/test/rpc'
 
-import { canCheckout, requireAccount, skipWhenSignedIn } from './guards'
+import { canCheckout, requireAccount, requirePermission, skipWhenSignedIn } from './guards'
 
 const ORG: NonNullable<Me['organization']> = {
   id: '0f8fad5b-d9cb-469f-a165-70867728950e',
@@ -151,6 +151,24 @@ describe('any failure but a 401', () => {
       search: { next: '/signin?plan=pro' },
     })
     expect(reported).toHaveBeenCalledWith('[me.get] failed', expect.anything())
+  })
+})
+
+describe('requirePermission', () => {
+  const visit = (permissions: Me['permissions']) => {
+    const queryClient = testQueryClient()
+    queryClient.setQueryData(orpc.me.get.queryOptions().queryKey, meAs({ permissions }))
+    return outcome(async () =>
+      requirePermission({ workspace: ['read'] })({ context: { queryClient } }),
+    )
+  }
+
+  it('renders for a role that grants it', async () => {
+    expect(await visit({ workspace: ['read', 'create'] })).toBe('render')
+  })
+
+  it('sends a role without it Home', async () => {
+    expect(await visit({ usage: ['read'] })).toMatchObject({ to: '/app' })
   })
 })
 

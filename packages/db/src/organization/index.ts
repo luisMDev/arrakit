@@ -8,6 +8,7 @@ import { type OrganizationId, toOrganizationId } from '../organization-id'
 import { organizationRoles, organizations, teamMembers, teams, users } from '../schema/index'
 import { membersScope } from './members'
 import { usageScope } from './usage'
+import { workspacesScope } from './workspaces'
 
 export type OrganizationRow = typeof organizations.$inferSelect
 
@@ -87,6 +88,7 @@ export function forOrganization(ctx: DataContext, id: string) {
         .orderBy(asc(teamMembers.createdAt), asc(teamMembers.id)),
     members: membersScope(ctx, organizationId),
     usage: usageScope(ctx, organizationId),
+    workspaces: workspacesScope(ctx, organizationId),
   }
 }
 

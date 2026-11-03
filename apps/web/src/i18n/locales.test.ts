@@ -30,6 +30,7 @@ describe('locales', () => {
       'shell.json',
       'teams.json',
       'usage.json',
+      'workspaces.json',
     ])
   })
 

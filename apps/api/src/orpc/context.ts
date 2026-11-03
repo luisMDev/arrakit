@@ -95,6 +95,8 @@ export const requireSession = sessionCheck(false)
 /** The session read from the database: one ended on another device is refused at once. */
 export const requireLiveSession = sessionCheck(true)
 
+export const NOT_PERMITTED = "You don't have permission to do this."
+
 /** What `role` grants in the organization, reading its custom roles only when it has one. */
 export async function grantedTo(role: string, scope: OrganizationScope): Promise<Permissions> {
   if (rolesOf(role).every(isStaticRole)) return permissionsOf(role)
@@ -115,7 +117,7 @@ export function requireMember(wanted: Permissions = {}) {
     const scope = data.forOrganization(membership.organization.id)
     const permissions = await grantedTo(membership.role, scope)
     if (!allows(permissions, wanted)) {
-      throw new ORPCError('FORBIDDEN', { message: "You don't have permission to do this." })
+      throw new ORPCError('FORBIDDEN', { message: NOT_PERMITTED })
     }
     return next({
       context: {

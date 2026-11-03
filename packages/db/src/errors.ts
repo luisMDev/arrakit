@@ -11,3 +11,14 @@ export class DomainError extends Error {
     super(message)
   }
 }
+
+const UNIQUE_VIOLATION = '23505'
+
+/** Postgres and PGlite report the code on the error; Drizzle wraps it as the cause. */
+export function isUniqueViolation(err: unknown): boolean {
+  for (let current = err; current && typeof current === 'object';) {
+    if ((current as { code?: unknown }).code === UNIQUE_VIOLATION) return true
+    current = (current as { cause?: unknown }).cause
+  }
+  return false
+}

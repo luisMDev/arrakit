@@ -159,9 +159,11 @@ Run from the repo root; the scripts in `package.json` are the full list.
 - Product name, slug and npm scope: `pnpm init:project` (`scripts/init.ts`), before creating
   Stripe prices. Then locale texts and the icons in each app's `public/`.
 - Plans and prices: `packages/plans`, then the API's Stripe prices script.
-- A new product module: procedures in `packages/contract`, a router in apps/api, tables in the
-  `packages/db` schema (with `organization_id`, reached only through `forOrganization()`),
-  screens in apps/web, MCP tools in the API's MCP server, and tests at every layer.
+- A new product module: follow the `workspaces` module end to end. Tables in the `packages/db`
+  schema (with `organization_id`, reached only through `forOrganization()`), a permission resource
+  in `@arrakit/auth/permissions`, procedures in `packages/contract`, a router in apps/api, MCP
+  tools in the API's MCP server, screens in apps/web with an entry in the app's navigation list,
+  and tests at every layer.
 
 ## Astro (apps/landing)
 

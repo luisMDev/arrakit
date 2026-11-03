@@ -9,6 +9,7 @@ export {
   type StripeRefs,
 } from './organization/index'
 export { UsageLimitError, type MetricUsage, type TopUp } from './organization/usage'
+export type { WorkspaceRow } from './organization/workspaces'
 export type { Membership } from './data/membership'
 export type { Account } from './data/account'
 export { authDatabase } from './auth-database'

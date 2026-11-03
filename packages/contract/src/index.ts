@@ -4,6 +4,7 @@ import { meContract } from './account'
 import { billingContract } from './billing'
 import { base, moneySchema, planSchema } from './common'
 import { usageContract } from './usage'
+import { workspacesContract } from './workspaces'
 
 const authProvidersSchema = z.object({ google: z.boolean(), microsoft: z.boolean() })
 export type AuthProviders = z.infer<typeof authProvidersSchema>
@@ -38,6 +39,7 @@ export const contract = {
   },
   billing: billingContract,
   usage: usageContract,
+  workspaces: workspacesContract,
 }
 
 export type Contract = typeof contract
@@ -46,3 +48,11 @@ export { organizationSummarySchema } from './common'
 export { type AccountView, type Me } from './account'
 export { paidChoiceSchema, type BillingView, type ChangePreview, type PaidChoice } from './billing'
 export type { UsageView } from './usage'
+export {
+  WORKSPACE_DESCRIPTION_MAX,
+  WORKSPACE_NAME_MAX,
+  type Workspace,
+  type WorkspaceInput,
+  workspaceInputSchema,
+  workspaceSchema,
+} from './workspaces'

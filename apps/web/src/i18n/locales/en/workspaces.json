@@ -1,0 +1,34 @@
+{
+  "workspaces": {
+    "title": "Workspaces",
+    "hint": "Group your organization's work. Everyone in {{organization}} sees its workspaces.",
+    "new": "New workspace",
+    "empty": "No workspaces yet.",
+    "notLoaded": "Couldn't load the workspaces. Reload the page.",
+    "createdOn": "Created {{date}}",
+    "edit": "Edit",
+    "editOf": "Edit {{workspace}}",
+    "delete": "Delete",
+    "deleteOf": "Delete {{workspace}}",
+    "confirmDeleteTitle": "Delete {{workspace}}?",
+    "form": {
+      "createTitle": "New workspace",
+      "editTitle": "Edit workspace",
+      "name": "Name",
+      "description": "Description",
+      "descriptionHint": "Optional. What the workspace is for.",
+      "enterName": "Enter the workspace's name.",
+      "nameTooLong": "Keep the name under {{max}} characters.",
+      "descriptionTooLong": "Keep the description under {{max}} characters.",
+      "create": "Create workspace",
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "created": "{{workspace}} created.",
+    "notCreated": "Couldn't create the workspace. Try again.",
+    "saved": "{{workspace}} saved.",
+    "notSaved": "Couldn't save the workspace. Try again.",
+    "deleted": "{{workspace}} deleted.",
+    "notDeleted": "Couldn't delete the workspace. Try again."
+  }
+}

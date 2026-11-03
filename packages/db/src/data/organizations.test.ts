@@ -19,6 +19,7 @@ import {
   teams,
   usageLevels,
   users,
+  workspaces,
 } from '../schema/index'
 import {
   type TestData,
@@ -200,6 +201,9 @@ describe('organizations', () => {
         await data.db
           .insert(organizationRoles)
           .values({ organizationId: id, role: 'finance', permission: '{"billing":["read"]}' })
+        await data.db
+          .insert(workspaces)
+          .values({ organizationId: id, name: 'Deals', createdBy: organization.owner })
         return id
       }
       const doomed = await seed('walnut')

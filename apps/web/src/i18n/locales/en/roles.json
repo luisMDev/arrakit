@@ -38,7 +38,8 @@
         "team": "Teams",
         "ac": "Roles",
         "billing": "Billing",
-        "usage": "Usage"
+        "usage": "Usage",
+        "workspace": "Workspaces"
       },
       "actions": {
         "create": "Create",

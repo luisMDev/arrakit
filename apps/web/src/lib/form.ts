@@ -21,9 +21,11 @@ export function useClearingForm<TValues extends FieldValues, TContext = unknown,
   return { ...form, register }
 }
 
-/** A form with one required `name` of up to 200 characters; `message` says it is missing. */
-export const nameForm = (message?: string) =>
-  z.object({ name: z.string().trim().min(1, message).max(200) })
+/** A form with one required `name` of up to `max` characters; `message` says it is missing. */
+export const nameForm = (
+  message?: string,
+  { max = 200, tooLong }: { max?: number; tooLong?: string } = {},
+) => z.object({ name: z.string().trim().min(1, message).max(max, tooLong) })
 
 /** A person's name the address rules accept, trimmed. */
 export const personNameField = z

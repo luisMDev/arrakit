@@ -1,0 +1,34 @@
+{
+  "workspaces": {
+    "title": "Espacios de trabajo",
+    "hint": "Agrupa el trabajo de tu organización. Todos en {{organization}} ven sus espacios de trabajo.",
+    "new": "Nuevo espacio",
+    "empty": "Aún no hay espacios de trabajo.",
+    "notLoaded": "No se pudieron cargar los espacios de trabajo. Recarga la página.",
+    "createdOn": "Creado el {{date}}",
+    "edit": "Editar",
+    "editOf": "Editar {{workspace}}",
+    "delete": "Eliminar",
+    "deleteOf": "Eliminar {{workspace}}",
+    "confirmDeleteTitle": "¿Eliminar {{workspace}}?",
+    "form": {
+      "createTitle": "Nuevo espacio de trabajo",
+      "editTitle": "Editar espacio de trabajo",
+      "name": "Nombre",
+      "description": "Descripción",
+      "descriptionHint": "Opcional. Para qué sirve el espacio.",
+      "enterName": "Escribe el nombre del espacio.",
+      "nameTooLong": "El nombre no puede pasar de {{max}} caracteres.",
+      "descriptionTooLong": "La descripción no puede pasar de {{max}} caracteres.",
+      "create": "Crear espacio",
+      "save": "Guardar",
+      "cancel": "Cancelar"
+    },
+    "created": "{{workspace}} creado.",
+    "notCreated": "No se pudo crear el espacio de trabajo. Inténtalo de nuevo.",
+    "saved": "{{workspace}} guardado.",
+    "notSaved": "No se pudo guardar el espacio de trabajo. Inténtalo de nuevo.",
+    "deleted": "{{workspace}} eliminado.",
+    "notDeleted": "No se pudo eliminar el espacio de trabajo. Inténtalo de nuevo."
+  }
+}
