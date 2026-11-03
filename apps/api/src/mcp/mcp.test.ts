@@ -1,13 +1,13 @@
 import { createHash, generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto'
 
 import { MCP_SCOPE, mcpResourceURL } from '@arrakit/auth'
+import { NO_SUCH_WORKSPACE } from '@arrakit/db'
 import { oauthClientResources, oauthClients } from '@arrakit/db/schema'
 import { insertMember } from '@arrakit/db/testing'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { NO_SUCH_FILE } from '../files/files'
 import { NOT_PERMITTED } from '../orpc/context'
-import { NO_SUCH_WORKSPACE } from '../routers/workspaces'
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp, sessionCookieOf } from '../testing/app'
 import { createOrganization, joinAs, orgApi, sqlOf } from '../testing/people'
 

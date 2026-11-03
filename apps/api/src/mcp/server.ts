@@ -1,9 +1,11 @@
 import { type Permissions, allows } from '@arrakit/auth/permissions'
-import { FILE_NAME_MAX, type Plan } from '@arrakit/plans'
+import { FILE_NAME_MAX } from '@arrakit/plans'
 import {
+  downloadLinkSchema,
   fileIdSchema,
   fileNameSchema,
   fileSchema,
+  fileScopeSchema,
   organizationSummarySchema,
   workspaceIdSchema,
   workspaceInputSchema,
@@ -12,19 +14,17 @@ import {
 } from '@arrakit/contract'
 import {
   DomainError,
-  type Jobs,
+  NO_SUCH_WORKSPACE,
   type OrganizationRow,
   type OrganizationScope,
-  workspaceFolderOf,
 } from '@arrakit/db'
 import { type CallToolResult, McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
-import { fileService } from '../files/files'
+import { type FileActor, fileService } from '../files/files'
 import type { Logger } from '../observability/logger'
 import { NOT_PERMITTED } from '../orpc/context'
-import { NO_SUCH_WORKSPACE, workspaceView } from '../routers/workspaces'
-import { queueStoragePurge } from '../workers/storage-purge'
+import { workspaceView } from '../routers/workspaces'
 
 const MCP_SERVER_NAME = 'arrakit'
 const MCP_SERVER_VERSION = '0.1.0'
@@ -40,7 +40,6 @@ export type ConnectorCaller = {
   /** Read on first use: a custom role costs a query that whoami and tools/list never need. */
   permissions: () => Promise<Permissions>
   scope: OrganizationScope
-  jobs: Jobs
 }
 
 const WHOAMI_OUTPUT = z.object({
@@ -51,13 +50,11 @@ const WHOAMI_OUTPUT = z.object({
 const WORKSPACES_OUTPUT = z.object({ workspaces: z.array(workspaceSchema) })
 
 const FILES_OUTPUT = z.object({ files: z.array(fileSchema) })
-const DOWNLOAD_OUTPUT = z.object({ url: z.string(), expiresAt: z.string() })
 
-const fileScopeInput = z.object({
-  workspaceId: z
-    .uuid()
-    .optional()
-    .describe("A workspace id from list_workspaces; omit it for the organization's own files"),
+const fileScopeInput = fileScopeSchema.extend({
+  workspaceId: fileScopeSchema.shape.workspaceId.describe(
+    "A workspace id from list_workspaces; omit it for the organization's own files",
+  ),
 })
 
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
@@ -81,11 +78,12 @@ const refusal = (text: string): CallToolResult => ({
 async function allowed(
   caller: ConnectorCaller,
   wanted: Permissions,
-  tool: () => Promise<CallToolResult>,
+  tool: (permissions: Permissions) => Promise<CallToolResult>,
 ): Promise<CallToolResult> {
-  if (!allows(await caller.permissions(), wanted)) return refusal(NOT_PERMITTED)
+  const permissions = await caller.permissions()
+  if (!allows(permissions, wanted)) return refusal(NOT_PERMITTED)
   try {
-    return await tool()
+    return await tool(permissions)
   } catch (err) {
     if (err instanceof DomainError) return refusal(err.message)
     throw err
@@ -203,22 +201,24 @@ export function createMcpServer(caller: ConnectorCaller, log: Logger): McpServer
     ({ id }) =>
       allowed(caller, { workspace: ['delete'] }, async () => {
         if (!(await caller.scope.workspaces.remove(id))) return refusal(NO_SUCH_WORKSPACE)
-        await queueStoragePurge(
-          caller.jobs,
-          { organizationId: caller.organization.id, folder: workspaceFolderOf(id) },
-          log,
-        )
         return { content: [{ type: 'text', text: 'Deleted the workspace and its files.' }] }
       }),
   )
 
-  const files = async () =>
-    fileService({
-      userId: caller.userId,
-      permissions: await caller.permissions(),
-      plan: caller.organization.plan as Plan,
-      scope: caller.scope,
-      log,
+  /** `allowed`, handing the tool the caller's file service. */
+  const fileTool = (
+    wanted: Permissions,
+    tool: (files: ReturnType<typeof fileService>) => Promise<CallToolResult>,
+  ) =>
+    allowed(caller, wanted, (permissions) => {
+      const actor: FileActor = {
+        userId: caller.userId,
+        permissions,
+        plan: caller.organization.plan,
+        scope: caller.scope,
+        log,
+      }
+      return tool(fileService(actor))
     })
 
   server.registerTool(
@@ -232,8 +232,8 @@ export function createMcpServer(caller: ConnectorCaller, log: Logger): McpServer
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     ({ workspaceId }) =>
-      allowed(caller, { file: ['read'] }, async () => {
-        const listed = await (await files()).list(workspaceId ?? null)
+      fileTool({ file: ['read'] }, async (files) => {
+        const listed = await files.list(workspaceId ?? null)
         return {
           content: [
             { type: 'text', text: listed.map((f) => f.name).join('\n') || 'No files yet.' },
@@ -249,12 +249,12 @@ export function createMcpServer(caller: ConnectorCaller, log: Logger): McpServer
       title: 'Get a file download link',
       description: 'A short-lived link that downloads a file. Use list_files for its id.',
       inputSchema: fileIdSchema,
-      outputSchema: DOWNLOAD_OUTPUT,
+      outputSchema: downloadLinkSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     ({ id }) =>
-      allowed(caller, { file: ['read'] }, async () => {
-        const link = await (await files()).downloadUrl(id)
+      fileTool({ file: ['read'] }, async (files) => {
+        const link = await files.downloadUrl(id)
         return { content: [{ type: 'text', text: link.url }], structuredContent: link }
       }),
   )
@@ -270,10 +270,8 @@ export function createMcpServer(caller: ConnectorCaller, log: Logger): McpServer
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     ({ workspaceId, name, contentBase64 }) =>
-      allowed(caller, { file: ['upload'] }, async () => {
-        const file = await (
-          await files()
-        ).upload({
+      fileTool({ file: ['upload'] }, async (files) => {
+        const file = await files.upload({
           workspaceId: workspaceId ?? null,
           name,
           bytes: Buffer.from(contentBase64, 'base64'),
@@ -300,8 +298,8 @@ export function createMcpServer(caller: ConnectorCaller, log: Logger): McpServer
       },
     },
     ({ id, name }) =>
-      allowed(caller, { file: ['read'] }, async () => {
-        const file = await (await files()).rename(id, name)
+      fileTool({ file: ['read'] }, async (files) => {
+        const file = await files.rename(id, name)
         return {
           content: [{ type: 'text', text: `Renamed to ${file.name}.` }],
           structuredContent: file,
@@ -323,8 +321,8 @@ export function createMcpServer(caller: ConnectorCaller, log: Logger): McpServer
       },
     },
     ({ id }) =>
-      allowed(caller, { file: ['read'] }, async () => {
-        await (await files()).remove(id)
+      fileTool({ file: ['read'] }, async (files) => {
+        await files.remove(id)
         return { content: [{ type: 'text', text: 'Deleted the file.' }] }
       }),
   )

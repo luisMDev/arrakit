@@ -2,14 +2,12 @@ import { randomUUID } from 'node:crypto'
 
 import type { UploadTicket } from '@arrakit/contract'
 import { objectPathOf } from '@arrakit/db'
-import { filePolicyFor } from '@arrakit/plans'
+import { BYTES_PER_GB as GB, filePolicyFor } from '@arrakit/plans'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { NOT_UPLOADED, UPLOAD_DIFFERS } from '../files/files'
 import { type TestApp, createTestApp } from '../testing/app'
 import { joinAs, orgApi, ownerOf } from '../testing/people'
-
-const GB = 1_000_000_000
 
 describe('files', () => {
   let t: TestApp
@@ -48,13 +46,6 @@ describe('files', () => {
     send(who.organizationId, ticket, bytes)
     return api.completeUpload({ id: ticket.file.id })
   }
-
-  it('answers the plan’s file policy', async () => {
-    const { member } = await organization()
-    const policy = await t.client(member.headers).files.policy()
-    expect(policy.maxBytes).toBe(filePolicyFor('free').maxBytes)
-    expect(policy.extensions).toContain('pdf')
-  })
 
   it('uploads through a presigned URL, then lists the file once it is complete', async () => {
     const { owner } = await organization()

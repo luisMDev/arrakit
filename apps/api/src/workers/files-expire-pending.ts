@@ -1,7 +1,7 @@
-import { WORKER_RETRY_POLICY, objectPathOf } from '@arrakit/db'
+import { WORKER_RETRY_POLICY } from '@arrakit/db'
 import { z } from 'zod'
 
-import { UPLOAD_URL_SECONDS } from '../files/files'
+import { UPLOAD_URL_SECONDS, removeFileObject } from '../files/files'
 import { defineJob } from './job'
 
 /** Long enough for any upload URL to have expired. */
@@ -17,16 +17,8 @@ export const filesExpirePending = defineJob({
     const before = new Date(Date.now() - PENDING_UPLOAD_TTL_SECONDS * 1000)
     for (const organizationId of await data.organizationsWithPendingFiles(before)) {
       const scope = data.forOrganization(organizationId)
-      for (const file of await scope.files.expirePending(before)) {
-        try {
-          await scope.objects.remove(objectPathOf(file))
-        } catch (err) {
-          log.error(
-            { err, organizationId, fileId: file.id },
-            'expired upload object not removed; it stays in the bucket',
-          )
-        }
-      }
+      const expired = await scope.files.expirePending(before)
+      await Promise.all(expired.map((file) => removeFileObject(scope, file, log)))
     }
   },
 })

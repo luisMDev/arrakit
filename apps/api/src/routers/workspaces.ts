@@ -1,10 +1,9 @@
 import type { Workspace } from '@arrakit/contract'
-import { NO_SUCH_WORKSPACE, type WorkspaceRow, workspaceFolderOf } from '@arrakit/db'
+import { NO_SUCH_WORKSPACE, type WorkspaceRow } from '@arrakit/db'
 import { ORPCError } from '@orpc/server'
 
 import { dayOf } from '../day'
 import { member } from '../orpc/base'
-import { queueStoragePurge } from '../workers/storage-purge'
 
 export const workspaceView = (row: WorkspaceRow): Workspace => ({
   id: row.id,
@@ -12,8 +11,6 @@ export const workspaceView = (row: WorkspaceRow): Workspace => ({
   description: row.description,
   createdOn: dayOf(row.createdAt),
 })
-
-export { NO_SUCH_WORKSPACE }
 
 const notFound = () => new ORPCError('NOT_FOUND', { message: NO_SUCH_WORKSPACE })
 
@@ -39,11 +36,6 @@ export const workspacesRouter = {
   delete: member({ workspace: ['delete'] }).workspaces.delete.handler(
     async ({ context, input }) => {
       if (!(await context.scope.workspaces.remove(input.id))) throw notFound()
-      await queueStoragePurge(
-        context.deps.data.jobs,
-        { organizationId: context.activeOrganization.id, folder: workspaceFolderOf(input.id) },
-        context.log,
-      )
     },
   ),
 }

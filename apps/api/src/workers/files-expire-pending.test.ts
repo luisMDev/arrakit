@@ -1,5 +1,11 @@
 import { objectPathOf } from '@arrakit/db'
-import { type TestData, insertOrganization, insertUser, openTestData } from '@arrakit/db/testing'
+import {
+  type TestData,
+  insertOrganization,
+  insertUser,
+  openTestData,
+  rawSql,
+} from '@arrakit/db/testing'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { noErrorReporter } from '../observability/error-reporter'
@@ -38,12 +44,7 @@ describe('expiring pending uploads', () => {
     const fresh = await reserve('fresh.txt')
     const done = await reserve('done.txt')
     await scope.files.complete(done.id)
-    const client = (
-      data.db as unknown as {
-        $client: { query: (text: string, params: unknown[]) => Promise<unknown> }
-      }
-    ).$client
-    await client.query(
+    await rawSql(data)(
       "update files set created_at = now() - interval '2 hours' where id = any($1::uuid[])",
       [[stale.id, done.id]],
     )

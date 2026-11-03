@@ -68,7 +68,6 @@ export function accessTokenVerifier(
           role: membership.role,
           permissions: once(() => grantedTo(membership.role, organizationScope)),
           scope: organizationScope,
-          jobs: deps.data.jobs,
         } satisfies ConnectorCaller,
       }
     },

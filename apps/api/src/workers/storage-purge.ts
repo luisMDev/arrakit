@@ -1,4 +1,4 @@
-import { type Jobs, WORKER_RETRY_POLICY } from '@arrakit/db'
+import { type Jobs, STORAGE_PURGE_QUEUE, WORKER_RETRY_POLICY } from '@arrakit/db'
 import { z } from 'zod'
 
 import type { Logger } from '../observability/logger'
@@ -16,7 +16,7 @@ const purgeFields = ({ organizationId, folder }: StoragePurgeJob) => ({
 })
 
 export const storagePurge = defineJob({
-  name: 'storage-purge',
+  name: STORAGE_PURGE_QUEUE,
   schema: z.object({
     organizationId: z.guid(),
     /** A folder ending in `/`, or '' for the whole organization. */

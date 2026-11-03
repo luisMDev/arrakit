@@ -1,5 +1,3 @@
-import type { Plan } from '@arrakit/plans'
-
 import { fileService } from '../files/files'
 import { member } from '../orpc/base'
 import type { MemberContext } from '../orpc/context'
@@ -8,15 +6,12 @@ const filesOf = (context: MemberContext) =>
   fileService({
     userId: context.user.id,
     permissions: context.permissions,
-    plan: context.activeOrganization.plan as Plan,
+    plan: context.activeOrganization.plan,
     scope: context.scope,
     log: context.log,
   })
 
 export const filesRouter = {
-  policy: member({ file: ['read'] }).files.policy.handler(({ context }) =>
-    filesOf(context).policy(),
-  ),
   list: member({ file: ['read'] }).files.list.handler(({ context, input }) =>
     filesOf(context).list(input.workspaceId ?? null),
   ),

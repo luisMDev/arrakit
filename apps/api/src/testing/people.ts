@@ -1,4 +1,4 @@
-import { insertMember } from '@arrakit/db/testing'
+import { insertMember, rawSql } from '@arrakit/db/testing'
 import type { Plan } from '@arrakit/plans'
 
 import { type TestApp, withOrigin } from './app'
@@ -9,15 +9,8 @@ export interface Person {
   email: string
 }
 
-interface RawClient {
-  query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>
-}
-
 /** Raw SQL against the test PGlite, for state no procedure creates (expiry, subscriptions). */
-export function sqlOf(t: TestApp) {
-  const client = (t.data.db as unknown as { $client: RawClient }).$client
-  return (text: string, params: unknown[] = []) => client.query(text, params)
-}
+export const sqlOf = (t: TestApp) => rawSql(t.data)
 
 export interface AuthAnswer<T = Record<string, unknown>> {
   status: number
