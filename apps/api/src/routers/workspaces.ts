@@ -12,8 +12,9 @@ export const workspaceView = (row: WorkspaceRow): Workspace => ({
   createdOn: dayOf(row.createdAt),
 })
 
-const notFound = () =>
-  new ORPCError('NOT_FOUND', { message: 'No such workspace in your organization.' })
+export const NO_SUCH_WORKSPACE = 'No such workspace in your organization.'
+
+const notFound = () => new ORPCError('NOT_FOUND', { message: NO_SUCH_WORKSPACE })
 
 export const workspacesRouter = {
   list: member({ workspace: ['read'] }).workspaces.list.handler(async ({ context }) =>

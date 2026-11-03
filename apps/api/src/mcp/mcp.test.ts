@@ -6,6 +6,7 @@ import { insertMember } from '@arrakit/db/testing'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { NOT_PERMITTED } from '../orpc/context'
+import { NO_SUCH_WORKSPACE } from '../routers/workspaces'
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp, sessionCookieOf } from '../testing/app'
 import { createOrganization, joinAs, orgApi, sqlOf } from '../testing/people'
 
@@ -400,6 +401,8 @@ const TOOL_CASES = [
   "whoami: any member of the token's organization, read-only",
   "list_workspaces: a role with workspace read, the token's organization only",
   'create_workspace: a role with workspace create; a taken name is a tool error',
+  "update_workspace: a role with workspace update, the token's organization only",
+  "delete_workspace: a role with workspace delete, the token's organization only",
 ]
 
 const base64url = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url')
@@ -484,6 +487,8 @@ describe('the MCP endpoint', () => {
       'whoami',
       'list_workspaces',
       'create_workspace',
+      'update_workspace',
+      'delete_workspace',
     ])
     expect(tools[0]?.title).toBe('Who am I')
     expect(tools.map((tool) => tool.name)).toEqual(TOOL_CASES.map((line) => line.split(':')[0]))
@@ -561,6 +566,77 @@ describe('the MCP endpoint', () => {
     expect(blank?.isError).toBe(true)
   })
 
+  it("updates and deletes workspaces in the token's organization only", async () => {
+    const { tokens, organization } = await connectedOrganization('rosa@cedar.vc', 'Cedar Ventures')
+    const other = await connectedOrganization('owner@hazel.vc', 'Hazel Ventures')
+    const created = await callTool(tokens.access_token, 'create_workspace', {
+      name: 'Deals',
+      description: '',
+    })
+    await callTool(tokens.access_token, 'create_workspace', { name: 'Ops', description: '' })
+    const elsewhere = await callTool(other.tokens.access_token, 'create_workspace', {
+      name: 'Elsewhere',
+      description: '',
+    })
+    const id = (created?.structuredContent as { id: string }).id
+    const elsewhereId = (elsewhere?.structuredContent as { id: string }).id
+
+    const updated = await callTool(tokens.access_token, 'update_workspace', {
+      id,
+      name: ' Pipeline ',
+      description: 'Open deals',
+    })
+    expect(updated?.isError).toBeFalsy()
+    expect(updated?.structuredContent).toMatchObject({
+      id,
+      name: 'Pipeline',
+      description: 'Open deals',
+    })
+    expect(updated?.content).toEqual([{ type: 'text', text: 'Updated Pipeline.' }])
+
+    const taken = await callTool(tokens.access_token, 'update_workspace', {
+      id,
+      name: 'ops',
+      description: '',
+    })
+    expect(taken?.isError).toBe(true)
+    expect(taken?.content).toEqual([
+      { type: 'text', text: 'A workspace named ops already exists.' },
+    ])
+
+    for (const [name, args] of [
+      ['update_workspace', { id: elsewhereId, name: 'Taken over', description: '' }],
+      ['delete_workspace', { id: elsewhereId }],
+    ] as const) {
+      const result = await callTool(tokens.access_token, name, args)
+      expect(result?.isError).toBe(true)
+      expect(result?.content).toEqual([{ type: 'text', text: NO_SUCH_WORKSPACE }])
+    }
+    expect(await t.data.forOrganization(other.organization.id).workspaces.list()).toMatchObject([
+      { id: elsewhereId, name: 'Elsewhere' },
+    ])
+
+    const deleted = await callTool(tokens.access_token, 'delete_workspace', { id })
+    expect(deleted?.isError).toBeFalsy()
+    expect(deleted?.content).toEqual([{ type: 'text', text: 'Deleted the workspace.' }])
+    expect(await t.data.forOrganization(organization.id).workspaces.list()).toMatchObject([
+      { name: 'Ops' },
+    ])
+    const again = await callTool(tokens.access_token, 'delete_workspace', { id })
+    expect(again?.content).toEqual([{ type: 'text', text: NO_SUCH_WORKSPACE }])
+  })
+
+  it('answers a workspace id that is not a uuid as a tool error', async () => {
+    const { tokens } = await connectedOrganization('ivan@alder.vc', 'Alder Ventures')
+
+    for (const [name, args] of [
+      ['update_workspace', { id: 'deals', name: 'Deals', description: '' }],
+      ['delete_workspace', { id: 'deals' }],
+    ] as const) {
+      expect((await callTool(tokens.access_token, name, args))?.isError).toBe(true)
+    }
+  })
+
   it("refuses the workspace tools to a role that doesn't grant them", async () => {
     const owner = await connectedOrganization('owner@teak.vc', 'Teak Capital')
     await orgApi(t, new Headers({ cookie: owner.cookie })).post('create-role', {
@@ -568,18 +644,56 @@ describe('the MCP endpoint', () => {
       permission: { usage: ['read'] },
       organizationId: owner.organization.id,
     })
+    const created = await callTool(owner.tokens.access_token, 'create_workspace', {
+      name: 'Deals',
+      description: '',
+    })
+    const id = (created?.structuredContent as { id: string }).id
     const auditor = await joinAs(t, owner.organization.id, 'auditor@teak.vc', 'auditor')
     const { tokens } = await connector(t).connect(auditor.headers.get('cookie')!)
 
     for (const [name, args] of [
       ['list_workspaces', {}],
       ['create_workspace', { name: 'Audit', description: '' }],
+      ['update_workspace', { id, name: 'Audit', description: '' }],
+      ['delete_workspace', { id }],
     ] as const) {
       const result = await callTool(tokens.access_token, name, args)
       expect(result?.isError).toBe(true)
       expect(result?.content).toEqual([{ type: 'text', text: NOT_PERMITTED }])
     }
-    expect(await t.data.forOrganization(owner.organization.id).workspaces.list()).toEqual([])
+    expect(await t.data.forOrganization(owner.organization.id).workspaces.list()).toMatchObject([
+      { id, name: 'Deals' },
+    ])
+  })
+
+  it('lets a member list and create workspaces but not update or delete them', async () => {
+    const owner = await connectedOrganization('owner@maple.vc', 'Maple Capital')
+    const created = await callTool(owner.tokens.access_token, 'create_workspace', {
+      name: 'Deals',
+      description: '',
+    })
+    const id = (created?.structuredContent as { id: string }).id
+    const member = await joinAs(t, owner.organization.id, 'member@maple.vc', 'member')
+    const { tokens } = await connector(t).connect(member.headers.get('cookie')!)
+
+    expect((await callTool(tokens.access_token, 'list_workspaces'))?.isError).toBeFalsy()
+    expect(
+      (await callTool(tokens.access_token, 'create_workspace', { name: 'Ops', description: '' }))
+        ?.isError,
+    ).toBeFalsy()
+    for (const [name, args] of [
+      ['update_workspace', { id, name: 'Renamed', description: '' }],
+      ['delete_workspace', { id }],
+    ] as const) {
+      const result = await callTool(tokens.access_token, name, args)
+      expect(result?.isError).toBe(true)
+      expect(result?.content).toEqual([{ type: 'text', text: NOT_PERMITTED }])
+    }
+    expect(await t.data.forOrganization(owner.organization.id).workspaces.list()).toMatchObject([
+      { id, name: 'Deals' },
+      { name: 'Ops' },
+    ])
   })
 
   it('challenges a token in the URL instead of the header', async () => {

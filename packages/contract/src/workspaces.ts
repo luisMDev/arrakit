@@ -11,7 +11,8 @@ export const workspaceInputSchema = z.object({
 })
 export type WorkspaceInput = z.infer<typeof workspaceInputSchema>
 
-const workspaceIdSchema = z.object({ id: z.uuid() })
+export const workspaceIdSchema = z.object({ id: z.uuid() })
+export const workspaceUpdateSchema = workspaceIdSchema.extend(workspaceInputSchema.shape)
 
 export const workspaceSchema = z.object({
   id: z.uuid(),
@@ -25,6 +26,6 @@ export type Workspace = z.infer<typeof workspaceSchema>
 export const workspacesContract = {
   list: base.output(z.array(workspaceSchema)),
   create: base.input(workspaceInputSchema).output(workspaceSchema),
-  update: base.input(workspaceIdSchema.extend(workspaceInputSchema.shape)).output(workspaceSchema),
+  update: base.input(workspaceUpdateSchema).output(workspaceSchema),
   delete: base.input(workspaceIdSchema),
 }

@@ -53,6 +53,8 @@ export {
   WORKSPACE_NAME_MAX,
   type Workspace,
   type WorkspaceInput,
+  workspaceIdSchema,
   workspaceInputSchema,
   workspaceSchema,
+  workspaceUpdateSchema,
 } from './workspaces'

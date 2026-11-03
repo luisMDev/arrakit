@@ -1,11 +1,17 @@
 import { type Permissions, allows } from '@arrakit/auth/permissions'
-import { organizationSummarySchema, workspaceInputSchema, workspaceSchema } from '@arrakit/contract'
+import {
+  organizationSummarySchema,
+  workspaceIdSchema,
+  workspaceInputSchema,
+  workspaceSchema,
+  workspaceUpdateSchema,
+} from '@arrakit/contract'
 import { DomainError, type OrganizationRow, type OrganizationScope } from '@arrakit/db'
 import { type CallToolResult, McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
 import { NOT_PERMITTED } from '../orpc/context'
-import { workspaceView } from '../routers/workspaces'
+import { NO_SUCH_WORKSPACE, workspaceView } from '../routers/workspaces'
 
 const MCP_SERVER_NAME = 'arrakit'
 const MCP_SERVER_VERSION = '0.1.0'
@@ -118,6 +124,53 @@ export function createMcpServer(caller: ConnectorCaller): McpServer {
           content: [{ type: 'text', text: `Created ${workspace.name}.` }],
           structuredContent: workspace,
         }
+      }),
+  )
+
+  server.registerTool(
+    'update_workspace',
+    {
+      title: 'Update a workspace',
+      description:
+        'Renames a workspace and replaces its description. Use list_workspaces for its id.',
+      inputSchema: workspaceUpdateSchema,
+      outputSchema: workspaceSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ id, ...input }) =>
+      allowed(caller, { workspace: ['update'] }, async () => {
+        const row = await caller.scope.workspaces.update(id, input)
+        if (!row) return refusal(NO_SUCH_WORKSPACE)
+        const workspace = workspaceView(row)
+        return {
+          content: [{ type: 'text', text: `Updated ${workspace.name}.` }],
+          structuredContent: workspace,
+        }
+      }),
+  )
+
+  server.registerTool(
+    'delete_workspace',
+    {
+      title: 'Delete a workspace',
+      description: 'Deletes a workspace for good. Use list_workspaces for its id.',
+      inputSchema: workspaceIdSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ id }) =>
+      allowed(caller, { workspace: ['delete'] }, async () => {
+        if (!(await caller.scope.workspaces.remove(id))) return refusal(NO_SUCH_WORKSPACE)
+        return { content: [{ type: 'text', text: 'Deleted the workspace.' }] }
       }),
   )
 
