@@ -1,4 +1,5 @@
 import type { FileView, UploadTicket } from '@arrakit/contract'
+import { filePolicyFor } from '@arrakit/plans'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
@@ -11,7 +12,6 @@ setupTestApi()
 
 const WORKSPACE_ID = '7c9e6679-7425-40de-944b-e07fc1f90ae7'
 const STORAGE_URL = 'https://storage.test/bucket/upload'
-const POLICY = { maxBytes: 1_000_000, extensions: ['pdf', 'md'] }
 
 let ids = 0
 const fileOf = (name: string, overrides: Partial<FileView> = {}): FileView => ({
@@ -40,7 +40,6 @@ const renderBrowser = (
   { role = 'owner', permissions }: { role?: string; permissions?: Record<string, string[]> } = {},
   workspaceId?: string,
 ) => {
-  answer('files/policy', POLICY)
   return renderAt(<FileBrowser workspaceId={workspaceId} />, {
     url: '/app/files',
     me: meAs({ role, ...(permissions ? { permissions } : {}) }),
@@ -123,20 +122,19 @@ describe('FileBrowser', () => {
     renderBrowser()
     await screen.findByText('No files yet.')
 
-    await pick(
-      new File(['MZ'], 'tool.exe'),
-      new File([new Uint8Array(POLICY.maxBytes + 1)], 'big.pdf'),
-    )
+    const big = new File(['%PDF'], 'big.pdf')
+    Object.defineProperty(big, 'size', { value: filePolicyFor('team').maxBytes + 1 })
+    await pick(new File(['MZ'], 'tool.exe'), big)
 
     const uploads = await screen.findByRole('list', { name: 'Uploads' })
-    expect(within(uploads).getByText(/can't be uploaded. Allowed: pdf and md/)).toBeInTheDocument()
+    expect(within(uploads).getByText(/can't be uploaded. Allowed: pdf, doc/)).toBeInTheDocument()
     expect(
-      within(uploads).getByText('This file is larger than the 1 MB limit.'),
+      within(uploads).getByText('This file is larger than the 50 MB limit.'),
     ).toBeInTheDocument()
     expect(requested).toEqual([])
 
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss tool.exe' }))
-    expect(screen.queryByText(/Allowed: pdf and md/)).toBeNull()
+    expect(screen.queryByText(/Allowed: pdf, doc/)).toBeNull()
   })
 
   it('says why the API refused an upload, beside the file', async () => {

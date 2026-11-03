@@ -32,15 +32,8 @@ const renameForm = (t: TFunction, current: string) =>
     message: t(`${K}.keepType`, { extension: fileExtension(current) ?? '' }),
   })
 
-export function RenameFileDialog({
-  file,
-  open,
-  onOpenChange,
-}: {
-  file?: FileView
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
+/** Renames `file`; closed while there is none. */
+export function RenameFileDialog({ file, onClose }: { file?: FileView; onClose: () => void }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const form = useClearingForm<{ name: string }>({
@@ -50,8 +43,9 @@ export function RenameFileDialog({
   const { errors } = form.formState
 
   const changeOpen = (next: boolean) => {
-    if (!next) form.reset()
-    onOpenChange(next)
+    if (next) return
+    form.reset()
+    onClose()
   }
 
   const rename = useApiMutation({
@@ -65,7 +59,7 @@ export function RenameFileDialog({
   })
 
   return (
-    <Dialog open={open} onOpenChange={changeOpen}>
+    <Dialog open={file !== undefined} onOpenChange={changeOpen}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t(`${K}.title`)}</DialogTitle>

@@ -25,7 +25,6 @@ describe('WorkspacePage', () => {
   it('shows the workspace and its files', async () => {
     const asked = answer('workspaces/get', DEALS)
     const listed = answer('files/list', [])
-    answer('files/policy', { maxBytes: 1_000_000, extensions: ['pdf'] })
     renderPage()
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Deals' })).toBeInTheDocument()

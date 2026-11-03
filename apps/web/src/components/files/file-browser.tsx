@@ -78,11 +78,7 @@ export function FileBrowser({ workspaceId }: { workspaceId?: string }) {
           </TableBody>
         </Table>
       ) : null}
-      <RenameFileDialog
-        file={renaming}
-        open={renaming !== undefined}
-        onOpenChange={(open) => (open ? undefined : setRenaming(undefined))}
-      />
+      <RenameFileDialog file={renaming} onClose={() => setRenaming(undefined)} />
     </section>
   )
 }
