@@ -1,9 +1,8 @@
-import { Link, useNavigate } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { planLabel } from '#/components/billing/plan-copy'
-import type { SettingsSearch } from '#/components/settings/settings-page'
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
 import { Button } from '#/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '#/components/ui/popover'
@@ -15,11 +14,11 @@ import { useApiMutation } from '#/lib/use-api-mutation'
 
 import { ThemeSwitcher } from './theme-switcher'
 
-/** The account menu: a popover with the person, their destinations, the theme and sign out. */
+/** The account menu: a popover with the person, the theme and sign out. */
 export function AppMenu() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { user, name, can, managesMembers, signedOut } = useCurrentUser()
+  const { user, name, signedOut } = useCurrentUser()
   const [open, setOpen] = useState(false)
   const signOutMutation = useApiMutation({
     mutationKey: ['auth', 'signOut'],
@@ -38,29 +37,6 @@ export function AppMenu() {
     close()
     void signOutMutation.run()
   }
-
-  const links: { to: '/app' | '/app/settings'; search?: SettingsSearch; label: string }[] = [
-    { to: '/app', label: t('appMenu.home') },
-    { to: '/app/settings', search: {}, label: t('appMenu.settings') },
-    ...(managesMembers
-      ? [
-          {
-            to: '/app/settings' as const,
-            search: { section: 'members' as const },
-            label: t('appMenu.members'),
-          },
-        ]
-      : []),
-    ...(can({ billing: ['read'] })
-      ? [
-          {
-            to: '/app/settings' as const,
-            search: { section: 'billing' as const },
-            label: t('appMenu.billing'),
-          },
-        ]
-      : []),
-  ]
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -87,23 +63,6 @@ export function AppMenu() {
             })}
           </p>
         </div>
-        <Separator className="my-1" />
-        <ul aria-label={t('appMenu.yourOrganization')} className="flex flex-col">
-          {links.map((link) => (
-            <li key={link.label}>
-              <Button asChild variant="ghost" size="sm" className="w-full justify-start">
-                <Link
-                  to={link.to}
-                  search={link.search}
-                  activeOptions={{ exact: true }}
-                  onClick={close}
-                >
-                  {link.label}
-                </Link>
-              </Button>
-            </li>
-          ))}
-        </ul>
         <Separator className="my-1" />
         <ThemeSwitcher />
         <Separator className="my-1" />

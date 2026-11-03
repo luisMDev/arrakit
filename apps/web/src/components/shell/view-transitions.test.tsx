@@ -36,17 +36,18 @@ describe('View transitions', () => {
       '[view-transition-name:app-bar]',
     )
     expect(document.querySelector('header')).toHaveClass('[view-transition-name:site-header]')
+    expect(document.querySelector('[data-slot="sidebar-container"]')).toHaveClass(
+      '[view-transition-name:app-sidebar]',
+    )
   })
 
   it('runs a navigation inside a view transition where the browser has them', async () => {
     answer('me/get', meAs())
     const { location } = renderApp('/app')
-    const menuButton = await screen.findByRole('button', { name: 'Account menu' })
+    const sidebar = await screen.findByRole('navigation', { name: 'Navigation' })
     const start = stubStartViewTransition()
     const user = userEvent.setup()
-    await user.click(menuButton)
-    const menu = document.querySelector<HTMLElement>('#app-menu')!
-    await user.click(within(menu).getByRole('link', { name: 'Settings' }))
+    await user.click(within(sidebar).getByRole('link', { name: 'Settings' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
     expect(location()).toBe('/app/settings')
     expect(start).toHaveBeenCalled()

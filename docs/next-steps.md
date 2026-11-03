@@ -1,9 +1,6 @@
 What I would do next, by priority
 
-1. A complete example "projects" module that sets the canonical pattern: schema, its scope in
-   `forOrganization()` (or a generic tenancy guard), contract, router, MCP tool, a screen with
-   react-hook-form, an entry in an extensible sidebar, and tests.
-2. Make credits, storage + jobs, MCP/OAuth and billing optional. Drop the plans CHECK from the SQL.
+1. Make credits, storage + jobs, MCP/OAuth and billing optional. Drop the plans CHECK from the SQL.
 
 Production
 
@@ -16,9 +13,9 @@ Frontend
 
 - The landing copy is written in `apps/landing/src/pages/index.astro` (still placeholder text) and
   the landing does not share the web's theme.
-- The shell has no extensible navigation: the links are hard-coded in
-  `apps/web/src/components/shell/app-menu.tsx`. The `sidebar` and `sheet` components are installed
-  but unused, and there is no mobile navigation.
+- The sidebar's collapsed state is not restored on reload: shadcn writes the `sidebar_state`
+  cookie, but nothing reads it during SSR. The sheet's screen-reader title ("Sidebar") comes in
+  English from `components/ui/sidebar.tsx`.
 
 Starting a new product
 
@@ -32,8 +29,9 @@ Backend
 - Tenancy by convention: there is no generic guard. `forOrganization()`
   (`packages/db/src/organization/index.ts`) exposes hand-written methods per domain, and isolation
   between organizations depends on every query filtering by `organizationId`.
-- A new module touches many places (schema, scope, contract, router, screen, i18n, tests),
-  including the hand-written MCP tools (`apps/api/src/mcp/server.ts`).
+- A new module touches many places (schema, scope, contract, router, permissions, MCP tools,
+  screen, navigation, i18n, tests). Workspaces is the reference module to copy; nothing generates
+  the pieces.
 - Coupled product pieces:
   - Credits are part of every procedure's base contract: the `PAYMENT_REQUIRED` error with its
     metric in `packages/contract/src/common.ts`.

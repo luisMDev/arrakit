@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 import { signIn, signedInOwner, uniqueEmail } from './session'
 
-test('a signed-in owner moves around the app from the account menu', async ({ page }) => {
+test('a signed-in owner moves around the app from the sidebar', async ({ page }) => {
   await signedInOwner(page, { who: 'ana', personName: 'Ana Ruiz' })
 
   await page.goto('/app')
@@ -21,19 +21,28 @@ test('a signed-in owner moves around the app from the account menu', async ({ pa
     page.locator(selector).evaluate((element) => getComputedStyle(element).viewTransitionName)
   expect(await viewTransitionName('header')).toBe('site-header')
   expect(await viewTransitionName('nav[aria-label="Account"]')).toBe('app-bar')
+  expect(await viewTransitionName('[data-slot="sidebar-container"]')).toBe('app-sidebar')
+
+  const sidebar = page.getByRole('navigation', { name: 'Navigation' })
+  await expect(sidebar.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
 
   for (const [item, path, section] of [
     ['Settings', '/app/settings', 'Account'],
     ['Members', '/app/settings\\?section=members', 'Members'],
     ['Billing', '/app/settings\\?section=billing', 'Billing'],
   ] as const) {
-    await menuButton.click()
-    await page.locator('#app-menu').getByRole('link', { name: item }).click()
+    await sidebar.getByRole('link', { name: item }).click()
     await expect(page).toHaveURL(new RegExp(`${path}$`))
     await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible()
     await expect(page.getByRole('heading', { level: 2, name: section })).toBeVisible()
-    await expect(page.locator('#app-menu')).toHaveCount(0)
+    await expect(sidebar.getByRole('link', { name: item })).toHaveAttribute('aria-current', 'page')
   }
+
+  const toggle = page.getByRole('button', { name: 'Show or hide navigation' })
+  await toggle.click()
+  await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'collapsed')
+  await toggle.click()
+  await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'expanded')
 
   await page.goto('/app/booking')
   await expect(page).toHaveURL(/\/app\/booking$/)
@@ -64,4 +73,19 @@ test('the unavailable screen never sends Try again off the app', async ({ page }
   await expect(page).toHaveTitle('Arrakit · Unavailable')
   await page.getByRole('button', { name: 'Try again' }).click()
   await expect(page).toHaveURL(/\/signin$/)
+})
+
+test('on a phone the sidebar opens as a sheet and closes on the way to a destination', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signedInOwner(page)
+  await page.goto('/app')
+  await expect(page.getByRole('navigation', { name: 'Navigation' })).toBeHidden()
+
+  await page.getByRole('button', { name: 'Show or hide navigation' }).click()
+  await page.getByRole('dialog').getByRole('link', { name: 'Workspaces' }).click()
+  await expect(page).toHaveURL(/\/app\/workspaces$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Workspaces' })).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 })

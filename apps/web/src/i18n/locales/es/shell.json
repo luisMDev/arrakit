@@ -1,11 +1,6 @@
 {
   "appMenu": {
     "accountMenu": "Menú de la cuenta",
-    "yourOrganization": "Tu organización",
-    "home": "Inicio",
-    "settings": "Ajustes",
-    "members": "Miembros",
-    "billing": "Facturación",
     "more": "Más",
     "signOut": "Cerrar sesión",
     "notSignedOut": "No se ha podido cerrar la sesión. Inténtalo de nuevo.",
@@ -13,6 +8,15 @@
     "themeLight": "Claro",
     "themeDark": "Oscuro",
     "themeSystem": "Sistema"
+  },
+  "nav": {
+    "label": "Navegación",
+    "toggle": "Mostrar u ocultar la navegación",
+    "home": "Inicio",
+    "workspaces": "Espacios de trabajo",
+    "settings": "Ajustes",
+    "members": "Miembros",
+    "billing": "Facturación"
   },
   "shell": {
     "account": "Cuenta",

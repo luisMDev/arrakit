@@ -24,6 +24,13 @@ async function open(url = '/app', me = meAs()) {
   return { ...app, menuButton, menu, openMenu, user }
 }
 
+const sidebar = () => screen.getByRole('navigation', { name: 'Navigation' })
+const sidebarLink = (name: string) => within(sidebar()).getByRole('link', { name })
+const destinations = () =>
+  within(sidebar())
+    .getAllByRole('link')
+    .map((link) => link.textContent)
+
 describe('Signed-in shell', () => {
   it("shows the organization and its plan next to the person's initial", async () => {
     const { menuButton } = await open()
@@ -41,15 +48,15 @@ describe('Signed-in shell', () => {
     ).toHaveAttribute('href', '/app')
   })
 
-  it('opens the app menu with the person, the organization and every destination', async () => {
+  it('opens the app menu with the person, the organization, the theme and sign out', async () => {
     const { openMenu, menuButton } = await open()
     const menu = await openMenu()
     expect(menuButton).toHaveAttribute('aria-expanded', 'true')
     expect(menu).toHaveTextContent('Lucía Gómez')
     expect(menu).toHaveTextContent('Acme · Team')
-    for (const item of ['Home', 'Settings', 'Members', 'Billing'])
-      expect(within(menu).getByRole('link', { name: item })).toBeInTheDocument()
+    expect(within(menu).getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument()
     expect(within(menu).getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+    expect(within(menu).queryByRole('link')).toBeNull()
   })
 
   it('switches to dark mode from the menu and remembers it', async () => {
@@ -82,46 +89,103 @@ describe('Signed-in shell', () => {
     expect(menu()).toBeNull()
   })
 
-  it('navigates from the menu and closes it', async () => {
-    const { openMenu, menu, location, user } = await open()
-    await user.click(within(await openMenu()).getByRole('link', { name: 'Settings' }))
-    expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
-    expect(location()).toBe('/app/settings')
-    expect(menu()).toBeNull()
+  it('lists every destination in the sidebar, in the order the app declares them', async () => {
+    await open()
+    expect(destinations()).toEqual(['Home', 'Workspaces', 'Settings', 'Members', 'Billing'])
   })
 
-  it('opens Home from the menu', async () => {
-    const { openMenu, location, user } = await open('/app/settings')
-    await user.click(within(await openMenu()).getByRole('link', { name: 'Home' }))
-    expect(await screen.findByRole('heading', { name: 'Hi, Lucía Gómez.' })).toBeInTheDocument()
-    expect(location()).toBe('/app')
+  it('navigates from the sidebar and marks where the person is', async () => {
+    const { location, user } = await open()
+    expect(sidebarLink('Home')).toHaveAttribute('aria-current', 'page')
+    await user.click(sidebarLink('Settings'))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
+    expect(location()).toBe('/app/settings')
+    expect(sidebarLink('Settings')).toHaveAttribute('aria-current', 'page')
+    expect(sidebarLink('Home')).not.toHaveAttribute('aria-current')
   })
 
   it.each([
     ['Settings', '/app/settings', 'Account'],
     ['Members', '/app/settings?section=members', 'Members'],
     ['Billing', '/app/settings?section=billing', 'Billing'],
-  ])('reaches %s with its section heading', async (item, path, section) => {
-    const { openMenu, location, user } = await open()
-    await user.click(within(await openMenu()).getByRole('link', { name: item }))
+  ])('reaches %s with its section heading, marking only it', async (item, path, section) => {
+    const { location, user } = await open()
+    await user.click(sidebarLink(item))
     expect(await screen.findByRole('heading', { level: 2, name: section })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
     expect(location()).toBe(path)
+    const marked = within(sidebar())
+      .getAllByRole('link')
+      .filter((link) => link.ariaCurrent)
+    expect(marked.map((link) => link.textContent)).toEqual([item])
   })
 
-  it('leaves Billing and Members out of the menu of a member', async () => {
-    const { openMenu } = await open('/app', meAs({ role: 'member' }))
-    const menu = await openMenu()
-    expect(menu).not.toHaveTextContent('Billing')
-    expect(menu).not.toHaveTextContent('Members')
-    expect(within(menu).getByRole('link', { name: 'Settings' })).toBeInTheDocument()
+  it('marks Settings for a settings section without its own destination', async () => {
+    await open('/app/settings?section=teams')
+    await screen.findByRole('heading', { level: 1, name: 'Settings' })
+    expect(sidebarLink('Settings')).toHaveAttribute('aria-current', 'page')
   })
 
-  it("shows Members and Billing in the menu of the organization's admin", async () => {
-    const { openMenu } = await open('/app', meAs({ role: 'admin' }))
-    const menu = await openMenu()
-    expect(within(menu).getByRole('link', { name: 'Members' })).toBeInTheDocument()
-    expect(within(menu).getByRole('link', { name: 'Billing' })).toBeInTheDocument()
+  it('opens Workspaces from the sidebar', async () => {
+    const { location, user } = await open()
+    await user.click(sidebarLink('Workspaces'))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Workspaces' })).toBeInTheDocument()
+    expect(location()).toBe('/app/workspaces')
+  })
+
+  it('hides Workspaces from a role without workspace read, and sends it Home from there', async () => {
+    const auditor = meAs({ role: 'auditor', permissions: { usage: ['read'] } })
+    const { location } = await open('/app/workspaces', auditor)
+    expect(await screen.findByRole('heading', { name: 'Hi, Lucía Gómez.' })).toBeInTheDocument()
+    expect(location()).toBe('/app')
+    expect(destinations()).not.toContain('Workspaces')
+  })
+
+  it('leaves Billing and Members out of the sidebar of a member', async () => {
+    await open('/app', meAs({ role: 'member' }))
+    expect(destinations()).toEqual(['Home', 'Workspaces', 'Settings'])
+  })
+
+  it("shows Members and Billing in the sidebar of the organization's admin", async () => {
+    await open('/app', meAs({ role: 'admin' }))
+    expect(destinations()).toEqual(['Home', 'Workspaces', 'Settings', 'Members', 'Billing'])
+  })
+
+  it('collapses the sidebar to icons and opens it again from the toggle', async () => {
+    const { user } = await open()
+    const toggle = screen.getByRole('button', { name: 'Show or hide navigation' })
+    const state = () => document.querySelector('[data-slot="sidebar"]')?.getAttribute('data-state')
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(state()).toBe('expanded')
+    await user.click(toggle)
+    expect(state()).toBe('collapsed')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await user.click(toggle)
+    expect(state()).toBe('expanded')
+  })
+
+  it('opens the sidebar as a sheet on a phone, closing it on the way to a destination', async () => {
+    const width = window.innerWidth
+    window.innerWidth = 390
+    try {
+      const { location, user } = await open()
+      expect(screen.queryByRole('navigation', { name: 'Navigation' })).toBeNull()
+      const toggle = screen.getByRole('button', { name: 'Show or hide navigation' })
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+
+      await user.click(toggle)
+      await user.click(
+        await within(await screen.findByRole('dialog')).findByRole('link', { name: 'Workspaces' }),
+      )
+
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'Workspaces' }),
+      ).toBeInTheDocument()
+      expect(location()).toBe('/app/workspaces')
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    } finally {
+      window.innerWidth = width
+    }
   })
 
   it('shows a blank name as the email local part', async () => {

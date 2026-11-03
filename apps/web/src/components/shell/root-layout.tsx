@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { APP_NAME, SITE_URL } from '#/config'
 import { initialOf } from '#/lib/current-user'
+import { cn } from '#/lib/utils'
 
 import { reloadOnStaleChunk } from './stale-chunk'
 
@@ -28,10 +29,16 @@ function Wordmark() {
 export function RootFrame({ children }: { children: ReactNode }) {
   const { t } = useTranslation()
   const { pathname } = useLocation()
+  const inApp = isInApp(pathname)
   return (
     <div className="relative flex min-h-svh flex-col">
-      <header className="flex h-14 items-center border-b px-4 [view-transition-name:site-header] sm:px-6">
-        {isInApp(pathname) ? (
+      <header
+        className={cn(
+          'flex h-14 items-center border-b px-4 [view-transition-name:site-header] sm:px-6',
+          inApp && 'pl-13 sm:pl-14',
+        )}
+      >
+        {inApp ? (
           <Link to="/app" aria-label={t('app.homeLabel')}>
             <Wordmark />
           </Link>

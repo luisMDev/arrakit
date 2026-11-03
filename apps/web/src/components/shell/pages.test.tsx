@@ -66,10 +66,9 @@ describe('Welcome', () => {
     renderApp('/app/welcome')
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(title)
     expect(screen.getByRole('link', { name: 'Go to the app →' })).toHaveAttribute('href', '/app')
-    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute(
-      'href',
-      '/app/settings?section=billing',
-    )
+    expect(
+      within(screen.getByRole('main')).getByRole('link', { name: 'Settings' }),
+    ).toHaveAttribute('href', '/app/settings?section=billing')
   })
 
   it('sends an organization on Free with no checkout to Plans', async () => {

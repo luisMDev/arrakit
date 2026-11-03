@@ -1,11 +1,6 @@
 {
   "appMenu": {
     "accountMenu": "Account menu",
-    "yourOrganization": "Your organization",
-    "home": "Home",
-    "settings": "Settings",
-    "members": "Members",
-    "billing": "Billing",
     "more": "More",
     "signOut": "Sign out",
     "notSignedOut": "Couldn't sign you out. Try again.",
@@ -13,6 +8,15 @@
     "themeLight": "Light",
     "themeDark": "Dark",
     "themeSystem": "System"
+  },
+  "nav": {
+    "label": "Navigation",
+    "toggle": "Show or hide navigation",
+    "home": "Home",
+    "workspaces": "Workspaces",
+    "settings": "Settings",
+    "members": "Members",
+    "billing": "Billing"
   },
   "shell": {
     "account": "Account",

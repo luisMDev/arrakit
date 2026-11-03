@@ -33,7 +33,7 @@ export const grants = (me: Pick<Me, 'permissions'> | null, wanted: Permissions):
   me !== null && allows(me.permissions as Permissions, wanted)
 
 /** What the person may do in their organization, by area of the app. */
-function accessOf(me: Me | null) {
+export function accessOf(me: Me | null) {
   const can = (wanted: Permissions) => grants(me, wanted)
   return {
     can,
@@ -42,6 +42,8 @@ function accessOf(me: Me | null) {
     managesBilling: can({ billing: ['manage'] }),
   }
 }
+
+export type Access = ReturnType<typeof accessOf>
 
 export function useCurrentUser() {
   const queryClient = useQueryClient()
