@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { meContract } from './account'
 import { billingContract } from './billing'
+import { filesContract } from './files'
 import { base, moneySchema, planSchema } from './common'
 import { usageContract } from './usage'
 import { workspacesContract } from './workspaces'
@@ -40,6 +41,7 @@ export const contract = {
   billing: billingContract,
   usage: usageContract,
   workspaces: workspacesContract,
+  files: filesContract,
 }
 
 export type Contract = typeof contract
@@ -58,3 +60,14 @@ export {
   workspaceSchema,
   workspaceUpdateSchema,
 } from './workspaces'
+export {
+  type FilePolicyView,
+  type FileScope,
+  type FileView,
+  type UploadRequest,
+  type UploadTicket,
+  fileIdSchema,
+  fileNameSchema,
+  fileSchema,
+  fileScopeSchema,
+} from './files'

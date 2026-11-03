@@ -1,0 +1,70 @@
+import { FILE_EVENTS, type FileEvent } from '@arrakit/db'
+import { type TestData, insertOrganization, insertUser, openTestData } from '@arrakit/db/testing'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import { noErrorReporter } from '../observability/error-reporter'
+import { recordingLogger } from '../observability/logger'
+
+import {
+  FILE_SUBSCRIBERS,
+  defineFileSubscriber,
+  registerFileSubscribers,
+  subscriberQueue,
+} from './subscribers'
+
+describe('file subscribers', () => {
+  let data: TestData
+  const { log } = recordingLogger()
+  const indexed: FileEvent[] = []
+  const indexer = defineFileSubscriber({
+    name: 'vector-index',
+    event: FILE_EVENTS.uploaded,
+    async handler(payload) {
+      indexed.push(payload)
+    },
+  })
+
+  beforeAll(async () => {
+    data = await openTestData()
+    await registerFileSubscribers([indexer], { data, log, errors: noErrorReporter })
+  })
+  afterAll(() => data.close())
+
+  it('gives each subscriber its own queue, subscribed to its event', () => {
+    expect(subscriberQueue(indexer)).toBe('file.uploaded.vector-index')
+    expect(data.jobs.queues.has('file.uploaded.vector-index')).toBe(true)
+    expect(data.jobs.subscriptions.get(FILE_EVENTS.uploaded)).toEqual(
+      new Set(['file.uploaded.vector-index']),
+    )
+  })
+
+  it('runs the subscriber with the event of a completed upload', async () => {
+    const owner = await insertUser(data, 'owner@subscriber.vc')
+    const { id: organizationId } = await insertOrganization(data, { slug: 'subscriber-co' })
+    const files = data.forOrganization(organizationId).files
+    const file = await files.reserve({
+      workspaceId: null,
+      name: 'deck.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      uploadedBy: owner,
+    })
+    await files.complete(file.id)
+
+    await data.jobs.run(subscriberQueue(indexer))
+    expect(indexed).toEqual([
+      expect.objectContaining({ organizationId, fileId: file.id, name: 'deck.pdf' }),
+    ])
+  })
+
+  it('dead-letters an event payload that does not match the event', async () => {
+    await data.jobs.send(subscriberQueue(indexer), { fileId: 'not-an-event' })
+    await data.jobs.run(subscriberQueue(indexer))
+    expect(data.jobs.sent.at(-1)).toMatchObject({ name: 'file.uploaded.vector-index__dead' })
+  })
+
+  it('names every subscriber uniquely per event', () => {
+    const queues = FILE_SUBSCRIBERS.map(subscriberQueue)
+    expect(new Set(queues).size).toBe(queues.length)
+  })
+})

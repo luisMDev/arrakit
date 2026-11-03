@@ -5,6 +5,7 @@ import { oauthClientResources, oauthClients } from '@arrakit/db/schema'
 import { insertMember } from '@arrakit/db/testing'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { NO_SUCH_FILE } from '../files/files'
 import { NOT_PERMITTED } from '../orpc/context'
 import { NO_SUCH_WORKSPACE } from '../routers/workspaces'
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp, sessionCookieOf } from '../testing/app'
@@ -402,7 +403,12 @@ const TOOL_CASES = [
   "list_workspaces: a role with workspace read, the token's organization only",
   'create_workspace: a role with workspace create; a taken name is a tool error',
   "update_workspace: a role with workspace update, the token's organization only",
-  "delete_workspace: a role with workspace delete, the token's organization only",
+  "delete_workspace: a role with workspace delete, the token's organization only; purges its files",
+  "list_files: a role with file read, the token's organization only",
+  'get_file_download_url: a role with file read; an unknown file is a tool error',
+  "upload_file: a role with file upload; the plan's file policy is a tool error",
+  'rename_file: the uploader, or a role with file update',
+  'delete_file: the uploader, or a role with file delete',
 ]
 
 const base64url = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url')
@@ -489,6 +495,11 @@ describe('the MCP endpoint', () => {
       'create_workspace',
       'update_workspace',
       'delete_workspace',
+      'list_files',
+      'get_file_download_url',
+      'upload_file',
+      'rename_file',
+      'delete_file',
     ])
     expect(tools[0]?.title).toBe('Who am I')
     expect(tools.map((tool) => tool.name)).toEqual(TOOL_CASES.map((line) => line.split(':')[0]))
@@ -618,7 +629,13 @@ describe('the MCP endpoint', () => {
 
     const deleted = await callTool(tokens.access_token, 'delete_workspace', { id })
     expect(deleted?.isError).toBeFalsy()
-    expect(deleted?.content).toEqual([{ type: 'text', text: 'Deleted the workspace.' }])
+    expect(deleted?.content).toEqual([
+      { type: 'text', text: 'Deleted the workspace and its files.' },
+    ])
+    expect(t.data.jobs.sent.at(-1)).toMatchObject({
+      name: 'storage-purge',
+      data: { organizationId: organization.id, folder: `workspaces/${id}/` },
+    })
     expect(await t.data.forOrganization(organization.id).workspaces.list()).toMatchObject([
       { name: 'Ops' },
     ])
@@ -694,6 +711,102 @@ describe('the MCP endpoint', () => {
       { id, name: 'Deals' },
       { name: 'Ops' },
     ])
+  })
+
+  const base64 = (text: string) => Buffer.from(text).toString('base64')
+
+  it("uploads, lists, links, renames and deletes files in the token's organization", async () => {
+    const { tokens, organization } = await connectedOrganization('uma@poplar.vc', 'Poplar Ventures')
+    const other = await connectedOrganization('owner@aspen.vc', 'Aspen Ventures')
+    const workspace = await callTool(tokens.access_token, 'create_workspace', {
+      name: 'Deals',
+      description: '',
+    })
+    const workspaceId = (workspace?.structuredContent as { id: string }).id
+
+    const uploaded = await callTool(tokens.access_token, 'upload_file', {
+      name: 'notes.md',
+      contentBase64: base64('# Notes'),
+    })
+    expect(uploaded?.isError).toBeFalsy()
+    expect(uploaded?.structuredContent).toMatchObject({
+      name: 'notes.md',
+      contentType: 'text/markdown',
+      sizeBytes: 7,
+      workspaceId: null,
+    })
+    const id = (uploaded?.structuredContent as { id: string }).id
+    const stored = t.data.storage.objects.get(`${organization.id}/files/${id}`)
+    expect(new TextDecoder().decode(stored?.bytes)).toBe('# Notes')
+
+    await callTool(tokens.access_token, 'upload_file', {
+      workspaceId,
+      name: 'deal.txt',
+      contentBase64: base64('deal'),
+    })
+    expect((await callTool(tokens.access_token, 'list_files'))?.content).toEqual([
+      { type: 'text', text: 'notes.md' },
+    ])
+    expect(
+      (await callTool(tokens.access_token, 'list_files', { workspaceId }))?.structuredContent,
+    ).toMatchObject({ files: [{ name: 'deal.txt', workspaceId }] })
+
+    const link = await callTool(tokens.access_token, 'get_file_download_url', { id })
+    expect((link?.structuredContent as { url: string }).url).toContain(`files/${id}`)
+
+    const renamed = await callTool(tokens.access_token, 'rename_file', { id, name: 'minutes.md' })
+    expect(renamed?.structuredContent).toMatchObject({ id, name: 'minutes.md' })
+
+    for (const [name, args] of [
+      ['get_file_download_url', { id }],
+      ['rename_file', { id, name: 'taken.md' }],
+      ['delete_file', { id }],
+    ] as const) {
+      const result = await callTool(other.tokens.access_token, name, args)
+      expect(result?.isError).toBe(true)
+      expect(result?.content).toEqual([{ type: 'text', text: NO_SUCH_FILE }])
+    }
+
+    const deleted = await callTool(tokens.access_token, 'delete_file', { id })
+    expect(deleted?.content).toEqual([{ type: 'text', text: 'Deleted the file.' }])
+    expect(t.data.storage.objects.has(`${organization.id}/files/${id}`)).toBe(false)
+  })
+
+  it("answers what the plan's file policy refuses as a tool error", async () => {
+    const { tokens } = await connectedOrganization('vera@rowan.vc', 'Rowan Ventures')
+    const refused = await callTool(tokens.access_token, 'upload_file', {
+      name: 'run.exe',
+      contentBase64: base64('MZ'),
+    })
+    expect(refused?.isError).toBe(true)
+    expect((refused?.content as { text: string }[])[0]?.text).toMatch(/^Files like run.exe cannot/)
+  })
+
+  it('lets a member upload and delete their own files but not delete another person’s', async () => {
+    const owner = await connectedOrganization('owner@sumac.vc', 'Sumac Capital')
+    const ownersFile = await callTool(owner.tokens.access_token, 'upload_file', {
+      name: 'board.pdf',
+      contentBase64: base64('%PDF'),
+    })
+    const ownersId = (ownersFile?.structuredContent as { id: string }).id
+    const member = await joinAs(t, owner.organization.id, 'member@sumac.vc', 'member')
+    const { tokens } = await connector(t).connect(member.headers.get('cookie')!)
+
+    const mine = await callTool(tokens.access_token, 'upload_file', {
+      name: 'mine.txt',
+      contentBase64: base64('mine'),
+    })
+    const mineId = (mine?.structuredContent as { id: string }).id
+    for (const [name, args] of [
+      ['rename_file', { id: ownersId, name: 'mine.pdf' }],
+      ['delete_file', { id: ownersId }],
+    ] as const) {
+      const result = await callTool(tokens.access_token, name, args)
+      expect(result?.content).toEqual([{ type: 'text', text: NOT_PERMITTED }])
+    }
+    expect(
+      (await callTool(tokens.access_token, 'delete_file', { id: mineId }))?.isError,
+    ).toBeFalsy()
   })
 
   it('challenges a token in the URL instead of the header', async () => {

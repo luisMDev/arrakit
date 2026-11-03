@@ -1,17 +1,30 @@
 import { type Permissions, allows } from '@arrakit/auth/permissions'
+import { FILE_NAME_MAX, type Plan } from '@arrakit/plans'
 import {
+  fileIdSchema,
+  fileNameSchema,
+  fileSchema,
   organizationSummarySchema,
   workspaceIdSchema,
   workspaceInputSchema,
   workspaceSchema,
   workspaceUpdateSchema,
 } from '@arrakit/contract'
-import { DomainError, type OrganizationRow, type OrganizationScope } from '@arrakit/db'
+import {
+  DomainError,
+  type Jobs,
+  type OrganizationRow,
+  type OrganizationScope,
+  workspaceFolderOf,
+} from '@arrakit/db'
 import { type CallToolResult, McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
+import { fileService } from '../files/files'
+import type { Logger } from '../observability/logger'
 import { NOT_PERMITTED } from '../orpc/context'
 import { NO_SUCH_WORKSPACE, workspaceView } from '../routers/workspaces'
+import { queueStoragePurge } from '../workers/storage-purge'
 
 const MCP_SERVER_NAME = 'arrakit'
 const MCP_SERVER_VERSION = '0.1.0'
@@ -27,6 +40,7 @@ export type ConnectorCaller = {
   /** Read on first use: a custom role costs a query that whoami and tools/list never need. */
   permissions: () => Promise<Permissions>
   scope: OrganizationScope
+  jobs: Jobs
 }
 
 const WHOAMI_OUTPUT = z.object({
@@ -35,6 +49,25 @@ const WHOAMI_OUTPUT = z.object({
 })
 
 const WORKSPACES_OUTPUT = z.object({ workspaces: z.array(workspaceSchema) })
+
+const FILES_OUTPUT = z.object({ files: z.array(fileSchema) })
+const DOWNLOAD_OUTPUT = z.object({ url: z.string(), expiresAt: z.string() })
+
+const fileScopeInput = z.object({
+  workspaceId: z
+    .uuid()
+    .optional()
+    .describe("A workspace id from list_workspaces; omit it for the organization's own files"),
+})
+
+const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
+
+const uploadInput = fileScopeInput.extend({
+  name: fileNameSchema.describe(
+    `The file name with its extension, at most ${FILE_NAME_MAX} characters`,
+  ),
+  contentBase64: z.string().regex(BASE64).describe('The file content, base64 encoded'),
+})
 
 const refusal = (text: string): CallToolResult => ({
   isError: true,
@@ -59,7 +92,7 @@ async function allowed(
   }
 }
 
-export function createMcpServer(caller: ConnectorCaller): McpServer {
+export function createMcpServer(caller: ConnectorCaller, log: Logger): McpServer {
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     { capabilities: { tools: { listChanged: false } }, instructions: MCP_INSTRUCTIONS },
@@ -170,7 +203,129 @@ export function createMcpServer(caller: ConnectorCaller): McpServer {
     ({ id }) =>
       allowed(caller, { workspace: ['delete'] }, async () => {
         if (!(await caller.scope.workspaces.remove(id))) return refusal(NO_SUCH_WORKSPACE)
-        return { content: [{ type: 'text', text: 'Deleted the workspace.' }] }
+        await queueStoragePurge(
+          caller.jobs,
+          { organizationId: caller.organization.id, folder: workspaceFolderOf(id) },
+          log,
+        )
+        return { content: [{ type: 'text', text: 'Deleted the workspace and its files.' }] }
+      }),
+  )
+
+  const files = async () =>
+    fileService({
+      userId: caller.userId,
+      permissions: await caller.permissions(),
+      plan: caller.organization.plan as Plan,
+      scope: caller.scope,
+      log,
+    })
+
+  server.registerTool(
+    'list_files',
+    {
+      title: 'List files',
+      description:
+        'The files uploaded to the organization, or to one workspace when workspaceId is given, by name.',
+      inputSchema: fileScopeInput,
+      outputSchema: FILES_OUTPUT,
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ workspaceId }) =>
+      allowed(caller, { file: ['read'] }, async () => {
+        const listed = await (await files()).list(workspaceId ?? null)
+        return {
+          content: [
+            { type: 'text', text: listed.map((f) => f.name).join('\n') || 'No files yet.' },
+          ],
+          structuredContent: { files: listed },
+        }
+      }),
+  )
+
+  server.registerTool(
+    'get_file_download_url',
+    {
+      title: 'Get a file download link',
+      description: 'A short-lived link that downloads a file. Use list_files for its id.',
+      inputSchema: fileIdSchema,
+      outputSchema: DOWNLOAD_OUTPUT,
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ id }) =>
+      allowed(caller, { file: ['read'] }, async () => {
+        const link = await (await files()).downloadUrl(id)
+        return { content: [{ type: 'text', text: link.url }], structuredContent: link }
+      }),
+  )
+
+  server.registerTool(
+    'upload_file',
+    {
+      title: 'Upload a file',
+      description:
+        "Uploads a file to the organization, or to a workspace when workspaceId is given. The plan limits its type and size, and it counts against the organization's storage.",
+      inputSchema: uploadInput,
+      outputSchema: fileSchema,
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    ({ workspaceId, name, contentBase64 }) =>
+      allowed(caller, { file: ['upload'] }, async () => {
+        const file = await (
+          await files()
+        ).upload({
+          workspaceId: workspaceId ?? null,
+          name,
+          bytes: Buffer.from(contentBase64, 'base64'),
+        })
+        return {
+          content: [{ type: 'text', text: `Uploaded ${file.name}.` }],
+          structuredContent: file,
+        }
+      }),
+  )
+
+  server.registerTool(
+    'rename_file',
+    {
+      title: 'Rename a file',
+      description: 'Renames a file, keeping its extension. Use list_files for its id.',
+      inputSchema: fileIdSchema.extend({ name: fileNameSchema }),
+      outputSchema: fileSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ id, name }) =>
+      allowed(caller, { file: ['read'] }, async () => {
+        const file = await (await files()).rename(id, name)
+        return {
+          content: [{ type: 'text', text: `Renamed to ${file.name}.` }],
+          structuredContent: file,
+        }
+      }),
+  )
+
+  server.registerTool(
+    'delete_file',
+    {
+      title: 'Delete a file',
+      description: 'Deletes a file for good. Use list_files for its id.',
+      inputSchema: fileIdSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ id }) =>
+      allowed(caller, { file: ['read'] }, async () => {
+        await (await files()).remove(id)
+        return { content: [{ type: 'text', text: 'Deleted the file.' }] }
       }),
   )
 

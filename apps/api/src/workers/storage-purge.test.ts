@@ -27,7 +27,7 @@ describe('storage purge worker', () => {
   beforeEach(() => void logs.splice(0))
   afterAll(() => data.close())
 
-  const files = () => data.forOrganization(orgId).files
+  const files = () => data.forOrganization(orgId).objects
   const paths = async () => (await files().list('')).map((file) => file.path)
 
   it('removes a folder, or the whole organization, through the queue', async () => {
@@ -93,7 +93,7 @@ describe('storage purge on the real queue (pg-boss over PGlite)', () => {
     data.storage.put(id, 'companies/c1/a.pdf')
     data.storage.put(id, 'keep.txt')
     const paths = async () =>
-      (await data.forOrganization(id).files.list('')).map((file) => file.path)
+      (await data.forOrganization(id).objects.list('')).map((file) => file.path)
     expect(await paths()).toHaveLength(2)
 
     await queueStoragePurge(data.jobs, { organizationId: id, folder: '' }, log)

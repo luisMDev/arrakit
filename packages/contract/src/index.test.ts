@@ -12,8 +12,18 @@ describe('contract', () => {
       'billing',
       'usage',
       'workspaces',
+      'files',
     ])
-    expect(Object.keys(contract.workspaces)).toEqual(['list', 'create', 'update', 'delete'])
+    expect(Object.keys(contract.workspaces)).toEqual(['list', 'get', 'create', 'update', 'delete'])
+    expect(Object.keys(contract.files)).toEqual([
+      'policy',
+      'list',
+      'requestUpload',
+      'completeUpload',
+      'downloadUrl',
+      'rename',
+      'delete',
+    ])
     expect(Object.keys(contract.me)).toEqual(['get', 'account'])
     expect(Object.keys(contract.billing)).toContain('topUp')
   })

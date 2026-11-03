@@ -3,6 +3,7 @@ import { soldOffers } from '@arrakit/plans'
 import { member, pub } from './orpc/base'
 import { meRouter } from './routers/account'
 import { billingRouter } from './routers/billing'
+import { filesRouter } from './routers/files'
 import { usageRouter } from './routers/usage'
 import { workspacesRouter } from './routers/workspaces'
 
@@ -23,4 +24,5 @@ export const router = pub.router({
   billing: billingRouter,
   usage: usageRouter,
   workspaces: workspacesRouter,
+  files: filesRouter,
 })

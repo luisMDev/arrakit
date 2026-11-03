@@ -22,11 +22,14 @@ import type { Logger } from '../observability/logger'
  */
 export function mcpHandler(log: Logger): McpHttpHandler {
   const mcpLog = log.child({ component: 'mcp' })
-  return createMcpHandler(({ authInfo }) => createMcpServer(authInfo!.extra as ConnectorCaller), {
-    legacy: 'stateless',
-    keepAliveMs: 0,
-    onerror: (err) => mcpLog.warn({ err }, 'MCP request failed'),
-  })
+  return createMcpHandler(
+    ({ authInfo }) => createMcpServer(authInfo!.extra as ConnectorCaller, mcpLog),
+    {
+      legacy: 'stateless',
+      keepAliveMs: 0,
+      onerror: (err) => mcpLog.warn({ err }, 'MCP request failed'),
+    },
+  )
 }
 
 export function mcpRoutes(deps: AppDeps, handler: McpHttpHandler) {

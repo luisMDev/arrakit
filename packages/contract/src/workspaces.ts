@@ -25,6 +25,7 @@ export type Workspace = z.infer<typeof workspaceSchema>
 /** A name another workspace of the organization has, ignoring case, is refused with 409. */
 export const workspacesContract = {
   list: base.output(z.array(workspaceSchema)),
+  get: base.input(workspaceIdSchema).output(workspaceSchema),
   create: base.input(workspaceInputSchema).output(workspaceSchema),
   update: base.input(workspaceUpdateSchema).output(workspaceSchema),
   delete: base.input(workspaceIdSchema),
