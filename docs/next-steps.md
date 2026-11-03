@@ -38,8 +38,9 @@ Backend
   - The plan's seat count is part of member management (`packages/auth/src/organization.ts`).
   - Plans are fixed by a SQL CHECK (`organizations_plan_check` in
     `packages/db/src/schema/organizations.ts`), so changing them needs a migration.
-- Infrastructure without real use: file storage (`packages/db/src/storage`, tested, about 160
-  lines without the tests) has no endpoint that uploads or reads files; only the purge worker uses
-  it when an organization is deleted.
+- Files: no folders, no moving between the organization and a workspace, no previews and no
+  malware scanning (a file subscriber is the place for it). Every plan has the same file policy.
+  The type is checked by extension; the bytes are not inspected. An object whose delete fails
+  stays in the bucket (logged), and RustFS has no release for Intel Macs (install it on PATH).
 - Hard to remove: credits, MCP/OAuth (`createApp` in `apps/api/src/app.ts` always mounts the MCP
   routes; no setting turns them off) and, above all, multi-organization mode.

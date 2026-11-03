@@ -28,7 +28,7 @@ For the same reason, keep this file to rules: no file inventories, helper lists 
 | Email    | Resend in production; Mailpit (local inbox) in dev and e2e; recording mailer in tests  |
 | Jobs     | pg-boss on Postgres, or on the PGlite instance Drizzle uses                            |
 | Logs     | Pino (JSON lines), request id per request; Sentry                                      |
-| Files    | S3-compatible storage; local/in-memory fallback in dev and tests                       |
+| Files    | S3-compatible storage, presigned uploads; RustFS in dev and e2e; in-memory in tests    |
 | MCP      | `@modelcontextprotocol/server` (stateless Streamable HTTP) behind Better Auth OAuth    |
 | Landing  | Astro (static) + Tailwind                                                              |
 | Tests    | Vitest, React Testing Library, Better Auth `testUtils` plugin, PGlite, msw, Playwright |
@@ -91,7 +91,7 @@ Run from the repo root; the scripts in `package.json` are the full list.
 | Command                                      | What it does                                 |
 | -------------------------------------------- | -------------------------------------------- |
 | `pnpm install`                               | Install                                      |
-| `pnpm dev`                                   | api + web + landing (and Mailpit)            |
+| `pnpm dev`                                   | api + web + landing (and Mailpit, RustFS)    |
 | `pnpm typecheck` / `pnpm lint` / `pnpm test` | Turborepo across all workspaces              |
 | `pnpm build`                                 | Build web, api and landing                   |
 | `pnpm test:e2e`                              | Playwright against api + web on PGlite       |
@@ -140,6 +140,9 @@ Run from the repo root; the scripts in `package.json` are the full list.
 - Both servers send security headers; OAuth and MCP paths stay readable cross-origin, and proxied
   responses keep the API's headers.
 - Mail in dev and e2e goes to Mailpit when `RESEND_API_KEY` is unset; `pnpm dev` starts it.
+- Files in dev and e2e go to a local RustFS (`pnpm rustfs`, started by `pnpm dev`). Browsers upload
+  and download straight to the bucket through presigned URLs, never through the API, so a
+  production bucket needs a CORS rule allowing PUT and GET from the web origin.
 
 ## Testing
 
@@ -150,8 +153,8 @@ Run from the repo root; the scripts in `package.json` are the full list.
 - **Shared kits**: the API, the web and the e2e suite each have a testing kit (in-process app,
   people helpers, msw answers, render helpers, Mailpit readers). Read it and reuse it before
   writing a new helper.
-- **E2E**: Playwright boots the API on PGlite with fake Stripe and Mailpit, plus the web dev
-  server. Embedded Checkout cannot load with the fake gateway's client secret, so e2e asserts
+- **E2E**: Playwright boots the API on PGlite with fake Stripe, Mailpit and RustFS, plus the web
+  dev server. Embedded Checkout cannot load with the fake gateway's client secret, so e2e asserts
   reaching the checkout page and drives payments through the fake webhook.
 
 ## Make it yours
@@ -164,6 +167,11 @@ Run from the repo root; the scripts in `package.json` are the full list.
   in `@arrakit/auth/permissions`, procedures in `packages/contract`, a router in apps/api, MCP
   tools in the API's MCP server, screens in apps/web with an entry in the app's navigation list,
   and tests at every layer.
+- Reacting to files (indexing, emails, previews): add a file subscriber to the API's subscriber
+  list. File events are published in the same transaction as the change, and each subscriber
+  gets its own retried queue; do not call follow-up work from the files router.
+- File types and size limits per plan: `packages/plans` (the API enforces them, the web
+  pre-checks them).
 
 ## Astro (apps/landing)
 

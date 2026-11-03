@@ -28,8 +28,11 @@ billing, prepaid credits, transactional email and an MCP server, in a pnpm + Tur
   to a local Mailpit inbox (http://localhost:5025, started by `pnpm dev`).
 - **MCP server** at `/api/mcp`, with OAuth 2.1 sign-in through Better Auth's OAuth provider
   (Claude's custom connectors work with it) and one example tool, `whoami`.
-- **Jobs** with pg-boss on the same Postgres (on the PGlite instance too when `DATABASE_URL` is unset); files on any
-  S3-compatible bucket (a local directory without one).
+- **Files** for the organization and for each workspace: browsers upload and download straight to
+  any S3-compatible bucket with presigned URLs; the plan sets the allowed types and the size limit,
+  and stored bytes count against `storage_gb`. Uploads, renames and deletions publish durable
+  events that background subscribers react to. `pnpm dev` starts a local RustFS bucket.
+- **Jobs** with pg-boss on the same Postgres (on the PGlite instance too when `DATABASE_URL` is unset).
 - **Tenancy**: every organization query and file key goes through `forOrganization(id)` in
   `@arrakit/db`; ESLint refuses the database and storage drivers anywhere else.
 
@@ -87,9 +90,10 @@ pnpm dev        # api :5000 (migrations applied on boot), web :5200 (/api proxie
 
 Every variable is optional in development: without `DATABASE_URL` the API uses PGlite in
 `PGLITE_DIR`, without `RESEND_API_KEY` mail goes to Mailpit (`MAILPIT_URL`), or to the console when that is unset, with
-`STRIPE_FAKE=1` Stripe is faked, and without the `R2_*` keys files go to `STORAGE_DIR`. In
-production set `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`/`WEB_URL` (the web origin),
-`RESEND_API_KEY` and `MAIL_FROM`, the `STRIPE_*` keys and the `R2_*` bucket. The web reads
+`STRIPE_FAKE=1` Stripe is faked, and the `R2_*` keys of `.env.example` point at the local RustFS
+(without them uploads are kept in memory). In production set `DATABASE_URL`, `BETTER_AUTH_SECRET`,
+`BETTER_AUTH_URL`/`WEB_URL` (the web origin), `RESEND_API_KEY` and `MAIL_FROM`, the `STRIPE_*`
+keys and the `R2_*` bucket, whose CORS rule must allow PUT and GET from the web origin. The web reads
 `API_ORIGIN`, `VITE_APP_NAME` and `VITE_SITE_URL`.
 
 With real Stripe keys, create the products and prices once:

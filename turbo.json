@@ -38,7 +38,7 @@
     },
     "test:e2e": {
       "cache": false,
-      "passThroughEnv": ["E2E_WEB_PORT", "E2E_API_PORT", "E2E_MAILPIT_PORT"]
+      "passThroughEnv": ["E2E_WEB_PORT", "E2E_API_PORT", "E2E_MAILPIT_PORT", "E2E_RUSTFS_PORT"]
     },
     "dev": {
       "cache": false,
@@ -51,6 +51,10 @@
       "inputs": ["scripts/**"]
     },
     "//#mailpit": {
+      "cache": false,
+      "persistent": true
+    },
+    "//#rustfs": {
       "cache": false,
       "persistent": true
     }
