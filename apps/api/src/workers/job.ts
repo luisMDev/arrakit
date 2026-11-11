@@ -1,4 +1,11 @@
-import type { QueuePolicy, ScheduleOptions, ScopedData, SendOptions, Jobs } from '@arrakit/db'
+import type {
+  JobAttempt,
+  Jobs,
+  QueuePolicy,
+  ScheduleOptions,
+  ScopedData,
+  SendOptions,
+} from '@arrakit/db'
 import type { z } from 'zod'
 
 import type { AppDeps } from '../deps'
@@ -7,6 +14,7 @@ import type { Logger } from '../observability/logger'
 export interface JobContext {
   data: ScopedData
   log: Logger
+  attempt: JobAttempt
 }
 
 export interface JobDefinition<Schema extends z.ZodType<object> = z.ZodType<object>> {
@@ -51,7 +59,7 @@ export async function registerJobs(
 async function registerJob(job: JobDefinition, { data, log, errors }: WorkerDeps): Promise<void> {
   const jobLog = log.child({ job: job.name })
   await data.jobs.defineQueue(job.name, job.policy)
-  const worker = data.jobs.work(job.name, async (raw) => {
+  const worker = data.jobs.work(job.name, async (raw, attempt) => {
     const parsed = job.schema.safeParse(raw)
     if (!parsed.success) {
       jobLog.error({ err: parsed.error }, 'job payload invalid; dead-lettered without retries')
@@ -59,7 +67,7 @@ async function registerJob(job: JobDefinition, { data, log, errors }: WorkerDeps
       return
     }
     try {
-      await job.handler(parsed.data, { data, log: jobLog })
+      await job.handler(parsed.data, { data, log: jobLog, attempt })
     } catch (err) {
       jobLog.error(
         { err, ...job.logFields?.(parsed.data) },
