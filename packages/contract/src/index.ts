@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { meContract } from './account'
+import { artifactsContract } from './artifacts'
 import { billingContract } from './billing'
 import { filesContract } from './files'
 import { base, moneySchema, planSchema } from './common'
@@ -44,6 +45,7 @@ export const contract = {
   workspaces: workspacesContract,
   files: filesContract,
   tasks: tasksContract,
+  artifacts: artifactsContract,
 }
 
 export type Contract = typeof contract
@@ -84,3 +86,20 @@ export {
   taskScopeSchema,
   taskStatusSchema,
 } from './tasks'
+export {
+  type Artifact,
+  type ArtifactContent,
+  type ArtifactCreateInput,
+  type ArtifactVersion,
+  artifactContentRequestSchema,
+  artifactContentSchema,
+  artifactCreateSchema,
+  artifactFormatSchema,
+  artifactIdSchema,
+  artifactPublishSchema,
+  artifactRenameSchema,
+  artifactSchema,
+  artifactScopeSchema,
+  artifactTitleSchema,
+  artifactVersionSchema,
+} from './artifacts'

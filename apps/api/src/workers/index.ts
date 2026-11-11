@@ -1,3 +1,4 @@
+import { ARTIFACT_SUBSCRIBERS } from '../artifacts/subscribers'
 import { registerEventSubscribers } from '../events/subscribers'
 import { FILE_SUBSCRIBERS } from '../files/subscribers'
 import { TASK_SUBSCRIBERS } from '../tasks/subscribers'
@@ -14,5 +15,8 @@ export const TRACKED_JOBS: readonly TrackedJobDefinition[] = []
 
 export async function registerWorkers(deps: WorkerDeps): Promise<void> {
   await registerJobs([...JOBS, ...TRACKED_JOBS.map((job) => trackedJob(job))], deps)
-  await registerEventSubscribers([...FILE_SUBSCRIBERS, ...TASK_SUBSCRIBERS], deps)
+  await registerEventSubscribers(
+    [...FILE_SUBSCRIBERS, ...TASK_SUBSCRIBERS, ...ARTIFACT_SUBSCRIBERS],
+    deps,
+  )
 }

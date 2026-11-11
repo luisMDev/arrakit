@@ -1,4 +1,6 @@
 import {
+  type ArtifactEventName,
+  type ArtifactEventPayloads,
   type FileEventName,
   type FileEventPayloads,
   type QueuePolicy,
@@ -7,6 +9,7 @@ import {
   WORKER_RETRY_POLICY,
 } from '@arrakit/db'
 
+import { ARTIFACT_EVENT_SCHEMAS } from '../artifacts/events'
 import { FILE_EVENT_SCHEMAS } from '../files/events'
 import { TASK_EVENT_SCHEMAS } from '../tasks/events'
 import {
@@ -17,10 +20,10 @@ import {
   registerJobs,
 } from '../workers/job'
 
-export type EventName = FileEventName | TaskEventName
-export type EventPayloads = FileEventPayloads & TaskEventPayloads
+export type EventName = FileEventName | TaskEventName | ArtifactEventName
+export type EventPayloads = FileEventPayloads & TaskEventPayloads & ArtifactEventPayloads
 
-const EVENT_SCHEMAS = { ...FILE_EVENT_SCHEMAS, ...TASK_EVENT_SCHEMAS }
+const EVENT_SCHEMAS = { ...FILE_EVENT_SCHEMAS, ...TASK_EVENT_SCHEMAS, ...ARTIFACT_EVENT_SCHEMAS }
 
 /**
  * Reacts to a domain event in the background: each subscriber has its own queue, so it retries
@@ -49,12 +52,13 @@ export function subscriberJob(subscriber: EventSubscriber): JobDefinition {
     policy: subscriber.policy ?? WORKER_RETRY_POLICY,
     handler: (payload, context) => subscriber.handler(payload as never, context),
     logFields: (payload) => {
-      const { organizationId, fileId, taskId } = payload as {
+      const { organizationId, fileId, taskId, artifactId } = payload as {
         organizationId: string
         fileId?: string
         taskId?: string
+        artifactId?: string
       }
-      return { organizationId, fileId, taskId }
+      return { organizationId, fileId, taskId, artifactId }
     },
   })
 }
