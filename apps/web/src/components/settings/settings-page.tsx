@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 
 import { AccountSection } from '#/components/settings/account-section'
+import { ActivitySection } from '#/components/settings/activity-section'
 import { BillingSection } from '#/components/settings/billing-section'
 import { GeneralSection } from '#/components/settings/general-section'
 import { LibrarySection } from '#/components/settings/library-section'
@@ -16,6 +17,7 @@ const SECTIONS = {
   account: AccountSection,
   general: GeneralSection,
   library: LibrarySection,
+  activity: ActivitySection,
   usage: UsageSection,
   members: MembersSection,
   teams: TeamsSection,

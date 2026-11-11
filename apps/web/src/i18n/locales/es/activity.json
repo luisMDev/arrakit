@@ -1,8 +1,8 @@
 {
   "activity": {
     "title": "Actividad",
-    "hint": "El trabajo que se ejecuta en segundo plano en {{organization}} y cuánto le falta.",
-    "hintOwn": "El trabajo que iniciaste y se ejecuta en segundo plano, y cuánto le falta.",
+    "hint": "El trabajo en segundo plano de {{organization}}: todos los espacios de trabajo y la propia organización.",
+    "hintOwn": "El trabajo en segundo plano que iniciaste, en todos los espacios de trabajo y en la propia organización.",
     "tabs": {
       "active": "En curso",
       "finished": "Terminadas"
@@ -15,6 +15,7 @@
     "loadMore": "Ver más",
     "columns": {
       "task": "Tarea",
+      "where": "Dónde",
       "status": "Estado",
       "progress": "Progreso",
       "requestedBy": "Iniciada por",
@@ -47,6 +48,9 @@
       "label_one": "{{count}} tarea en curso",
       "label_other": "{{count}} tareas en curso",
       "viewAll": "Ver toda la actividad"
-    }
+    },
+    "workspaceHint": "El trabajo en segundo plano de {{workspace}} y cuánto le falta.",
+    "workspaceHintOwn": "El trabajo en segundo plano que iniciaste en {{workspace}} y cuánto le falta.",
+    "organizationWide": "Organización"
   }
 }

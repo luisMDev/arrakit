@@ -1,8 +1,8 @@
 {
   "activity": {
     "title": "Activity",
-    "hint": "Work that runs in the background in {{organization}}, and how far along it is.",
-    "hintOwn": "Work you started that runs in the background, and how far along it is.",
+    "hint": "Background work across {{organization}}: every workspace and the organization itself.",
+    "hintOwn": "Background work you started, in every workspace and the organization itself.",
     "tabs": {
       "active": "In progress",
       "finished": "Finished"
@@ -15,6 +15,7 @@
     "loadMore": "Show more",
     "columns": {
       "task": "Task",
+      "where": "Where",
       "status": "Status",
       "progress": "Progress",
       "requestedBy": "Started by",
@@ -47,6 +48,9 @@
       "label_one": "{{count}} task in progress",
       "label_other": "{{count}} tasks in progress",
       "viewAll": "View all activity"
-    }
+    },
+    "workspaceHint": "Background work in {{workspace}}, and how far along it is.",
+    "workspaceHintOwn": "Background work you started in {{workspace}}, and how far along it is.",
+    "organizationWide": "Organization"
   }
 }

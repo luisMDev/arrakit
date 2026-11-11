@@ -1,27 +1,44 @@
 import { expect, test } from '@playwright/test'
 
-import { signedInOwner } from './session'
+import { rpc, signedInOwner } from './session'
 
-test('reaches Activity from the sidebar and shows nothing running or finished yet', async ({
+test('finds all the background work in Settings, and each workspace keeps its own', async ({
   page,
 }) => {
   await signedInOwner(page, { organization: 'Rowan Partners' })
-  await page.goto('/app')
-  await page.getByRole('link', { name: 'Activity' }).click()
+  await page.goto('/app/settings')
+  await page
+    .getByRole('navigation', { name: 'Settings' })
+    .getByRole('link', { name: 'Activity' })
+    .click()
 
-  await expect(page).toHaveURL(/\/app\/activity$/)
-  await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible()
+  await expect(page).toHaveURL(/\/app\/settings\?section=activity$/)
+  await expect(page.getByRole('heading', { level: 2, name: 'Activity' })).toBeVisible()
+  await expect(page.getByText(/every workspace and the organization itself/)).toBeVisible()
   await expect(page.getByText('Nothing is running right now.')).toBeVisible()
   await page.getByRole('tab', { name: 'Finished' }).click()
-  await expect(page).toHaveURL(/\/app\/activity\?tab=finished$/)
   await expect(page.getByText('Nothing has finished yet.')).toBeVisible()
+
+  const workspace = await rpc<{ id: string }>(page, 'workspaces/create', {
+    name: 'Deals',
+    description: '',
+  })
+  await page.goto(`/app/workspaces/${workspace.id}`)
+  await page
+    .getByRole('navigation', { name: 'Navigation' })
+    .getByRole('link', { name: 'Activity' })
+    .click()
+  await expect(page).toHaveURL(new RegExp(`/app/workspaces/${workspace.id}/activity$`))
+  await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible()
+  await expect(page.getByText('Background work in Deals, and how far along it is.')).toBeVisible()
+  await expect(page.getByText('Nothing is running right now.')).toBeVisible()
 })
 
 test('streams task changes through the web origin as they happen, not when the stream ends', async ({
   page,
 }) => {
   await signedInOwner(page, { organization: 'Aspen Partners' })
-  await page.goto('/app/activity')
+  await page.goto('/app/settings?section=activity')
 
   const first = await page.evaluate(async () => {
     const started = performance.now()

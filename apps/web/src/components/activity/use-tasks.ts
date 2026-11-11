@@ -8,13 +8,23 @@ import { isActive } from './task-copy'
 
 const FINISHED_PAGE = 50
 
-/** Every queued or running task the person may see: one query shared by the page and the shell. */
-export const activeTasksQuery = () =>
-  orpc.tasks.list.queryOptions({ input: { status: 'active', limit: TASK_PAGE_MAX } })
+/**
+ * The queued or running tasks the person may see, of one workspace or of the whole organization:
+ * the organization's is shared by Settings > Activity and the shell's indicator.
+ */
+export const activeTasksQuery = (workspaceId?: string) =>
+  orpc.tasks.list.queryOptions({
+    input: { status: 'active', limit: TASK_PAGE_MAX, ...(workspaceId ? { workspaceId } : {}) },
+  })
 
-export const finishedTasksQuery = () =>
+export const finishedTasksQuery = (workspaceId?: string) =>
   orpc.tasks.list.infiniteOptions({
-    input: (after: string | undefined) => ({ status: 'finished', after, limit: FINISHED_PAGE }),
+    input: (after: string | undefined) => ({
+      status: 'finished',
+      after,
+      limit: FINISHED_PAGE,
+      ...(workspaceId ? { workspaceId } : {}),
+    }),
     initialPageParam: undefined,
     getNextPageParam: (page: TaskPage) => page.next ?? undefined,
   })

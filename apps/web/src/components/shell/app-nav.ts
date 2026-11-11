@@ -23,7 +23,6 @@ export interface AppNavItem {
 /** The sidebar outside a workspace. A product module adds its organization-wide screen here. */
 export const APP_NAV: AppNavItem[] = [
   { label: 'home', icon: House, link: linkOptions({ to: '/app' }) },
-  { label: 'activity', icon: Activity, link: linkOptions({ to: '/app/activity', search: {} }) },
 ]
 
 /** The sidebar inside a workspace. A module scoped to a workspace adds its screen here. */
@@ -38,6 +37,11 @@ export const workspaceNav = (workspaceId: string): AppNavItem[] => [
     icon: Library,
     link: linkOptions({ to: '/app/workspaces/$workspaceId/library', params: { workspaceId } }),
     shows: (access) => access.can({ file: ['read'] }),
+  },
+  {
+    label: 'activity',
+    icon: Activity,
+    link: linkOptions({ to: '/app/workspaces/$workspaceId/activity', params: { workspaceId } }),
   },
 ]
 

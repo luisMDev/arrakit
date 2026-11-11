@@ -7,6 +7,7 @@ export const SETTINGS_SECTIONS = [
   'account',
   'general',
   'library',
+  'activity',
   'usage',
   'members',
   'teams',

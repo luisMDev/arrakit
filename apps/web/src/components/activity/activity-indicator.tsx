@@ -1,6 +1,6 @@
 import type { TaskView } from '@arrakit/contract'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useMatchRoute } from '@tanstack/react-router'
+import { Link, useMatch, useMatchRoute } from '@tanstack/react-router'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -30,7 +30,14 @@ export function ActivityIndicator() {
   const matchRoute = useMatchRoute()
   const [open, setOpen] = useState(false)
   const active = useQuery(activeTasksQuery()).data?.tasks ?? []
-  const onActivity = Boolean(matchRoute({ to: '/app/activity' }))
+  const inSettingsActivity = useMatch({
+    from: '/app/settings',
+    shouldThrow: false,
+    select: (match) => match.search.section === 'activity',
+  })
+  const onActivity =
+    Boolean(inSettingsActivity) ||
+    Boolean(matchRoute({ to: '/app/workspaces/$workspaceId/activity' }))
 
   const announce = useCallback(
     (task: TaskView) => {
@@ -71,8 +78,8 @@ export function ActivityIndicator() {
                 ))}
               </ul>
               <Link
-                to="/app/activity"
-                search={{ tab: 'active' }}
+                to="/app/settings"
+                search={{ section: 'activity' }}
                 className="text-sm underline-offset-4 hover:underline"
                 onClick={() => setOpen(false)}
               >

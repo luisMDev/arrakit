@@ -52,7 +52,7 @@ describe('Activity indicator', () => {
     ).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'View all activity' })).toHaveAttribute(
       'href',
-      '/app/activity?tab=active',
+      '/app/settings?section=activity',
     )
   })
 

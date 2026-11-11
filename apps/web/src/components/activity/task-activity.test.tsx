@@ -1,25 +1,22 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
-import { answer, meAs, renderAt, setupTestApi } from '#/test/rpc'
+import { answer, renderAt, setupTestApi } from '#/test/rpc'
 
-import { ActivityPage, type ActivityTab } from './activity-page'
 import { pageOf, taskOf } from './fixtures'
+import { TaskActivity } from './task-activity'
 
 setupTestApi()
 
-function openActivity(url = '/app/activity', me = meAs()) {
-  return renderAt((search) => <ActivityPage tab={search.tab as ActivityTab | undefined} />, {
-    url,
-    me,
-  })
-}
+const DEALS = '7c9e6679-7425-40de-944b-e07fc1f90ae7'
+const workspaces = [{ id: DEALS, name: 'Deals', description: '', createdOn: '2026-11-01' }]
 
 const rowOf = (name: string) => screen.getByText(name).closest('tr') as HTMLElement
 
-describe('Activity', () => {
+describe('TaskActivity', () => {
   it('lists the tasks in progress with their status, progress and who started them', async () => {
+    answer('workspaces/list', workspaces)
     answer(
       'tasks/list',
       pageOf([
@@ -34,7 +31,7 @@ describe('Activity', () => {
         }),
       ]),
     )
-    openActivity()
+    renderAt(<TaskActivity />)
 
     const table = await screen.findByRole('table', { name: 'In progress' })
     expect(within(table).getAllByRole('row')).toHaveLength(4)
@@ -53,31 +50,41 @@ describe('Activity', () => {
     expect(within(old).getByText('—')).toBeInTheDocument()
   })
 
-  it('says whose work it shows: all of it for a role that reads tasks, else your own', async () => {
-    answer('tasks/list', pageOf([]))
-    const { unmount } = openActivity()
-    expect(
-      await screen.findByText('Work that runs in the background in Acme, and how far along it is.'),
-    ).toBeInTheDocument()
-    unmount()
+  it('says where each task of the organization runs: a workspace, or the organization itself', async () => {
+    answer('workspaces/list', workspaces)
+    const calls = answer(
+      'tasks/list',
+      pageOf([taskOf({ label: 'Export', workspaceId: DEALS }), taskOf({ label: 'Invoices' })]),
+    )
+    renderAt(<TaskActivity />)
 
-    openActivity('/app/activity', meAs({ role: 'member' }))
+    expect(await screen.findByRole('columnheader', { name: 'Where' })).toBeInTheDocument()
+    expect(await within(rowOf('Background task · Export')).findByText('Deals')).toBeInTheDocument()
     expect(
-      await screen.findByText(
-        'Work you started that runs in the background, and how far along it is.',
-      ),
+      within(rowOf('Background task · Invoices')).getByText('Organization'),
     ).toBeInTheDocument()
+    expect(calls[0]!.input).toEqual({ status: 'active', limit: 100 })
+  })
+
+  it("keeps to one workspace's tasks, without saying where they run", async () => {
+    const calls = answer('tasks/list', pageOf([taskOf({ label: 'Export', workspaceId: DEALS })]))
+    renderAt(<TaskActivity workspaceId={DEALS} />)
+
+    await screen.findByText('Background task · Export')
+    expect(screen.queryByRole('columnheader', { name: 'Where' })).toBeNull()
+    expect(calls[0]!.input).toEqual({ status: 'active', limit: 100, workspaceId: DEALS })
   })
 
   it('says when nothing is running', async () => {
     answer('tasks/list', pageOf([]))
-    openActivity()
+    renderAt(<TaskActivity workspaceId={DEALS} />)
     expect(await screen.findByText('Nothing is running right now.')).toBeInTheDocument()
   })
 
   it('shows finished tasks with why they failed, a page at a time', async () => {
     const calls = answer(
       'tasks/list',
+      pageOf([]),
       pageOf(
         [
           taskOf({
@@ -91,7 +98,10 @@ describe('Activity', () => {
       ),
       pageOf([taskOf({ label: 'Leads', status: 'succeeded', progress: { done: 3, total: 3 } })]),
     )
-    openActivity('/app/activity?tab=finished')
+    renderAt(<TaskActivity workspaceId={DEALS} />)
+    const user = userEvent.setup()
+    await screen.findByText('Nothing is running right now.')
+    await user.click(screen.getByRole('tab', { name: 'Finished' }))
 
     const deals = await screen.findByText('Background task · Deals')
     expect(within(deals.closest('tr')!).getByText('Failed')).toBeInTheDocument()
@@ -99,23 +109,13 @@ describe('Activity', () => {
       within(deals.closest('tr')!).getByText('The task stopped responding.'),
     ).toBeInTheDocument()
 
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Show more' }))
+    await user.click(screen.getByRole('button', { name: 'Show more' }))
     expect(await screen.findByText('Background task · Leads')).toBeInTheDocument()
     expect(within(rowOf('Background task · Leads')).getByText('Done')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull()
-    expect(calls.map(({ input }) => input)).toEqual([
-      { status: 'finished', limit: 50 },
-      { status: 'finished', after: 'cursor-1', limit: 50 },
+    expect(calls.slice(1).map(({ input }) => input)).toEqual([
+      { status: 'finished', limit: 50, workspaceId: DEALS },
+      { status: 'finished', after: 'cursor-1', limit: 50, workspaceId: DEALS },
     ])
-  })
-
-  it('opens a tab from the address and keeps the tab chosen in it', async () => {
-    answer('tasks/list', pageOf([]))
-    const { router } = openActivity()
-    await screen.findByText('Nothing is running right now.')
-
-    await userEvent.setup().click(screen.getByRole('tab', { name: 'Finished' }))
-    expect(await screen.findByText('Nothing has finished yet.')).toBeInTheDocument()
-    await waitFor(() => expect(router.state.location.search).toEqual({ tab: 'finished' }))
   })
 })
