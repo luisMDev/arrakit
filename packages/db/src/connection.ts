@@ -21,6 +21,11 @@ export type Database = PgDatabase<PgQueryResultHKT, Schema>
 export interface ConnectionConfig {
   /** Real Postgres. When absent, PGlite is used. */
   databaseUrl?: string
+  /**
+   * The same Postgres without a pooler in transaction mode, for what needs a session (the
+   * migration lock, LISTEN). Defaults to `databaseUrl`.
+   */
+  databaseDirectUrl?: string
   /** PGlite data directory. Absent (or 'memory://') means in-memory. */
   pgliteDir?: string
   /** Delete the PGlite directory before opening it (throwaway e2e databases). */
@@ -64,7 +69,14 @@ export async function connect(config: ConnectionConfig, log: DataLog): Promise<C
       connectionString: config.databaseUrl,
       connectionTimeoutMillis: 5000,
     })
-    return postgresConnection(pool, migrationsFolder, log)
+    const sessions = config.databaseDirectUrl
+      ? new pg.Pool({
+          connectionString: config.databaseDirectUrl,
+          max: 1,
+          connectionTimeoutMillis: 5000,
+        })
+      : undefined
+    return postgresConnection(pool, migrationsFolder, log, sessions)
   }
 
   const dir = config.pgliteDir && config.pgliteDir !== 'memory://' ? config.pgliteDir : undefined
@@ -82,20 +94,26 @@ export async function connect(config: ConnectionConfig, log: DataLog): Promise<C
   }
 }
 
-/** Drizzle over a node-postgres pool; migrations run on one client under MIGRATION_LOCK. */
+/**
+ * Drizzle over a node-postgres pool; migrations run on one client under MIGRATION_LOCK, taken from
+ * `sessions` when given (a session lock does not hold through a pooler in transaction mode).
+ */
 export function postgresConnection(
   pool: pg.Pool,
   migrationsFolder: string,
   log: DataLog,
+  sessions: pg.Pool = pool,
 ): Connection {
   // An idle client failing must not crash the process.
-  pool.on('error', (err) => log.error({ err }, 'idle Postgres client failed'))
+  for (const each of new Set([pool, sessions])) {
+    each.on('error', (err) => log.error({ err }, 'idle Postgres client failed'))
+  }
   const db = drizzlePg({ client: pool, schema })
   return {
     db: db as unknown as Database,
     driver: 'postgres',
     migrate: async () => {
-      const client = await pool.connect()
+      const client = await sessions.connect()
       let release: Error | undefined
       try {
         await client.query('select pg_advisory_lock($1)', [MIGRATION_LOCK])
@@ -112,6 +130,9 @@ export function postgresConnection(
         client.release(release)
       }
     },
-    close: () => pool.end(),
+    close: async () => {
+      await pool.end()
+      if (sessions !== pool) await sessions.end()
+    },
   }
 }

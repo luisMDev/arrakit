@@ -94,6 +94,26 @@ describe('postgresConnection (node-postgres pool)', () => {
     await postgresConnection(pool as never, emptyMigrations, consoleLog).close()
     expect(pool.end).toHaveBeenCalled()
   })
+
+  it('takes the migration lock on the session pool when there is one, and closes both', async () => {
+    const queries = scriptedPool(async () => ({ rows: [] }))
+    const sessions = scriptedPool(async () => ({ rows: [] }))
+    const connection = postgresConnection(
+      queries.pool as never,
+      emptyMigrations,
+      consoleLog,
+      sessions.pool as never,
+    )
+    await connection.migrate().catch(() => {})
+    expect(sessions.log[0]).toBe('select pg_advisory_lock($1)')
+    expect(sessions.released).toEqual([undefined])
+    expect(queries.pool.connect).not.toHaveBeenCalled()
+    expect(sessions.pool.on).toHaveBeenCalledWith('error', expect.any(Function))
+
+    await connection.close()
+    expect(queries.pool.end).toHaveBeenCalled()
+    expect(sessions.pool.end).toHaveBeenCalled()
+  })
 })
 
 describe.runIf(process.env.DATABASE_URL)('connect() on real Postgres (DATABASE_URL)', () => {
@@ -104,5 +124,13 @@ describe.runIf(process.env.DATABASE_URL)('connect() on real Postgres (DATABASE_U
     await a.db.execute(sql`select 1`)
     await b.db.execute(sql`select 1`)
     await Promise.all([a.close(), b.close()])
+  }, 60_000)
+
+  it('migrates over the direct URL when one is given', async () => {
+    const url = process.env.DATABASE_URL
+    const connection = await connect({ databaseUrl: url, databaseDirectUrl: url }, consoleLog)
+    await connection.migrate()
+    await connection.db.execute(sql`select 1`)
+    await connection.close()
   }, 60_000)
 })
