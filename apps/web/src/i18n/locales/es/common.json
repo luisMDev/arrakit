@@ -19,7 +19,9 @@
       "checkout": "Pago",
       "welcome": "Bienvenida",
       "notFound": "Página no encontrada",
-      "tasks": "Tareas"
+      "tasks": "Tareas",
+      "artifacts": "Artefactos",
+      "artifact": "Artefacto"
     }
   },
   "confirmDelete": {

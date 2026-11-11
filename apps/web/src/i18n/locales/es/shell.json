@@ -15,7 +15,8 @@
     "settings": "Ajustes",
     "members": "Miembros",
     "billing": "Facturación",
-    "tasks": "Tareas"
+    "tasks": "Tareas",
+    "artifacts": "Artefactos"
   },
   "workspaceMenu": {
     "label": "Menú del espacio de trabajo",

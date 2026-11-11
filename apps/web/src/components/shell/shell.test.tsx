@@ -245,14 +245,14 @@ describe('Signed-in shell', () => {
     expect(within(menu).queryByRole('menuitem', { name: 'All workspaces' })).toBeNull()
   })
 
-  it('names the open workspace in the sidebar, whose Home and Library are its own', async () => {
+  it('names the open workspace in the sidebar, whose Home, Library and Artifacts are its own', async () => {
     answer('workspaces/get', DEALS)
     const home = `/app/workspaces/${DEALS.id}`
     const { location, menuButton, user } = await open(home, meAs(), [DEALS])
     expect(await screen.findByRole('heading', { level: 1, name: 'Workspace' })).toBeInTheDocument()
     await waitFor(() => expect(menuButton).toHaveTextContent('Deals'))
     expect(menuButton).toHaveTextContent('Acme')
-    expect(destinations()).toEqual(['Home', 'Library', 'Tasks'])
+    expect(destinations()).toEqual(['Home', 'Library', 'Artifacts', 'Tasks'])
     expect(sidebarLink('Home')).toHaveAttribute('href', home)
     expect(sidebarLink('Home')).toHaveAttribute('aria-current', 'page')
 
@@ -262,6 +262,11 @@ describe('Signed-in shell', () => {
     expect(sidebarLink('Library')).toHaveAttribute('aria-current', 'page')
     expect(sidebarLink('Home')).not.toHaveAttribute('aria-current')
     expect(menuButton).toHaveTextContent('Deals')
+
+    await user.click(sidebarLink('Artifacts'))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Artifacts' })).toBeInTheDocument()
+    expect(location()).toBe(`${home}/artifacts`)
+    expect(sidebarLink('Artifacts')).toHaveAttribute('aria-current', 'page')
   })
 
   it('leaves Library out for a role without file read, and sends it to the workspace from there', async () => {

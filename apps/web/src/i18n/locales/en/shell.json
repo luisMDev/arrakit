@@ -15,7 +15,8 @@
     "settings": "Settings",
     "members": "Members",
     "billing": "Billing",
-    "tasks": "Tasks"
+    "tasks": "Tasks",
+    "artifacts": "Artifacts"
   },
   "workspaceMenu": {
     "label": "Workspace menu",

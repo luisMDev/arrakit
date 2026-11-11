@@ -42,6 +42,12 @@ vi.mock('#/components/workspaces/workspace-page', () => ({
 vi.mock('#/components/workspaces/workspace-library-page', () => ({
   WorkspaceLibraryPage: () => <Heading title="Library" />,
 }))
+vi.mock('#/components/workspaces/workspace-artifacts-page', () => ({
+  WorkspaceArtifactsPage: () => <Heading title="Artifacts" />,
+}))
+vi.mock('#/components/artifacts/artifact-page', () => ({
+  ArtifactPage: () => <Heading title="Artifact" />,
+}))
 vi.mock('#/components/organizations/join-page', () => ({
   JoinPage: () => <Heading title="Join" />,
 }))

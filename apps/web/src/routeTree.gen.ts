@@ -30,8 +30,10 @@ import { Route as JoinInvitationIdRouteImport } from './routes/join.$invitationI
 import { Route as OauthConsentRouteImport } from './routes/oauth/consent'
 import { Route as OauthSigninRouteImport } from './routes/oauth/signin'
 import { Route as AppWorkspacesWorkspaceIdRouteImport } from './routes/app/workspaces_.$workspaceId'
+import { Route as AppWorkspacesWorkspaceIdArtifactsRouteImport } from './routes/app/workspaces_.$workspaceId_.artifacts'
 import { Route as AppWorkspacesWorkspaceIdLibraryRouteImport } from './routes/app/workspaces_.$workspaceId_.library'
 import { Route as AppWorkspacesWorkspaceIdTasksRouteImport } from './routes/app/workspaces_.$workspaceId_.tasks'
+import { Route as AppWorkspacesWorkspaceIdArtifactsArtifactIdRouteImport } from './routes/app/workspaces_.$workspaceId_.artifacts_.$artifactId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -139,6 +141,12 @@ const AppWorkspacesWorkspaceIdRoute =
     path: '/workspaces/$workspaceId',
     getParentRoute: () => AppRoute,
   } as any)
+const AppWorkspacesWorkspaceIdArtifactsRoute =
+  AppWorkspacesWorkspaceIdArtifactsRouteImport.update({
+    id: '/workspaces_/$workspaceId_/artifacts',
+    path: '/workspaces/$workspaceId/artifacts',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppWorkspacesWorkspaceIdLibraryRoute =
   AppWorkspacesWorkspaceIdLibraryRouteImport.update({
     id: '/workspaces_/$workspaceId_/library',
@@ -149,6 +157,12 @@ const AppWorkspacesWorkspaceIdTasksRoute =
   AppWorkspacesWorkspaceIdTasksRouteImport.update({
     id: '/workspaces_/$workspaceId_/tasks',
     path: '/workspaces/$workspaceId/tasks',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppWorkspacesWorkspaceIdArtifactsArtifactIdRoute =
+  AppWorkspacesWorkspaceIdArtifactsArtifactIdRouteImport.update({
+    id: '/workspaces_/$workspaceId_/artifacts_/$artifactId',
+    path: '/workspaces/$workspaceId/artifacts/$artifactId',
     getParentRoute: () => AppRoute,
   } as any)
 
@@ -174,8 +188,10 @@ export interface FileRoutesByFullPath {
   '/oauth/signin': typeof OauthSigninRoute
   '/app/': typeof AppIndexRoute
   '/app/workspaces/$workspaceId': typeof AppWorkspacesWorkspaceIdRoute
+  '/app/workspaces/$workspaceId/artifacts': typeof AppWorkspacesWorkspaceIdArtifactsRoute
   '/app/workspaces/$workspaceId/library': typeof AppWorkspacesWorkspaceIdLibraryRoute
   '/app/workspaces/$workspaceId/tasks': typeof AppWorkspacesWorkspaceIdTasksRoute
+  '/app/workspaces/$workspaceId/artifacts/$artifactId': typeof AppWorkspacesWorkspaceIdArtifactsArtifactIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -198,8 +214,10 @@ export interface FileRoutesByTo {
   '/oauth/signin': typeof OauthSigninRoute
   '/app': typeof AppIndexRoute
   '/app/workspaces/$workspaceId': typeof AppWorkspacesWorkspaceIdRoute
+  '/app/workspaces/$workspaceId/artifacts': typeof AppWorkspacesWorkspaceIdArtifactsRoute
   '/app/workspaces/$workspaceId/library': typeof AppWorkspacesWorkspaceIdLibraryRoute
   '/app/workspaces/$workspaceId/tasks': typeof AppWorkspacesWorkspaceIdTasksRoute
+  '/app/workspaces/$workspaceId/artifacts/$artifactId': typeof AppWorkspacesWorkspaceIdArtifactsArtifactIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -224,8 +242,10 @@ export interface FileRoutesById {
   '/oauth/signin': typeof OauthSigninRoute
   '/app/': typeof AppIndexRoute
   '/app/workspaces_/$workspaceId': typeof AppWorkspacesWorkspaceIdRoute
+  '/app/workspaces_/$workspaceId_/artifacts': typeof AppWorkspacesWorkspaceIdArtifactsRoute
   '/app/workspaces_/$workspaceId_/library': typeof AppWorkspacesWorkspaceIdLibraryRoute
   '/app/workspaces_/$workspaceId_/tasks': typeof AppWorkspacesWorkspaceIdTasksRoute
+  '/app/workspaces_/$workspaceId_/artifacts_/$artifactId': typeof AppWorkspacesWorkspaceIdArtifactsArtifactIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -251,8 +271,10 @@ export interface FileRouteTypes {
     | '/oauth/signin'
     | '/app/'
     | '/app/workspaces/$workspaceId'
+    | '/app/workspaces/$workspaceId/artifacts'
     | '/app/workspaces/$workspaceId/library'
     | '/app/workspaces/$workspaceId/tasks'
+    | '/app/workspaces/$workspaceId/artifacts/$artifactId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -275,8 +297,10 @@ export interface FileRouteTypes {
     | '/oauth/signin'
     | '/app'
     | '/app/workspaces/$workspaceId'
+    | '/app/workspaces/$workspaceId/artifacts'
     | '/app/workspaces/$workspaceId/library'
     | '/app/workspaces/$workspaceId/tasks'
+    | '/app/workspaces/$workspaceId/artifacts/$artifactId'
   id:
     | '__root__'
     | '/'
@@ -300,8 +324,10 @@ export interface FileRouteTypes {
     | '/oauth/signin'
     | '/app/'
     | '/app/workspaces_/$workspaceId'
+    | '/app/workspaces_/$workspaceId_/artifacts'
     | '/app/workspaces_/$workspaceId_/library'
     | '/app/workspaces_/$workspaceId_/tasks'
+    | '/app/workspaces_/$workspaceId_/artifacts_/$artifactId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -467,6 +493,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspacesWorkspaceIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/workspaces_/$workspaceId_/artifacts': {
+      id: '/app/workspaces_/$workspaceId_/artifacts'
+      path: '/workspaces/$workspaceId/artifacts'
+      fullPath: '/app/workspaces/$workspaceId/artifacts'
+      preLoaderRoute: typeof AppWorkspacesWorkspaceIdArtifactsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/workspaces_/$workspaceId_/library': {
       id: '/app/workspaces_/$workspaceId_/library'
       path: '/workspaces/$workspaceId/library'
@@ -479,6 +512,13 @@ declare module '@tanstack/react-router' {
       path: '/workspaces/$workspaceId/tasks'
       fullPath: '/app/workspaces/$workspaceId/tasks'
       preLoaderRoute: typeof AppWorkspacesWorkspaceIdTasksRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/workspaces_/$workspaceId_/artifacts_/$artifactId': {
+      id: '/app/workspaces_/$workspaceId_/artifacts_/$artifactId'
+      path: '/workspaces/$workspaceId/artifacts/$artifactId'
+      fullPath: '/app/workspaces/$workspaceId/artifacts/$artifactId'
+      preLoaderRoute: typeof AppWorkspacesWorkspaceIdArtifactsArtifactIdRouteImport
       parentRoute: typeof AppRoute
     }
   }
@@ -495,8 +535,10 @@ interface AppRouteChildren {
   AppWorkspacesRoute: typeof AppWorkspacesRoute
   AppIndexRoute: typeof AppIndexRoute
   AppWorkspacesWorkspaceIdRoute: typeof AppWorkspacesWorkspaceIdRoute
+  AppWorkspacesWorkspaceIdArtifactsRoute: typeof AppWorkspacesWorkspaceIdArtifactsRoute
   AppWorkspacesWorkspaceIdLibraryRoute: typeof AppWorkspacesWorkspaceIdLibraryRoute
   AppWorkspacesWorkspaceIdTasksRoute: typeof AppWorkspacesWorkspaceIdTasksRoute
+  AppWorkspacesWorkspaceIdArtifactsArtifactIdRoute: typeof AppWorkspacesWorkspaceIdArtifactsArtifactIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -510,8 +552,12 @@ const AppRouteChildren: AppRouteChildren = {
   AppWorkspacesRoute: AppWorkspacesRoute,
   AppIndexRoute: AppIndexRoute,
   AppWorkspacesWorkspaceIdRoute: AppWorkspacesWorkspaceIdRoute,
+  AppWorkspacesWorkspaceIdArtifactsRoute:
+    AppWorkspacesWorkspaceIdArtifactsRoute,
   AppWorkspacesWorkspaceIdLibraryRoute: AppWorkspacesWorkspaceIdLibraryRoute,
   AppWorkspacesWorkspaceIdTasksRoute: AppWorkspacesWorkspaceIdTasksRoute,
+  AppWorkspacesWorkspaceIdArtifactsArtifactIdRoute:
+    AppWorkspacesWorkspaceIdArtifactsArtifactIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

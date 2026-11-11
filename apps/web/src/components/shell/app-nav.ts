@@ -2,6 +2,7 @@ import { type LinkOptions, linkOptions } from '@tanstack/react-router'
 import {
   ListChecks,
   CreditCard,
+  FileCode,
   House,
   Library,
   type LucideIcon,
@@ -37,6 +38,12 @@ export const workspaceNav = (workspaceId: string): AppNavItem[] => [
     icon: Library,
     link: linkOptions({ to: '/app/workspaces/$workspaceId/library', params: { workspaceId } }),
     shows: (access) => access.can({ file: ['read'] }),
+  },
+  {
+    label: 'artifacts',
+    icon: FileCode,
+    link: linkOptions({ to: '/app/workspaces/$workspaceId/artifacts', params: { workspaceId } }),
+    shows: (access) => access.can({ artifact: ['read'] }),
   },
   {
     label: 'tasks',

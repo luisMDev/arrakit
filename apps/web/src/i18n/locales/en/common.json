@@ -19,7 +19,9 @@
       "checkout": "Checkout",
       "welcome": "Welcome",
       "notFound": "Page not found",
-      "tasks": "Tasks"
+      "tasks": "Tasks",
+      "artifacts": "Artifacts",
+      "artifact": "Artifact"
     }
   },
   "confirmDelete": {
