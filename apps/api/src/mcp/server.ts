@@ -1,6 +1,14 @@
 import { type Permissions, allows } from '@arrakit/auth/permissions'
 import { FILE_NAME_MAX } from '@arrakit/plans'
 import {
+  artifactContentRequestSchema,
+  artifactContentSchema,
+  artifactCreateSchema,
+  artifactIdSchema,
+  artifactPublishSchema,
+  artifactRenameSchema,
+  artifactSchema,
+  artifactScopeSchema,
   downloadLinkSchema,
   fileIdSchema,
   fileNameSchema,
@@ -23,6 +31,7 @@ import {
 import { type CallToolResult, McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
+import { artifactService } from '../artifacts/artifacts'
 import { type FileActor, fileService } from '../files/files'
 import type { Logger } from '../observability/logger'
 import { NOT_PERMITTED } from '../orpc/context'
@@ -76,6 +85,22 @@ const taskLine = ({ kind, label, status, progress }: z.infer<typeof taskSchema>)
   const done = progress.total === null ? '' : ` ${progress.done}/${progress.total}`
   return `${kind}${label ? ` (${label})` : ''}: ${status}${done}`
 }
+
+const ARTIFACTS_OUTPUT = z.object({ artifacts: z.array(artifactSchema) })
+
+const artifactScopeInput = artifactScopeSchema.extend({
+  workspaceId: artifactScopeSchema.shape.workspaceId.describe(
+    "A workspace id from list_workspaces; omit it for the organization's own artifacts",
+  ),
+})
+
+const artifactCreateInput = artifactCreateSchema.extend({
+  workspaceId: artifactScopeInput.shape.workspaceId,
+  format: artifactCreateSchema.shape.format.describe(
+    'html for a self-contained page (inline CSS and JS; it runs sandboxed, without network access), markdown for a document',
+  ),
+  content: artifactCreateSchema.shape.content.describe('The full source of the first version'),
+})
 
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
 
@@ -370,6 +395,149 @@ export function createMcpServer(caller: ConnectorCaller, log: Logger): McpServer
           content: [{ type: 'text', text: page.tasks.map(taskLine).join('\n') || 'No tasks.' }],
           structuredContent: { tasks: page.tasks },
         }
+      }),
+  )
+
+  /** `allowed`, handing the tool the caller's artifact service. */
+  const artifactTool = (
+    wanted: Permissions,
+    tool: (artifacts: ReturnType<typeof artifactService>) => Promise<CallToolResult>,
+  ) =>
+    allowed(caller, wanted, (permissions) =>
+      tool(
+        artifactService({
+          userId: caller.userId,
+          permissions,
+          plan: caller.organization.plan,
+          scope: caller.scope,
+        }),
+      ),
+    )
+
+  const artifactLine = (a: { title: string; format: string; currentVersion: number; id: string }) =>
+    `${a.title} (${a.format}, v${a.currentVersion}) ${a.id}`
+
+  server.registerTool(
+    'list_artifacts',
+    {
+      title: 'List artifacts',
+      description:
+        'The HTML and Markdown reports published to the organization, or to one workspace when workspaceId is given, most recently changed first.',
+      inputSchema: artifactScopeInput,
+      outputSchema: ARTIFACTS_OUTPUT,
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ workspaceId }) =>
+      artifactTool({ artifact: ['read'] }, async (artifacts) => {
+        const listed = await artifacts.list(workspaceId ?? null)
+        return {
+          content: [
+            { type: 'text', text: listed.map(artifactLine).join('\n') || 'No artifacts yet.' },
+          ],
+          structuredContent: { artifacts: listed },
+        }
+      }),
+  )
+
+  server.registerTool(
+    'read_artifact',
+    {
+      title: 'Read an artifact',
+      description:
+        'The source of one version of an artifact, the current one when version is omitted. Use list_artifacts for its id.',
+      inputSchema: artifactContentRequestSchema,
+      outputSchema: artifactContentSchema,
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ id, version }) =>
+      artifactTool({ artifact: ['read'] }, async (artifacts) => {
+        const read = await artifacts.content(id, version)
+        return { content: [{ type: 'text', text: read.content }], structuredContent: read }
+      }),
+  )
+
+  server.registerTool(
+    'create_artifact',
+    {
+      title: 'Create an artifact',
+      description:
+        'Publishes a report (HTML or Markdown) to the organization, or to a workspace when workspaceId is given, as version 1. The plan limits its size. To change it later use publish_artifact_version, which keeps its id.',
+      inputSchema: artifactCreateInput,
+      outputSchema: artifactSchema,
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    ({ workspaceId, ...input }) =>
+      artifactTool({ artifact: ['create'] }, async (artifacts) => {
+        const artifact = await artifacts.create({ ...input, workspaceId: workspaceId ?? null })
+        return {
+          content: [{ type: 'text', text: `Created ${artifactLine(artifact)}.` }],
+          structuredContent: artifact,
+        }
+      }),
+  )
+
+  server.registerTool(
+    'publish_artifact_version',
+    {
+      title: 'Publish a new artifact version',
+      description:
+        'Replaces the content of an artifact with a new version, keeping its id, title and format; earlier versions stay readable. Use list_artifacts for its id.',
+      inputSchema: artifactPublishSchema,
+      outputSchema: artifactSchema,
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    ({ id, content }) =>
+      artifactTool({ artifact: ['read'] }, async (artifacts) => {
+        const artifact = await artifacts.publish(id, content)
+        return {
+          content: [{ type: 'text', text: `Published ${artifactLine(artifact)}.` }],
+          structuredContent: artifact,
+        }
+      }),
+  )
+
+  server.registerTool(
+    'rename_artifact',
+    {
+      title: 'Rename an artifact',
+      description: 'Changes the title of an artifact. Use list_artifacts for its id.',
+      inputSchema: artifactRenameSchema,
+      outputSchema: artifactSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ id, title }) =>
+      artifactTool({ artifact: ['read'] }, async (artifacts) => {
+        const artifact = await artifacts.rename(id, title)
+        return {
+          content: [{ type: 'text', text: `Renamed to ${artifact.title}.` }],
+          structuredContent: artifact,
+        }
+      }),
+  )
+
+  server.registerTool(
+    'delete_artifact',
+    {
+      title: 'Delete an artifact',
+      description:
+        'Deletes an artifact and all its versions for good. Use list_artifacts for its id.',
+      inputSchema: artifactIdSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ id }) =>
+      artifactTool({ artifact: ['read'] }, async (artifacts) => {
+        await artifacts.remove(id)
+        return { content: [{ type: 'text', text: 'Deleted the artifact and its versions.' }] }
       }),
   )
 

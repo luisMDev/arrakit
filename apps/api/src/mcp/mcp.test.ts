@@ -6,6 +6,7 @@ import { oauthClientResources, oauthClients } from '@arrakit/db/schema'
 import { insertMember } from '@arrakit/db/testing'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { NO_SUCH_ARTIFACT } from '../artifacts/artifacts'
 import { NO_SUCH_FILE } from '../files/files'
 import { NOT_PERMITTED } from '../orpc/context'
 import { TEST_WEB_ORIGIN, type TestApp, createTestApp, sessionCookieOf } from '../testing/app'
@@ -410,6 +411,12 @@ const TOOL_CASES = [
   'rename_file: the uploader, or a role with file update',
   'delete_file: the uploader, or a role with file delete',
   "list_tasks: the person's own tasks, or all with task read, the token's organization only",
+  "list_artifacts: a role with artifact read, the token's organization only",
+  'read_artifact: a role with artifact read; any version, the current one by default',
+  "create_artifact: a role with artifact create; the plan's artifact policy is a tool error",
+  'publish_artifact_version: the creator, or a role with artifact update; keeps the id',
+  'rename_artifact: the creator, or a role with artifact update',
+  'delete_artifact: the creator, or a role with artifact delete',
 ]
 
 const base64url = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url')
@@ -502,6 +509,12 @@ describe('the MCP endpoint', () => {
       'rename_file',
       'delete_file',
       'list_tasks',
+      'list_artifacts',
+      'read_artifact',
+      'create_artifact',
+      'publish_artifact_version',
+      'rename_artifact',
+      'delete_artifact',
     ])
     expect(tools[0]?.title).toBe('Who am I')
     expect(tools.map((tool) => tool.name)).toEqual(TOOL_CASES.map((line) => line.split(':')[0]))
@@ -848,6 +861,122 @@ describe('the MCP endpoint', () => {
     expect(
       (await callTool(tokens.access_token, 'list_tasks', { status: 'finished' }))?.content,
     ).toEqual([{ type: 'text', text: 'No tasks.' }])
+  })
+
+  it("creates, lists, reads, versions, renames and deletes artifacts in the token's organization", async () => {
+    const { tokens, organization } = await connectedOrganization(
+      'iris@linden.vc',
+      'Linden Ventures',
+    )
+    const other = await connectedOrganization('owner@maple.vc', 'Maple Ventures')
+
+    const created = await callTool(tokens.access_token, 'create_artifact', {
+      title: 'Pipeline review',
+      format: 'html',
+      content: '<h1>v1</h1>',
+    })
+    expect(created?.isError).toBeFalsy()
+    expect(created?.structuredContent).toMatchObject({
+      title: 'Pipeline review',
+      format: 'html',
+      currentVersion: 1,
+      workspaceId: null,
+    })
+    const id = (created?.structuredContent as { id: string }).id
+    expect(t.data.jobs.published.at(-1)).toMatchObject({
+      event: 'artifact.created',
+      data: { artifactId: id, organizationId: organization.id },
+    })
+
+    const published = await callTool(tokens.access_token, 'publish_artifact_version', {
+      id,
+      content: '<h1>v2</h1>',
+    })
+    expect(published?.structuredContent).toMatchObject({ id, currentVersion: 2 })
+    expect((await callTool(tokens.access_token, 'read_artifact', { id }))?.content).toEqual([
+      { type: 'text', text: '<h1>v2</h1>' },
+    ])
+    expect(
+      (await callTool(tokens.access_token, 'read_artifact', { id, version: 1 }))?.structuredContent,
+    ).toEqual({ artifactId: id, version: 1, format: 'html', content: '<h1>v1</h1>' })
+    expect((await callTool(tokens.access_token, 'list_artifacts'))?.content).toEqual([
+      { type: 'text', text: `Pipeline review (html, v2) ${id}` },
+    ])
+
+    for (const [name, args] of [
+      ['read_artifact', { id }],
+      ['publish_artifact_version', { id, content: 'x' }],
+      ['rename_artifact', { id, title: 'Mine' }],
+      ['delete_artifact', { id }],
+    ] as const) {
+      const result = await callTool(other.tokens.access_token, name, args)
+      expect(result?.isError).toBe(true)
+      expect(result?.content).toEqual([{ type: 'text', text: NO_SUCH_ARTIFACT }])
+    }
+
+    const renamed = await callTool(tokens.access_token, 'rename_artifact', {
+      id,
+      title: 'Pipeline Q3',
+    })
+    expect(renamed?.structuredContent).toMatchObject({ id, title: 'Pipeline Q3' })
+    const deleted = await callTool(tokens.access_token, 'delete_artifact', { id })
+    expect(deleted?.content).toEqual([
+      { type: 'text', text: 'Deleted the artifact and its versions.' },
+    ])
+    expect((await callTool(tokens.access_token, 'list_artifacts'))?.content).toEqual([
+      { type: 'text', text: 'No artifacts yet.' },
+    ])
+  })
+
+  it('answers an artifact over the size limit as a tool error', async () => {
+    const { tokens } = await connectedOrganization('nora@larch.vc', 'Larch Ventures')
+    const refused = await callTool(tokens.access_token, 'create_artifact', {
+      title: 'Huge',
+      format: 'markdown',
+      content: 'x'.repeat(2_000_001),
+    })
+    expect(refused?.isError).toBe(true)
+    expect((refused?.content as { text: string }[])[0]?.text).toBe(
+      'The content is larger than the 2 MB limit.',
+    )
+  })
+
+  it('lets a member create and change their own artifacts but not another person’s', async () => {
+    const owner = await connectedOrganization('owner@olive.vc', 'Olive Capital')
+    const ownersArtifact = await callTool(owner.tokens.access_token, 'create_artifact', {
+      title: 'Board pack',
+      format: 'markdown',
+      content: '# Board',
+    })
+    const ownersId = (ownersArtifact?.structuredContent as { id: string }).id
+    const member = await joinAs(t, owner.organization.id, 'member@olive.vc', 'member')
+    const { tokens } = await connector(t).connect(member.headers.get('cookie')!)
+
+    const mine = await callTool(tokens.access_token, 'create_artifact', {
+      title: 'My notes',
+      format: 'markdown',
+      content: '# Mine',
+    })
+    const mineId = (mine?.structuredContent as { id: string }).id
+    expect(
+      (await callTool(tokens.access_token, 'read_artifact', { id: ownersId }))?.isError,
+    ).toBeFalsy()
+    for (const [name, args] of [
+      ['publish_artifact_version', { id: ownersId, content: 'x' }],
+      ['rename_artifact', { id: ownersId, title: 'Ours' }],
+      ['delete_artifact', { id: ownersId }],
+    ] as const) {
+      const result = await callTool(tokens.access_token, name, args)
+      expect(result?.content).toEqual([{ type: 'text', text: NOT_PERMITTED }])
+    }
+    expect(
+      (
+        await callTool(tokens.access_token, 'publish_artifact_version', {
+          id: mineId,
+          content: '# 2',
+        })
+      )?.structuredContent,
+    ).toMatchObject({ currentVersion: 2 })
   })
 
   it('challenges a token in the URL instead of the header', async () => {
