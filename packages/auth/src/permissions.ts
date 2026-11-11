@@ -12,6 +12,8 @@ export const statements = {
   usage: ['read'],
   workspace: ['read', 'create', 'update', 'delete'],
   file: ['read', 'upload', 'update', 'delete'],
+  /** Everyone sees the tasks they started; `read` sees every task of the organization. */
+  task: ['read'],
 } as const
 
 export type Resource = keyof typeof statements
@@ -26,6 +28,7 @@ export const roles = {
     usage: ['read'],
     workspace: statements.workspace,
     file: statements.file,
+    task: statements.task,
   }),
   admin: ac.newRole({
     ...adminAc.statements,
@@ -33,6 +36,7 @@ export const roles = {
     usage: ['read'],
     workspace: statements.workspace,
     file: statements.file,
+    task: statements.task,
   }),
   member: ac.newRole({
     ...memberAc.statements,

@@ -20,10 +20,12 @@ describe('permissions', () => {
     ).toBe(true)
     expect(allows(admin, { workspace: ['read', 'create', 'update', 'delete'] })).toBe(true)
     expect(allows(admin, { file: ['read', 'upload', 'update', 'delete'] })).toBe(true)
+    expect(allows(admin, { task: ['read'] })).toBe(true)
+    expect(allows(permissionsOf('owner'), { task: ['read'] })).toBe(true)
     expect(allows(admin, { organization: ['delete'] })).toBe(false)
   })
 
-  it('lets a member read usage and roles, read and create workspaces, read and upload files', () => {
+  it('lets a member read usage and roles, read and create workspaces, read and upload files, and only see their own tasks', () => {
     const member = permissionsOf('member')
     expect(allows(member, { usage: ['read'], ac: ['read'] })).toBe(true)
     expect(allows(member, { workspace: ['read', 'create'] })).toBe(true)
@@ -32,6 +34,7 @@ describe('permissions', () => {
     expect(allows(member, { file: ['read', 'upload'] })).toBe(true)
     expect(allows(member, { file: ['update'] })).toBe(false)
     expect(allows(member, { file: ['delete'] })).toBe(false)
+    expect(allows(member, { task: ['read'] })).toBe(false)
     expect(allows(member, { billing: ['read'] })).toBe(false)
     expect(allows(member, { invitation: ['create'] })).toBe(false)
   })

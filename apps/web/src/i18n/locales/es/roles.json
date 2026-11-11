@@ -40,7 +40,8 @@
         "billing": "Facturación",
         "usage": "Uso",
         "workspace": "Espacios de trabajo",
-        "file": "Archivos"
+        "file": "Archivos",
+        "task": "Actividad"
       },
       "actions": {
         "create": "Crear",

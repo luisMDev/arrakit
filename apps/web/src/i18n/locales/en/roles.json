@@ -40,7 +40,8 @@
         "billing": "Billing",
         "usage": "Usage",
         "workspace": "Workspaces",
-        "file": "Files"
+        "file": "Files",
+        "task": "Activity"
       },
       "actions": {
         "create": "Create",
