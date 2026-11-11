@@ -39,8 +39,8 @@ vi.mock('#/components/workspaces/workspaces-page', () => ({
 vi.mock('#/components/workspaces/workspace-page', () => ({
   WorkspacePage: () => <Heading title="Workspace" />,
 }))
-vi.mock('#/components/files/files-page', () => ({
-  FilesPage: () => <Heading title="Files" />,
+vi.mock('#/components/workspaces/workspace-library-page', () => ({
+  WorkspaceLibraryPage: () => <Heading title="Library" />,
 }))
 vi.mock('#/components/organizations/join-page', () => ({
   JoinPage: () => <Heading title="Join" />,
@@ -55,6 +55,7 @@ vi.mock('#/components/oauth/oauth-signin-page', () => ({
 const SECTION_TITLES: Record<string, string> = {
   account: 'Account',
   members: 'Members',
+  library: 'Library',
   billing: 'Billing',
 }
 

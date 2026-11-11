@@ -1,3 +1,4 @@
+import type { Workspace } from '@arrakit/contract'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
@@ -6,28 +7,47 @@ import { answer, meAs, quiet, setupTestApi } from '#/test/rpc'
 
 import { renderApp } from './testing'
 
-const { signOut, listOrganizations } = vi.hoisted(() => ({
+const { signOut, listOrganizations, listMembers } = vi.hoisted(() => ({
   signOut: vi.fn(),
   listOrganizations: vi.fn(),
+  listMembers: vi.fn(),
 }))
 vi.mock('#/lib/auth-client', () => ({
-  authClient: { signOut, organization: { list: listOrganizations } },
+  authClient: { signOut, organization: { list: listOrganizations, listMembers } },
 }))
 
 setupTestApi({ onUnhandledFrame: 'error' })
 
-async function open(url = '/app', me = meAs()) {
+async function open(url = '/app', me = meAs(), workspaces: Workspace[] = []) {
   answer('me/get', me)
+  answer('workspaces/list', workspaces)
   listOrganizations.mockResolvedValue({ data: [me.organization], error: null })
+  listMembers.mockResolvedValue({ data: { members: [], total: 3 }, error: null })
   const app = renderApp(url)
-  const menuButton = await screen.findByRole('button', { name: 'Account menu' })
+  await screen.findAllByRole('button', { name: 'Show or hide navigation' })
+  // Absent in Settings, whose sidebar shows the person instead.
+  const menuButton = screen.queryByRole('button', { name: 'Workspace menu' })!
   const menu = () => screen.queryByRole('menu')
   const user = userEvent.setup()
   const openMenu = async () => {
     await user.click(menuButton)
     return menu()!
   }
-  return { ...app, menuButton, menu, openMenu, user }
+  const goTo = async (item: string) =>
+    user.click(await within(await openMenu()).findByRole('menuitem', { name: item }))
+  return { ...app, menuButton, menu, openMenu, goTo, user }
+}
+
+const DEALS: Workspace = {
+  id: '0f8fad5b-d9cb-469f-a165-70867728950e',
+  name: 'Deals',
+  description: '',
+  createdOn: '2026-11-02',
+}
+const RESEARCH: Workspace = {
+  ...DEALS,
+  id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+  name: 'Research',
 }
 
 const sidebar = () => screen.getByRole('navigation', { name: 'Navigation' })
@@ -40,13 +60,32 @@ const destinations = () =>
     .map((link) => link.textContent)
 
 describe('Signed-in shell', () => {
-  it('shows the person, the organization and its plan at the foot of the sidebar', async () => {
+  it('heads the sidebar with the organization and its plan', async () => {
     const { menuButton } = await open()
-    expect(menuButton.closest('[data-sidebar="footer"]')).not.toBeNull()
-    expect(menuButton).toHaveTextContent('L')
-    expect(menuButton).toHaveTextContent('Lucía Gómez')
-    expect(menuButton).toHaveTextContent('Acme · Team')
+    expect(menuButton.closest('[data-sidebar="header"]')).not.toBeNull()
+    expect(document.querySelector('[data-sidebar="footer"]')).toBeNull()
+    expect(menuButton).toHaveTextContent('A')
+    expect(menuButton).toHaveTextContent('Acme')
+    expect(menuButton).toHaveTextContent('Team')
     expect(menuButton).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('group', { name: 'Signed in as' })).toBeNull()
+  })
+
+  it('heads the Settings sidebar with who is signed in, in place of the menu', async () => {
+    answer('me/get', meAs())
+    renderApp('/app/settings')
+    const person = await screen.findByRole('group', { name: 'Signed in as' })
+    expect(person.closest('[data-sidebar="header"]')).not.toBeNull()
+    expect(person).toHaveTextContent('L')
+    expect(person).toHaveTextContent('Lucía Gómez')
+    expect(person).toHaveTextContent('lucia@acme.com')
+    expect(screen.queryByRole('button', { name: 'Workspace menu' })).toBeNull()
+  })
+
+  it('shows a blank name as the email local part', async () => {
+    answer('me/get', meAs({ name: '  ' }))
+    renderApp('/app/settings')
+    expect(await screen.findByRole('group', { name: 'Signed in as' })).toHaveTextContent('lucia')
   })
 
   it('has no header in the app: the wordmark and the toggle head the sidebar', async () => {
@@ -60,12 +99,10 @@ describe('Signed-in shell', () => {
     ).toBeInTheDocument()
   })
 
-  it('opens the account menu with the person, the organizations, the theme and sign out', async () => {
+  it('opens the menu with the organizations, the theme and sign out', async () => {
     const { openMenu, menuButton } = await open()
     const menu = await openMenu()
     expect(menuButton).toHaveAttribute('aria-expanded', 'true')
-    expect(menu).toHaveTextContent('Lucía Gómez')
-    expect(menu).toHaveTextContent('lucia@acme.com')
     expect(await within(menu).findByRole('menuitemradio', { name: /Acme/ })).toHaveAttribute(
       'aria-checked',
       'true',
@@ -108,30 +145,22 @@ describe('Signed-in shell', () => {
 
   it('lists every destination in the sidebar, in the order the app declares them', async () => {
     await open()
-    expect(destinations()).toEqual([
-      'Home',
-      'Workspaces',
-      'Files',
-      'Settings',
-      'Members',
-      'Billing',
-    ])
+    expect(destinations()).toEqual(['Home'])
   })
 
   it('marks where the person is in the sidebar', async () => {
-    const { location, user } = await open()
+    const { location, goTo } = await open()
     expect(sidebarLink('Home')).toHaveAttribute('aria-current', 'page')
-    await user.click(sidebarLink('Workspaces'))
+    await goTo('All workspaces')
     expect(await screen.findByRole('heading', { level: 1, name: 'Workspaces' })).toBeInTheDocument()
     expect(location()).toBe('/app/workspaces')
-    expect(sidebarLink('Workspaces')).toHaveAttribute('aria-current', 'page')
     expect(sidebarLink('Home')).not.toHaveAttribute('aria-current')
   })
 
   it("swaps the sidebar for Settings' sections, sliding them in, and Back slides the app's in", async () => {
-    const { location, user } = await open()
+    const { location, user, goTo } = await open()
     expect(panel()).not.toHaveClass('animate-in')
-    await user.click(sidebarLink('Settings'))
+    await goTo('Settings')
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: 'Navigation' })).toBeNull()
@@ -155,16 +184,19 @@ describe('Signed-in shell', () => {
     ['Settings', '/app/settings', 'Account'],
     ['Members', '/app/settings?section=members', 'Members'],
     ['Billing', '/app/settings?section=billing', 'Billing'],
-  ])('reaches %s, marking its section in the Settings sidebar', async (item, path, section) => {
-    const { location, user } = await open()
-    await user.click(sidebarLink(item))
-    expect(await screen.findByRole('heading', { level: 2, name: section })).toBeInTheDocument()
-    expect(location()).toBe(path)
-    const marked = within(settingsNav())
-      .getAllByRole('link')
-      .filter((link) => link.ariaCurrent)
-    expect(marked.map((link) => link.textContent)).toEqual([section])
-  })
+  ])(
+    'reaches %s from the workspace menu, marking its section in the Settings sidebar',
+    async (item, path, section) => {
+      const { location, goTo } = await open()
+      await goTo(item)
+      expect(await screen.findByRole('heading', { level: 2, name: section })).toBeInTheDocument()
+      expect(location()).toBe(path)
+      const marked = within(settingsNav())
+        .getAllByRole('link')
+        .filter((link) => link.ariaCurrent)
+      expect(marked.map((link) => link.textContent)).toEqual([section])
+    },
+  )
 
   it('opens straight on a settings section with its sidebar, without sliding it in', async () => {
     await open('/app/settings?section=teams')
@@ -176,57 +208,77 @@ describe('Signed-in shell', () => {
     expect(panel()).not.toHaveClass('animate-in')
   })
 
-  it('opens Workspaces from the sidebar', async () => {
-    const { location, user } = await open()
-    await user.click(sidebarLink('Workspaces'))
-    expect(await screen.findByRole('heading', { level: 1, name: 'Workspaces' })).toBeInTheDocument()
-    expect(location()).toBe('/app/workspaces')
-  })
-
   it('hides Workspaces from a role without workspace read, and sends it Home from there', async () => {
     const auditor = meAs({ role: 'auditor', permissions: { usage: ['read'] } })
     const { location } = await open('/app/workspaces', auditor)
     expect(await screen.findByRole('heading', { name: 'Hi, Lucía Gómez.' })).toBeInTheDocument()
     expect(location()).toBe('/app')
-    expect(destinations()).not.toContain('Workspaces')
   })
 
-  it('opens Files from the sidebar', async () => {
-    const { location, user } = await open()
-    await user.click(sidebarLink('Files'))
-    expect(await screen.findByRole('heading', { level: 1, name: 'Files' })).toBeInTheDocument()
-    expect(location()).toBe('/app/files')
+  it('opens Home on the first workspace once the organization has one', async () => {
+    answer('workspaces/get', DEALS)
+    const { location, menuButton } = await open('/app', meAs(), [DEALS, RESEARCH])
+    expect(await screen.findByRole('heading', { level: 1, name: 'Workspace' })).toBeInTheDocument()
+    expect(location()).toBe(`/app/workspaces/${DEALS.id}`)
+    await waitFor(() => expect(menuButton).toHaveTextContent('Deals'))
   })
 
-  it('hides Files from a role without file read, and sends it Home from there', async () => {
-    const auditor = meAs({ role: 'auditor', permissions: { workspace: ['read'] } })
-    const { location } = await open('/app/files', auditor)
+  it('opens Home on the workspace last opened on this device', async () => {
+    answer('workspaces/get', (input: unknown) =>
+      (input as { id: string }).id === DEALS.id ? DEALS : RESEARCH,
+    )
+    const first = await open(`/app/workspaces/${RESEARCH.id}`, meAs(), [DEALS, RESEARCH])
+    await waitFor(() => expect(first.menuButton).toHaveTextContent('Research'))
+    first.unmount()
+
+    const { location } = await open('/app', meAs(), [DEALS, RESEARCH])
+    await waitFor(() => expect(location()).toBe(`/app/workspaces/${RESEARCH.id}`))
+  })
+
+  it('keeps the general Home for a role without workspace read, asking for no workspaces', async () => {
+    const auditor = meAs({ role: 'auditor', permissions: { usage: ['read'] } })
+    const { location, openMenu } = await open('/app', auditor, [DEALS])
     expect(await screen.findByRole('heading', { name: 'Hi, Lucía Gómez.' })).toBeInTheDocument()
     expect(location()).toBe('/app')
-    expect(destinations()).not.toContain('Files')
+    const menu = await openMenu()
+    expect(within(menu).getByRole('menuitem', { name: 'Settings' })).toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: 'All workspaces' })).toBeNull()
   })
 
-  it('opens a workspace on its own page', async () => {
-    const { location } = await open('/app/workspaces/0f8fad5b-d9cb-469f-a165-70867728950e')
+  it('names the open workspace in the sidebar, whose Home and Library are its own', async () => {
+    answer('workspaces/get', DEALS)
+    const home = `/app/workspaces/${DEALS.id}`
+    const { location, menuButton, user } = await open(home, meAs(), [DEALS])
     expect(await screen.findByRole('heading', { level: 1, name: 'Workspace' })).toBeInTheDocument()
-    expect(location()).toBe('/app/workspaces/0f8fad5b-d9cb-469f-a165-70867728950e')
+    await waitFor(() => expect(menuButton).toHaveTextContent('Deals'))
+    expect(menuButton).toHaveTextContent('Acme')
+    expect(destinations()).toEqual(['Home', 'Library'])
+    expect(sidebarLink('Home')).toHaveAttribute('href', home)
+    expect(sidebarLink('Home')).toHaveAttribute('aria-current', 'page')
+
+    await user.click(sidebarLink('Library'))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Library' })).toBeInTheDocument()
+    expect(location()).toBe(`${home}/library`)
+    expect(sidebarLink('Library')).toHaveAttribute('aria-current', 'page')
+    expect(sidebarLink('Home')).not.toHaveAttribute('aria-current')
+    expect(menuButton).toHaveTextContent('Deals')
   })
 
-  it('leaves Billing and Members out of the sidebar of a member', async () => {
-    await open('/app', meAs({ role: 'member' }))
-    expect(destinations()).toEqual(['Home', 'Workspaces', 'Files', 'Settings'])
+  it('leaves Library out for a role without file read, and sends it to the workspace from there', async () => {
+    answer('workspaces/get', DEALS)
+    const viewer = meAs({ role: 'viewer', permissions: { workspace: ['read'] } })
+    const { location } = await open(`/app/workspaces/${DEALS.id}/library`, viewer, [DEALS])
+    expect(await screen.findByRole('heading', { level: 1, name: 'Workspace' })).toBeInTheDocument()
+    expect(location()).toBe(`/app/workspaces/${DEALS.id}`)
+    expect(destinations()).toEqual(['Home'])
   })
 
-  it("shows Members and Billing in the sidebar of the organization's admin", async () => {
-    await open('/app', meAs({ role: 'admin' }))
-    expect(destinations()).toEqual([
-      'Home',
-      'Workspaces',
-      'Files',
-      'Settings',
-      'Members',
-      'Billing',
-    ])
+  it('leaves Members and Billing out of the menu of a member', async () => {
+    const { openMenu } = await open('/app', meAs({ role: 'member' }))
+    const menu = await openMenu()
+    expect(within(menu).getByRole('menuitem', { name: 'Settings' })).toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: 'Members' })).toBeNull()
+    expect(within(menu).queryByRole('menuitem', { name: 'Billing' })).toBeNull()
   })
 
   it('collapses the sidebar to icons and opens it again from the toggle', async () => {
@@ -249,32 +301,30 @@ describe('Signed-in shell', () => {
     window.innerWidth = 390
     try {
       answer('me/get', meAs())
-      const { location } = renderApp('/app')
+      answer('workspaces/list', [])
+      const { location } = renderApp('/app/workspaces')
       const user = userEvent.setup()
       const toggle = await screen.findByRole('button', { name: 'Show or hide navigation' })
       expect(screen.queryByRole('navigation', { name: 'Navigation' })).toBeNull()
-      expect(screen.queryByRole('button', { name: 'Account menu' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Workspace menu' })).toBeNull()
       expect(toggle).toHaveAttribute('aria-expanded', 'false')
 
       await user.click(toggle)
       await user.click(
-        await within(await screen.findByRole('dialog')).findByRole('link', { name: 'Workspaces' }),
+        within(
+          await within(await screen.findByRole('dialog')).findByRole('navigation', {
+            name: 'Navigation',
+          }),
+        ).getByRole('link', { name: 'Home' }),
       )
 
-      expect(
-        await screen.findByRole('heading', { level: 1, name: 'Workspaces' }),
-      ).toBeInTheDocument()
-      expect(location()).toBe('/app/workspaces')
+      expect(await screen.findByRole('heading', { name: 'Hi, Lucía Gómez.' })).toBeInTheDocument()
+      expect(location()).toBe('/app')
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
       expect(toggle).toHaveAttribute('aria-expanded', 'false')
     } finally {
       window.innerWidth = width
     }
-  })
-
-  it('shows a blank name as the email local part', async () => {
-    const { openMenu } = await open('/app', meAs({ name: '  ' }))
-    expect(await openMenu()).toHaveTextContent('lucia')
   })
 
   it('signs out to Sign in', async () => {
@@ -346,7 +396,7 @@ describe('requireUser', () => {
       expect(
         await screen.findByRole('heading', { name: 'This page does not exist.' }),
       ).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Account menu' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Workspace menu' })).toBeInTheDocument()
       expect(location()).toBe(url)
     },
   )

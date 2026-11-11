@@ -1,14 +1,14 @@
-import { Link, useMatchRoute, useMatches } from '@tanstack/react-router'
+import { Link, useMatchRoute, useMatches, useParams } from '@tanstack/react-router'
 import { PanelLeft } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SettingsSidebarNav } from '#/components/settings/settings-nav'
+import { Avatar, AvatarFallback } from '#/components/ui/avatar'
 import { Button } from '#/components/ui/button'
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
@@ -16,13 +16,15 @@ import {
   SidebarRail,
   useSidebar,
 } from '#/components/ui/sidebar'
-import { useCurrentUser } from '#/lib/current-user'
+import { useWorkspace } from '#/components/workspaces/use-workspace'
+import { initialOf, useCurrentUser } from '#/lib/current-user'
+import { rememberWorkspace } from '#/lib/last-workspace'
 import { cn } from '#/lib/utils'
 
-import { AccountMenu } from './account-menu'
-import { navFor } from './app-nav'
+import { APP_NAV, navFor, workspaceNav } from './app-nav'
 import { Wordmark } from './root-layout'
 import { SidebarNavLink } from './sidebar-nav-link'
+import { WorkspaceMenu } from './workspace-menu'
 
 declare module '@tanstack/react-router' {
   interface StaticDataRouteOption {
@@ -41,28 +43,76 @@ const SLIDE_IN: Record<Panel, string> = {
 export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="[view-transition-name:app-sidebar]">
-      <SidebarHeader className="flex-row items-center justify-between">
-        <AppHomeLink className="px-1 group-data-[collapsible=icon]:hidden" />
-        <SidebarToggle />
+      <SidebarHeader>
+        <div className="flex items-center justify-between">
+          <AppHomeLink className="px-1 group-data-[collapsible=icon]:hidden" />
+          <SidebarToggle />
+        </div>
+        {useSidebarPanel() === 'settings' ? <SidebarPerson /> : <SidebarWorkspaceMenu />}
       </SidebarHeader>
       <SidebarContent className="overflow-x-hidden">
         <SidebarPanel />
       </SidebarContent>
-      <SidebarFooter>
-        <AccountMenu />
-      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )
 }
 
-/** Slides in from the side it leads to, but not on the first screen opened. */
-function SidebarPanel() {
-  const panel: Panel =
+function useSidebarPanel(): Panel {
+  return (
     useMatches({
       select: (matches) =>
         matches.findLast((match) => match.staticData.sidebar)?.staticData.sidebar,
     }) ?? 'app'
+  )
+}
+
+/** Who is signed in: Settings are the person's and the organization's, not a workspace's. */
+function SidebarPerson() {
+  const { t } = useTranslation()
+  const { user, name } = useCurrentUser()
+  if (!user) return null
+  return (
+    <div
+      role="group"
+      aria-label={t('settings.signedInAs')}
+      className="flex items-center gap-2 p-2 text-sm group-data-[collapsible=icon]:p-0"
+    >
+      <Avatar className="size-8 rounded-lg">
+        <AvatarFallback className="rounded-lg">{initialOf(name)}</AvatarFallback>
+      </Avatar>
+      <span className="grid flex-1 leading-tight group-data-[collapsible=icon]:hidden">
+        <span className="truncate font-medium">{name}</span>
+        <span className="text-muted-foreground truncate text-xs">{user.email}</span>
+      </span>
+    </div>
+  )
+}
+
+/** The workspace the person is inside of, if their role reads workspaces. */
+function useOpenWorkspaceId(): string | undefined {
+  const { can } = useCurrentUser()
+  const workspaceId = useParams({ strict: false, select: (params) => params.workspaceId })
+  return can({ workspace: ['read'] }) ? workspaceId : undefined
+}
+
+function SidebarWorkspaceMenu() {
+  const workspaceId = useOpenWorkspaceId()
+  return workspaceId ? <OpenWorkspaceMenu workspaceId={workspaceId} /> : <WorkspaceMenu />
+}
+
+function OpenWorkspaceMenu({ workspaceId }: { workspaceId: string }) {
+  const organizationId = useCurrentUser().user?.organization?.id
+  const workspace = useWorkspace(workspaceId).data
+  useEffect(() => {
+    if (organizationId && workspace) rememberWorkspace(organizationId, workspace.id)
+  }, [organizationId, workspace])
+  return <WorkspaceMenu workspace={workspace} />
+}
+
+/** Slides in from the side it leads to, but not on the first screen opened. */
+function SidebarPanel() {
+  const panel = useSidebarPanel()
   const [shown, setShown] = useState({ panel, animate: false })
   if (shown.panel !== panel) setShown({ panel, animate: true })
   return (
@@ -92,7 +142,8 @@ function AppNav() {
   const { t } = useTranslation()
   const access = useCurrentUser()
   const matchRoute = useMatchRoute()
-  const items = navFor(access)
+  const workspaceId = useOpenWorkspaceId()
+  const items = navFor(access, workspaceId ? workspaceNav(workspaceId) : APP_NAV)
   return (
     <SidebarGroup>
       <SidebarGroupContent>

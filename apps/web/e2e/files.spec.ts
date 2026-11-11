@@ -20,11 +20,14 @@ test('files go straight to storage for the organization and each workspace', asy
   await payFor(page, organizationId, 'team_monthly')
 
   await page.goto('/app')
+  await page.getByRole('button', { name: 'Workspace menu' }).click()
+  await page.getByRole('menuitem', { name: 'Settings' }).click()
   await page
-    .getByRole('navigation', { name: 'Navigation' })
-    .getByRole('link', { name: 'Files' })
+    .getByRole('navigation', { name: 'Settings' })
+    .getByRole('link', { name: 'Library' })
     .click()
-  await expect(page).toHaveURL(/\/app\/files$/)
+  await expect(page).toHaveURL(/\/app\/settings\?section=library$/)
+  await expect(page.getByRole('heading', { level: 2, name: 'Library' })).toBeVisible()
   await expect(page.getByText('No files yet.')).toBeVisible()
 
   const choose = page.getByLabel('Choose files', { exact: true }).and(page.locator('input'))
@@ -59,11 +62,18 @@ test('files go straight to storage for the organization and each workspace', asy
   await page.locator('[data-workspace="Deals"]').getByRole('link', { name: 'Deals' }).click()
   await expect(page).toHaveURL(new RegExp(`/app/workspaces/${deals.id}$`))
   await expect(page.getByRole('heading', { level: 1, name: 'Deals' })).toBeVisible()
+  const library = page
+    .getByRole('navigation', { name: 'Navigation' })
+    .getByRole('link', { name: 'Library' })
+  await library.click()
+  await expect(page).toHaveURL(new RegExp(`/app/workspaces/${deals.id}/library$`))
+  await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
+  await expect(library).toHaveAttribute('aria-current', 'page')
   await choose.setInputFiles([markdown('term-sheet.md', 'Terms')])
   await expect(page.getByText('term-sheet.md uploaded.')).toBeVisible()
   await expect(page.locator('[data-file="term-sheet.md"]')).toBeVisible()
 
-  await page.goto('/app/files')
+  await page.goto('/app/settings?section=library')
   await expect(page.locator('[data-file]')).toHaveCount(1)
   await expect(page.locator('[data-file="minutes.md"]')).toBeVisible()
 
@@ -74,7 +84,7 @@ test('files go straight to storage for the organization and each workspace', asy
   try {
     await memberPage.goto(await magicLinkFor(page.request, memberEmail))
     await expect(memberPage).toHaveURL(/\/app(\/.*)?$/)
-    await memberPage.goto('/app/files')
+    await memberPage.goto('/app/settings?section=library')
     await memberPage
       .getByLabel('Choose files', { exact: true })
       .and(memberPage.locator('input'))

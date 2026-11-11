@@ -1,6 +1,5 @@
 {
   "appMenu": {
-    "accountMenu": "Menú de la cuenta",
     "signOut": "Cerrar sesión",
     "notSignedOut": "No se ha podido cerrar la sesión. Inténtalo de nuevo.",
     "theme": "Tema",
@@ -12,14 +11,16 @@
     "label": "Navegación",
     "toggle": "Mostrar u ocultar la navegación",
     "home": "Inicio",
-    "workspaces": "Espacios de trabajo",
-    "files": "Archivos",
+    "library": "Biblioteca",
     "settings": "Ajustes",
     "members": "Miembros",
     "billing": "Facturación"
   },
-  "shell": {
-    "usage": "{{organization}} · {{plan}}"
+  "workspaceMenu": {
+    "label": "Menú del espacio de trabajo",
+    "upgrade": "Mejorar plan",
+    "planAndMembers_one": "{{plan}} · {{count}} miembro",
+    "planAndMembers_other": "{{plan}} · {{count}} miembros"
   },
   "home": {
     "title": "Hola, {{name}}.",

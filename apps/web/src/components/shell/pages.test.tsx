@@ -23,6 +23,32 @@ describe('Home', () => {
     expect(screen.getByText(/Acme is on Team\./)).toBeInTheDocument()
   })
 
+  it('offers the first workspace to a role that can create one, and opens it', async () => {
+    answer('me/get', meAs())
+    answer('workspaces/list', [])
+    const id = '7c9e6679-7425-40de-944b-e07fc1f90ae7'
+    const deals = { id, name: 'Deals', description: '', createdOn: '2026-11-02' }
+    answer('workspaces/create', deals)
+    answer('workspaces/get', deals)
+    const { location } = renderApp('/app')
+    const main = await screen.findByRole('main')
+    await userEvent.click(within(main).getByRole('button', { name: 'New workspace' }))
+    const dialog = await screen.findByRole('dialog', { name: 'New workspace' })
+    await userEvent.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Deals')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create workspace' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Workspace' })).toBeInTheDocument()
+    expect(location()).toBe(`/app/workspaces/${id}`)
+  })
+
+  it('has no New workspace for a role that cannot create one', async () => {
+    answer('me/get', meAs({ role: 'viewer', permissions: { workspace: ['read'] } }))
+    answer('workspaces/list', [])
+    renderApp('/app')
+    const main = await screen.findByRole('main')
+    await within(main).findByRole('link', { name: 'Settings' })
+    expect(within(main).queryByRole('button', { name: 'New workspace' })).toBeNull()
+  })
+
   it('gives an admin Settings, Members and Plans', async () => {
     answer('me/get', meAs({ role: 'admin' }))
     renderApp('/app')

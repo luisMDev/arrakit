@@ -31,7 +31,7 @@ describe('View transitions', () => {
   it('keeps the sidebar out of the page fade', async () => {
     answer('me/get', meAs())
     renderApp('/app')
-    await screen.findByRole('button', { name: 'Account menu' })
+    await screen.findByRole('button', { name: 'Workspace menu' })
     expect(document.querySelector('[data-slot="sidebar-container"]')).toHaveClass(
       '[view-transition-name:app-sidebar]',
     )
@@ -39,13 +39,14 @@ describe('View transitions', () => {
 
   it('runs a navigation inside a view transition where the browser has them', async () => {
     answer('me/get', meAs())
-    const { location } = renderApp('/app')
+    answer('workspaces/list', [])
+    const { location } = renderApp('/app/workspaces')
     const sidebar = await screen.findByRole('navigation', { name: 'Navigation' })
     const start = stubStartViewTransition()
     const user = userEvent.setup()
-    await user.click(within(sidebar).getByRole('link', { name: 'Settings' }))
-    expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
-    expect(location()).toBe('/app/settings')
+    await user.click(within(sidebar).getByRole('link', { name: 'Home' }))
+    expect(await screen.findByRole('heading', { name: 'Hi, Lucía Gómez.' })).toBeInTheDocument()
+    expect(location()).toBe('/app')
     expect(start).toHaveBeenCalled()
   })
 })

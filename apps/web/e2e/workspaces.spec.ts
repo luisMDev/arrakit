@@ -12,10 +12,10 @@ test('an owner creates, edits and deletes workspaces; a member sees them and add
   await payFor(page, organizationId, 'team_monthly')
 
   await page.goto('/app')
-  await page
-    .getByRole('navigation', { name: 'Navigation' })
-    .getByRole('link', { name: 'Workspaces' })
-    .click()
+  const workspaceMenu = page.getByRole('button', { name: 'Workspace menu' })
+  await expect(workspaceMenu).toContainText('Larch Partners')
+  await workspaceMenu.click()
+  await page.getByRole('menuitem', { name: 'All workspaces' }).click()
   await expect(page).toHaveURL(/\/app\/workspaces$/)
   await expect(page.getByText('No workspaces yet.')).toBeVisible()
 
@@ -32,6 +32,19 @@ test('an owner creates, edits and deletes workspaces; a member sees them and add
   await create.getByRole('button', { name: 'Create workspace' }).click()
   await expect(page.getByText('A workspace named DEALS already exists.')).toBeVisible()
   await create.getByRole('button', { name: 'Cancel' }).click()
+
+  await page.goto('/app')
+  await expect(page).toHaveURL(/\/app\/workspaces\/[0-9a-f-]+$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Deals' })).toBeVisible()
+  await expect(workspaceMenu).toContainText('Deals')
+  await expect(workspaceMenu).toContainText('Larch Partners')
+  await workspaceMenu.click()
+  await expect(page.getByRole('menuitemradio', { name: 'Deals' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  )
+  await page.getByRole('menuitem', { name: 'All workspaces' }).click()
+  await expect(page).toHaveURL(/\/app\/workspaces$/)
 
   const memberEmail = uniqueEmail('member')
   await inviteMember(page, organizationId, memberEmail)

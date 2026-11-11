@@ -1,13 +1,5 @@
 import { type LinkOptions, linkOptions } from '@tanstack/react-router'
-import {
-  CreditCard,
-  Files,
-  FolderKanban,
-  House,
-  type LucideIcon,
-  Settings,
-  Users,
-} from 'lucide-react'
+import { CreditCard, House, Library, type LucideIcon, Settings, Users } from 'lucide-react'
 
 import type { Access } from '#/lib/current-user'
 
@@ -20,21 +12,28 @@ export interface AppNavItem {
   shows?: (access: Access) => boolean
 }
 
-/** The app's destinations, in sidebar order. A product module adds its screen here. */
+/** The sidebar outside a workspace. A product module adds its organization-wide screen here. */
 export const APP_NAV: AppNavItem[] = [
   { label: 'home', icon: House, link: linkOptions({ to: '/app' }) },
+]
+
+/** The sidebar inside a workspace. A module scoped to a workspace adds its screen here. */
+export const workspaceNav = (workspaceId: string): AppNavItem[] => [
   {
-    label: 'workspaces',
-    icon: FolderKanban,
-    link: linkOptions({ to: '/app/workspaces' }),
-    shows: (access) => access.can({ workspace: ['read'] }),
+    label: 'home',
+    icon: House,
+    link: linkOptions({ to: '/app/workspaces/$workspaceId', params: { workspaceId } }),
   },
   {
-    label: 'files',
-    icon: Files,
-    link: linkOptions({ to: '/app/files' }),
+    label: 'library',
+    icon: Library,
+    link: linkOptions({ to: '/app/workspaces/$workspaceId/library', params: { workspaceId } }),
     shows: (access) => access.can({ file: ['read'] }),
   },
+]
+
+/** The organization's own destinations, in the workspace menu's order. */
+export const ORGANIZATION_NAV: AppNavItem[] = [
   { label: 'settings', icon: Settings, link: linkOptions({ to: '/app/settings', search: {} }) },
   {
     label: 'members',
@@ -50,5 +49,5 @@ export const APP_NAV: AppNavItem[] = [
   },
 ]
 
-export const navFor = (access: Access): AppNavItem[] =>
-  APP_NAV.filter((item) => item.shows?.(access) ?? true)
+export const navFor = (access: Access, items: AppNavItem[] = APP_NAV): AppNavItem[] =>
+  items.filter((item) => item.shows?.(access) ?? true)

@@ -49,6 +49,12 @@ export const organizationQueries = {
       queryFn: async (): Promise<OrganizationMember[]> =>
         (await authCall(org.listMembers({ query: { organizationId } }))).members,
     }),
+  memberCount: (organizationId: string) =>
+    queryOptions({
+      queryKey: ['org', organizationId, 'members', 'count'],
+      queryFn: async (): Promise<number> =>
+        (await authCall(org.listMembers({ query: { organizationId, limit: 1 } }))).total,
+    }),
   invitations: (organizationId: string) =>
     queryOptions({
       queryKey: ['org', organizationId, 'invitations'],

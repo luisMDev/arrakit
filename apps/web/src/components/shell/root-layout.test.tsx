@@ -38,7 +38,7 @@ describe('Root layout', () => {
     async (url) => {
       answer('me/get', meAs())
       renderApp(url)
-      await screen.findByRole('button', { name: 'Account menu' })
+      await screen.findAllByRole('button', { name: 'Show or hide navigation' })
       expect(document.querySelectorAll('header')).toHaveLength(0)
       const head = document.querySelector<HTMLElement>('[data-sidebar="header"]')!
       const wordmark = within(head).getByRole('link', { name: 'Home' })

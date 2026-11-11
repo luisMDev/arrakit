@@ -1,6 +1,5 @@
 {
   "appMenu": {
-    "accountMenu": "Account menu",
     "signOut": "Sign out",
     "notSignedOut": "Couldn't sign you out. Try again.",
     "theme": "Theme",
@@ -12,14 +11,16 @@
     "label": "Navigation",
     "toggle": "Show or hide navigation",
     "home": "Home",
-    "workspaces": "Workspaces",
-    "files": "Files",
+    "library": "Library",
     "settings": "Settings",
     "members": "Members",
     "billing": "Billing"
   },
-  "shell": {
-    "usage": "{{organization}} · {{plan}}"
+  "workspaceMenu": {
+    "label": "Workspace menu",
+    "upgrade": "Upgrade",
+    "planAndMembers_one": "{{plan}} · {{count}} member",
+    "planAndMembers_other": "{{plan}} · {{count}} members"
   },
   "home": {
     "title": "Hi, {{name}}.",
