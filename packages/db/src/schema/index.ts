@@ -1,4 +1,5 @@
 export * from './auth'
+export * from './artifacts'
 export * from './files'
 export * from './oauth'
 export * from './organizations'

@@ -41,6 +41,21 @@ export {
   type FileEventName,
   type FileEventPayloads,
 } from './files/events'
+export {
+  type ArtifactRow,
+  type ArtifactVersionRow,
+  type ListedArtifact,
+  type ListedArtifactVersion,
+  type PublishedArtifact,
+} from './organization/artifacts'
+export {
+  ARTIFACT_EVENTS,
+  type ArtifactEvent,
+  type ArtifactEventName,
+  type ArtifactEventPayloads,
+  type ArtifactRenamedEvent,
+  type ArtifactVersionPublishedEvent,
+} from './artifacts/events'
 export type { Membership } from './data/membership'
 export type { Account } from './data/account'
 export { authDatabase } from './auth-database'

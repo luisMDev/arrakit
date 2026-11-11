@@ -6,6 +6,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import * as schema from '../schema/index'
 import {
+  artifactVersions,
+  artifacts,
   creditLedger,
   files,
   invitations,
@@ -221,6 +223,17 @@ describe('organizations', () => {
           kind: 'workspace.export',
           requestedBy: organization.owner,
           maxAttempts: 1,
+        })
+        const [artifact] = await data.db
+          .insert(artifacts)
+          .values({ organizationId: id, workspaceId: workspace!.id, title: 'Q3', format: 'html' })
+          .returning()
+        await data.db.insert(artifactVersions).values({
+          organizationId: id,
+          artifactId: artifact!.id,
+          number: 1,
+          content: '<h1>Q3</h1>',
+          sizeBytes: 11,
         })
         return id
       }

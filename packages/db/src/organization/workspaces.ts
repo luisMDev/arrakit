@@ -4,6 +4,7 @@ import type { DataContext } from '../context'
 import { DomainError, refusingDuplicates } from '../errors'
 import type { OrganizationId } from '../organization-id'
 import { workspaces } from '../schema/index'
+import type { OrganizationArtifacts } from './artifacts'
 import type { OrganizationFiles } from './files'
 
 export type WorkspaceRow = typeof workspaces.$inferSelect
@@ -20,6 +21,7 @@ export function workspacesScope(
   ctx: DataContext,
   organizationId: OrganizationId,
   files: OrganizationFiles,
+  artifacts: OrganizationArtifacts,
 ) {
   const { db } = ctx
   const inOrganization = eq(workspaces.organizationId, organizationId)
@@ -65,13 +67,18 @@ export function workspacesScope(
     },
 
     /**
-     * False when the organization has no such workspace. Its files go with it: file.deleted for
-     * each, and their objects are purged in the background.
+     * False when the organization has no such workspace. Its files and artifacts go with it:
+     * file.deleted and artifact.deleted for each, and file objects are purged in the background.
      */
     remove: (id: string): Promise<boolean> =>
-      files.removingWorkspace(id, async (tx) => {
-        const deleted = await tx.delete(workspaces).where(byId(id)).returning({ id: workspaces.id })
-        return deleted.length > 0
-      }),
+      files.removingWorkspace(id, (tx) =>
+        artifacts.removingWorkspace(tx, id, async () => {
+          const deleted = await tx
+            .delete(workspaces)
+            .where(byId(id))
+            .returning({ id: workspaces.id })
+          return deleted.length > 0
+        }),
+      ),
   }
 }

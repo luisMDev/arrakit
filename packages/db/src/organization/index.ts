@@ -6,6 +6,7 @@ import type { Database } from '../connection'
 import type { DataContext } from '../context'
 import { type OrganizationId, toOrganizationId } from '../organization-id'
 import { organizationRoles, organizations, teamMembers, teams, users } from '../schema/index'
+import { artifactsScope } from './artifacts'
 import { filesScope } from './files'
 import { membersScope } from './members'
 import { tasksScope } from './tasks'
@@ -48,6 +49,7 @@ export function forOrganization(ctx: DataContext, id: string) {
 
   const usage = usageScope(ctx, organizationId)
   const files = filesScope(ctx, organizationId, usage)
+  const artifacts = artifactsScope(ctx, organizationId)
 
   return {
     /** The organization's own row, or undefined when it is gone. */
@@ -94,8 +96,9 @@ export function forOrganization(ctx: DataContext, id: string) {
     members: membersScope(ctx, organizationId),
     usage,
     files,
+    artifacts,
     tasks: tasksScope(ctx, organizationId),
-    workspaces: workspacesScope(ctx, organizationId, files),
+    workspaces: workspacesScope(ctx, organizationId, files, artifacts),
   }
 }
 
