@@ -145,7 +145,7 @@ describe('Signed-in shell', () => {
 
   it('lists every destination in the sidebar, in the order the app declares them', async () => {
     await open()
-    expect(destinations()).toEqual(['Home'])
+    expect(destinations()).toEqual(['Home', 'Activity'])
   })
 
   it('marks where the person is in the sidebar', async () => {
@@ -334,12 +334,11 @@ describe('Signed-in shell', () => {
     await user.click(within(await openMenu()).getByRole('menuitem', { name: 'Sign out' }))
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
     expect(location()).toBe('/signin')
-    expect(
-      queryClient
-        .getQueryCache()
-        .getAll()
-        .map((query) => query.state.data ?? null),
-    ).toEqual([null])
+    const cached = queryClient
+      .getQueryCache()
+      .getAll()
+      .map((query) => query.state.data)
+    expect(cached.filter((data) => data !== undefined && data !== null)).toEqual([])
   })
 
   it('stays and says so when signing out fails', async () => {

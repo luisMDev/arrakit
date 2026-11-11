@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { loadLanguage } from '#/i18n'
 
-import { fullDay, listing, money, quantity } from './format'
+import { fullDay, listing, moment, money, quantity } from './format'
 
 afterEach(() => loadLanguage('en'))
 
@@ -15,6 +15,10 @@ describe('format', () => {
 
   it('writes a calendar day without moving it', () => {
     expect(fullDay('2027-10-04')).toBe('Oct 4, 2027')
+  })
+
+  it('writes a moment with its day and time, in the browser zone', () => {
+    expect(moment('2027-10-04T12:00:00Z')).toMatch(/^Oct [345], 2027, \d{1,2}:\d{2}\s[AP]M$/)
   })
 
   it('follows the active language', async () => {

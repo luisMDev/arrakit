@@ -27,6 +27,13 @@ export function fullDay(day: string): string {
   )
 }
 
+/** "Nov 4, 2026, 9:05 AM", "4 nov 2026, 9:05" for an ISO 8601 moment, in the browser's zone. */
+export function moment(iso: string): string {
+  return new Intl.DateTimeFormat(locale(), { dateStyle: 'medium', timeStyle: 'short' }).format(
+    new Date(iso),
+  )
+}
+
 export const listing = (items: readonly string[]): string =>
   new Intl.ListFormat(locale(), { style: 'long', type: 'conjunction' }).format(items)
 

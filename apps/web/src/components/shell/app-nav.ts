@@ -1,5 +1,13 @@
 import { type LinkOptions, linkOptions } from '@tanstack/react-router'
-import { CreditCard, House, Library, type LucideIcon, Settings, Users } from 'lucide-react'
+import {
+  Activity,
+  CreditCard,
+  House,
+  Library,
+  type LucideIcon,
+  Settings,
+  Users,
+} from 'lucide-react'
 
 import type { Access } from '#/lib/current-user'
 
@@ -15,6 +23,7 @@ export interface AppNavItem {
 /** The sidebar outside a workspace. A product module adds its organization-wide screen here. */
 export const APP_NAV: AppNavItem[] = [
   { label: 'home', icon: House, link: linkOptions({ to: '/app' }) },
+  { label: 'activity', icon: Activity, link: linkOptions({ to: '/app/activity', search: {} }) },
 ]
 
 /** The sidebar inside a workspace. A module scoped to a workspace adds its screen here. */

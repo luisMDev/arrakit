@@ -18,7 +18,8 @@
       "plans": "Plans",
       "checkout": "Checkout",
       "welcome": "Welcome",
-      "notFound": "Page not found"
+      "notFound": "Page not found",
+      "activity": "Activity"
     }
   },
   "confirmDelete": {

@@ -11,9 +11,9 @@ const ID = '7c9e6679-7425-40de-944b-e07fc1f90ae7'
 const WORKSPACE = workspaceNav(ID)
 
 describe('app navigation', () => {
-  it('shows everyone Home outside a workspace', () => {
-    expect(labels(navFor(as({ role: 'owner' })))).toEqual(['home'])
-    expect(labels(navFor(as({ role: 'nobody', permissions: {} })))).toEqual(['home'])
+  it('shows everyone Home and Activity outside a workspace', () => {
+    expect(labels(navFor(as({ role: 'owner' })))).toEqual(['home', 'activity'])
+    expect(labels(navFor(as({ role: 'nobody', permissions: {} })))).toEqual(['home', 'activity'])
     expect(navFor(as({ role: 'owner' }))[0]!.link).toMatchObject({ to: '/app' })
   })
 

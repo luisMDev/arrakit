@@ -19,6 +19,7 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as UnavailableRouteImport } from './routes/unavailable'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppSplatRouteImport } from './routes/app/$'
+import { Route as AppActivityRouteImport } from './routes/app/activity'
 import { Route as AppBillingRouteImport } from './routes/app/billing'
 import { Route as AppCheckoutRouteImport } from './routes/app/checkout'
 import { Route as AppMembersRouteImport } from './routes/app/members'
@@ -80,6 +81,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppSplatRoute = AppSplatRouteImport.update({
   id: '/$',
   path: '/$',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppActivityRoute = AppActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
   getParentRoute: () => AppRoute,
 } as any)
 const AppBillingRoute = AppBillingRouteImport.update({
@@ -155,6 +161,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/unavailable': typeof UnavailableRoute
   '/app/$': typeof AppSplatRoute
+  '/app/activity': typeof AppActivityRoute
   '/app/billing': typeof AppBillingRoute
   '/app/checkout': typeof AppCheckoutRoute
   '/app/members': typeof AppMembersRoute
@@ -178,6 +185,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/unavailable': typeof UnavailableRoute
   '/app/$': typeof AppSplatRoute
+  '/app/activity': typeof AppActivityRoute
   '/app/billing': typeof AppBillingRoute
   '/app/checkout': typeof AppCheckoutRoute
   '/app/members': typeof AppMembersRoute
@@ -203,6 +211,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/unavailable': typeof UnavailableRoute
   '/app/$': typeof AppSplatRoute
+  '/app/activity': typeof AppActivityRoute
   '/app/billing': typeof AppBillingRoute
   '/app/checkout': typeof AppCheckoutRoute
   '/app/members': typeof AppMembersRoute
@@ -229,6 +238,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/unavailable'
     | '/app/$'
+    | '/app/activity'
     | '/app/billing'
     | '/app/checkout'
     | '/app/members'
@@ -252,6 +262,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/unavailable'
     | '/app/$'
+    | '/app/activity'
     | '/app/billing'
     | '/app/checkout'
     | '/app/members'
@@ -276,6 +287,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/unavailable'
     | '/app/$'
+    | '/app/activity'
     | '/app/billing'
     | '/app/checkout'
     | '/app/members'
@@ -377,6 +389,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSplatRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/activity': {
+      id: '/app/activity'
+      path: '/activity'
+      fullPath: '/app/activity'
+      preLoaderRoute: typeof AppActivityRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/billing': {
       id: '/app/billing'
       path: '/billing'
@@ -466,6 +485,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppSplatRoute: typeof AppSplatRoute
+  AppActivityRoute: typeof AppActivityRoute
   AppBillingRoute: typeof AppBillingRoute
   AppCheckoutRoute: typeof AppCheckoutRoute
   AppMembersRoute: typeof AppMembersRoute
@@ -480,6 +500,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppSplatRoute: AppSplatRoute,
+  AppActivityRoute: AppActivityRoute,
   AppBillingRoute: AppBillingRoute,
   AppCheckoutRoute: AppCheckoutRoute,
   AppMembersRoute: AppMembersRoute,

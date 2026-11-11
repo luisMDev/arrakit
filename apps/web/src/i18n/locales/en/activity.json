@@ -1,0 +1,52 @@
+{
+  "activity": {
+    "title": "Activity",
+    "hint": "Work that runs in the background in {{organization}}, and how far along it is.",
+    "hintOwn": "Work you started that runs in the background, and how far along it is.",
+    "tabs": {
+      "active": "In progress",
+      "finished": "Finished"
+    },
+    "empty": {
+      "active": "Nothing is running right now.",
+      "finished": "Nothing has finished yet."
+    },
+    "notLoaded": "Couldn't load the activity. Reload the page.",
+    "loadMore": "Show more",
+    "columns": {
+      "task": "Task",
+      "status": "Status",
+      "progress": "Progress",
+      "requestedBy": "Started by",
+      "when": "When"
+    },
+    "you": "You",
+    "nobody": "—",
+    "status": {
+      "queued": "Queued",
+      "running": "Running",
+      "succeeded": "Done",
+      "failed": "Failed",
+      "retrying": "Retrying ({{attempt}} of {{max}})"
+    },
+    "progressLabel": "{{task}}: {{percent}}% done",
+    "working": "Working",
+    "kinds": {
+      "unknown": "Background task"
+    },
+    "errors": {
+      "unexpected": "Something went wrong.",
+      "invalid_input": "The task was started with data it can't use.",
+      "stalled": "The task stopped responding."
+    },
+    "notices": {
+      "succeeded": "{{task}} is done.",
+      "failed": "{{task}} failed."
+    },
+    "indicator": {
+      "label_one": "{{count}} task in progress",
+      "label_other": "{{count}} tasks in progress",
+      "viewAll": "View all activity"
+    }
+  }
+}

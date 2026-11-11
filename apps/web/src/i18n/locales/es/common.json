@@ -18,7 +18,8 @@
       "plans": "Planes",
       "checkout": "Pago",
       "welcome": "Bienvenida",
-      "notFound": "Página no encontrada"
+      "notFound": "Página no encontrada",
+      "activity": "Actividad"
     }
   },
   "confirmDelete": {

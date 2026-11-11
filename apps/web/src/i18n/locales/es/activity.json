@@ -1,0 +1,52 @@
+{
+  "activity": {
+    "title": "Actividad",
+    "hint": "El trabajo que se ejecuta en segundo plano en {{organization}} y cuánto le falta.",
+    "hintOwn": "El trabajo que iniciaste y se ejecuta en segundo plano, y cuánto le falta.",
+    "tabs": {
+      "active": "En curso",
+      "finished": "Terminadas"
+    },
+    "empty": {
+      "active": "No hay nada en marcha ahora mismo.",
+      "finished": "Todavía no ha terminado nada."
+    },
+    "notLoaded": "No se ha podido cargar la actividad. Recarga la página.",
+    "loadMore": "Ver más",
+    "columns": {
+      "task": "Tarea",
+      "status": "Estado",
+      "progress": "Progreso",
+      "requestedBy": "Iniciada por",
+      "when": "Cuándo"
+    },
+    "you": "Tú",
+    "nobody": "—",
+    "status": {
+      "queued": "En cola",
+      "running": "En marcha",
+      "succeeded": "Hecha",
+      "failed": "Fallida",
+      "retrying": "Reintentando ({{attempt}} de {{max}})"
+    },
+    "progressLabel": "{{task}}: {{percent}} % hecho",
+    "working": "Trabajando",
+    "kinds": {
+      "unknown": "Tarea en segundo plano"
+    },
+    "errors": {
+      "unexpected": "Algo ha ido mal.",
+      "invalid_input": "La tarea se inició con datos que no puede usar.",
+      "stalled": "La tarea dejó de responder."
+    },
+    "notices": {
+      "succeeded": "{{task}} ha terminado.",
+      "failed": "{{task}} ha fallado."
+    },
+    "indicator": {
+      "label_one": "{{count}} tarea en curso",
+      "label_other": "{{count}} tareas en curso",
+      "viewAll": "Ver toda la actividad"
+    }
+  }
+}

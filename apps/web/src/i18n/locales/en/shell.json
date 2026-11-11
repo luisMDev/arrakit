@@ -14,7 +14,8 @@
     "library": "Library",
     "settings": "Settings",
     "members": "Members",
-    "billing": "Billing"
+    "billing": "Billing",
+    "activity": "Activity"
   },
   "workspaceMenu": {
     "label": "Workspace menu",

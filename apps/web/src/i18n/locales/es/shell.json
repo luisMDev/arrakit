@@ -14,7 +14,8 @@
     "library": "Biblioteca",
     "settings": "Ajustes",
     "members": "Miembros",
-    "billing": "Facturación"
+    "billing": "Facturación",
+    "activity": "Actividad"
   },
   "workspaceMenu": {
     "label": "Menú del espacio de trabajo",

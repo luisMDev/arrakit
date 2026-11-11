@@ -18,6 +18,7 @@ describe('locales', () => {
   it('have one file per module in each language', () => {
     expect(names(esFiles)).toEqual(names(enFiles))
     expect(names(enFiles)).toEqual([
+      'activity.json',
       'auth.json',
       'billing.json',
       'common.json',
