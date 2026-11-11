@@ -4,6 +4,7 @@ import { member, pub } from './orpc/base'
 import { meRouter } from './routers/account'
 import { billingRouter } from './routers/billing'
 import { filesRouter } from './routers/files'
+import { tasksRouter } from './routers/tasks'
 import { usageRouter } from './routers/usage'
 import { workspacesRouter } from './routers/workspaces'
 
@@ -25,4 +26,5 @@ export const router = pub.router({
   usage: usageRouter,
   workspaces: workspacesRouter,
   files: filesRouter,
+  tasks: tasksRouter,
 })

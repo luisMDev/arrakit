@@ -409,6 +409,7 @@ const TOOL_CASES = [
   "upload_file: a role with file upload; the plan's file policy is a tool error",
   'rename_file: the uploader, or a role with file update',
   'delete_file: the uploader, or a role with file delete',
+  "list_tasks: the person's own tasks, or all with task read, the token's organization only",
 ]
 
 const base64url = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url')
@@ -500,6 +501,7 @@ describe('the MCP endpoint', () => {
       'upload_file',
       'rename_file',
       'delete_file',
+      'list_tasks',
     ])
     expect(tools[0]?.title).toBe('Who am I')
     expect(tools.map((tool) => tool.name)).toEqual(TOOL_CASES.map((line) => line.split(':')[0]))
@@ -807,6 +809,45 @@ describe('the MCP endpoint', () => {
     expect(
       (await callTool(tokens.access_token, 'delete_file', { id: mineId }))?.isError,
     ).toBeFalsy()
+  })
+
+  it("lists the tasks the person may see, in the token's organization only", async () => {
+    const { tokens, organization, userId } = await connectedOrganization(
+      'tomas@rowan.vc',
+      'Rowan Ventures',
+    )
+    const other = await connectedOrganization('owner@aspen.vc', 'Aspen Ventures')
+    const start = (organizationId: string, requestedBy: string | null, label: string) =>
+      t.data.forOrganization(organizationId).tasks.start({
+        queue: 'test-export',
+        kind: 'workspace.export',
+        workspaceId: null,
+        requestedBy,
+        maxAttempts: 1,
+        label,
+        input: {},
+      })
+    const mine = await start(organization.id, userId, 'Deals')
+    await start(organization.id, null, 'Nobody')
+    await start(other.organization.id, other.userId, 'Elsewhere')
+    const tasks = t.data.forOrganization(organization.id).tasks
+    await tasks.begin(mine.id, 0)
+    await tasks.progress(mine.id, 1, 4)
+
+    const listed = await callTool(tokens.access_token, 'list_tasks')
+    expect(listed?.isError).toBeFalsy()
+    expect(
+      (listed?.structuredContent as { tasks: { label: string }[] }).tasks.map((t) => t.label),
+    ).toEqual(['Nobody', 'Deals'])
+    expect(listed?.content).toEqual([
+      {
+        type: 'text',
+        text: 'workspace.export (Nobody): queued\nworkspace.export (Deals): running 1/4',
+      },
+    ])
+    expect(
+      (await callTool(tokens.access_token, 'list_tasks', { status: 'finished' }))?.content,
+    ).toEqual([{ type: 'text', text: 'No tasks.' }])
   })
 
   it('challenges a token in the URL instead of the header', async () => {

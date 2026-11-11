@@ -4,9 +4,10 @@ import { TASK_SUBSCRIBERS } from '../tasks/subscribers'
 import { filesExpirePending } from './files-expire-pending'
 import { type JobDefinition, type WorkerDeps, registerJobs } from './job'
 import { storagePurge } from './storage-purge'
+import { tasksMaintain } from './tasks-maintain'
 import { type TrackedJobDefinition, trackedJob } from './tracked-job'
 
-export const JOBS: readonly JobDefinition[] = [storagePurge, filesExpirePending]
+export const JOBS: readonly JobDefinition[] = [storagePurge, filesExpirePending, tasksMaintain]
 
 /** Background work people follow in Activity. Add a tracked job here, then start it with startTask. */
 export const TRACKED_JOBS: readonly TrackedJobDefinition[] = []

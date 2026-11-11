@@ -4,6 +4,7 @@ import { meContract } from './account'
 import { billingContract } from './billing'
 import { filesContract } from './files'
 import { base, moneySchema, planSchema } from './common'
+import { tasksContract } from './tasks'
 import { usageContract } from './usage'
 import { workspacesContract } from './workspaces'
 
@@ -42,6 +43,7 @@ export const contract = {
   usage: usageContract,
   workspaces: workspacesContract,
   files: filesContract,
+  tasks: tasksContract,
 }
 
 export type Contract = typeof contract
@@ -69,3 +71,16 @@ export {
   fileSchema,
   fileScopeSchema,
 } from './files'
+export {
+  TASK_PAGE_MAX,
+  type TaskChange,
+  type TaskPage,
+  type TaskStatus,
+  type TaskView,
+  taskChangeSchema,
+  taskListInputSchema,
+  taskPageSchema,
+  taskSchema,
+  taskScopeSchema,
+  taskStatusSchema,
+} from './tasks'

@@ -6,6 +6,7 @@ import type { StripeGateway } from './billing/stripe-gateway'
 import type { ApiEnv } from './env'
 import type { ErrorReporter } from './observability/error-reporter'
 import type { Logger } from './observability/logger'
+import type { TaskWatchHub } from './tasks/watch'
 
 /** Everything the Hono app and the oRPC procedures depend on. Built by main.ts or testing/app.ts. */
 export interface AppDeps {
@@ -19,4 +20,6 @@ export interface AppDeps {
   log: Logger
   /** Unexpected errors go here (Sentry when SENTRY_DSN is set). */
   errors: ErrorReporter
+  /** Who watches which organization's tasks in this process. */
+  taskWatches: TaskWatchHub
 }

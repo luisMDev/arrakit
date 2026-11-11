@@ -8,8 +8,9 @@ import { createMailer } from './mail/mailer'
 import { apiRefusal, organizationDeps } from './organizations/organization-deps'
 import { createErrorReporter } from './observability/error-reporter'
 import type { Logger } from './observability/logger'
+import { taskWatchHub } from './tasks/watch'
 
-type DepsParts = Omit<AppDeps, 'auth' | 'data'> & { data: Data; testing?: boolean }
+type DepsParts = Omit<AppDeps, 'auth' | 'data' | 'taskWatches'> & { data: Data; testing?: boolean }
 
 export function buildDeps(parts: DepsParts): AppDeps {
   const { authConfig, data, log } = parts
@@ -36,6 +37,7 @@ export function buildDeps(parts: DepsParts): AppDeps {
     stripe,
     log,
     errors: parts.errors,
+    taskWatches: taskWatchHub(data, log.child({ component: 'tasks' })),
   }
 }
 

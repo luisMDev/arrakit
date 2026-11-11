@@ -22,6 +22,7 @@ async function main() {
   const shutdown = () => {
     if (stopping) return
     stopping = true
+    deps.taskWatches.close()
     const stopped = new Promise<void>((resolve) => server.close(() => resolve()))
     // Streams still open on the MCP handler would keep server.close() waiting.
     const closed = Promise.allSettled([mcp.close()])

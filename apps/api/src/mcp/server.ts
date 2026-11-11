@@ -7,6 +7,8 @@ import {
   fileSchema,
   fileScopeSchema,
   organizationSummarySchema,
+  taskSchema,
+  taskScopeSchema,
   workspaceIdSchema,
   workspaceInputSchema,
   workspaceSchema,
@@ -24,6 +26,7 @@ import { z } from 'zod'
 import { type FileActor, fileService } from '../files/files'
 import type { Logger } from '../observability/logger'
 import { NOT_PERMITTED } from '../orpc/context'
+import { taskService } from '../tasks/tasks'
 import { workspaceView } from '../routers/workspaces'
 
 const MCP_SERVER_NAME = 'arrakit'
@@ -56,6 +59,23 @@ const fileScopeInput = fileScopeSchema.extend({
     "A workspace id from list_workspaces; omit it for the organization's own files",
   ),
 })
+
+const TASKS_OUTPUT = z.object({ tasks: z.array(taskSchema) })
+
+const taskListInput = taskScopeSchema.extend({
+  workspaceId: taskScopeSchema.shape.workspaceId.describe(
+    'A workspace id from list_workspaces; omit it for every task the person may see',
+  ),
+  status: z
+    .enum(['active', 'finished'])
+    .default('active')
+    .describe('active: queued or running; finished: succeeded or failed, newest first'),
+})
+
+const taskLine = ({ kind, label, status, progress }: z.infer<typeof taskSchema>) => {
+  const done = progress.total === null ? '' : ` ${progress.done}/${progress.total}`
+  return `${kind}${label ? ` (${label})` : ''}: ${status}${done}`
+}
 
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
 
@@ -324,6 +344,32 @@ export function createMcpServer(caller: ConnectorCaller, log: Logger): McpServer
       fileTool({ file: ['read'] }, async (files) => {
         await files.remove(id)
         return { content: [{ type: 'text', text: 'Deleted the file.' }] }
+      }),
+  )
+
+  server.registerTool(
+    'list_tasks',
+    {
+      title: 'List background tasks',
+      description:
+        'Background work in the organization and how far along it is: the tasks the person started, or all of them for a role that reads tasks.',
+      inputSchema: taskListInput,
+      outputSchema: TASKS_OUTPUT,
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ workspaceId, status }) =>
+      allowed(caller, {}, async (permissions) => {
+        const tasks = taskService({
+          userId: caller.userId,
+          permissions,
+          scope: caller.scope,
+          organizationId: caller.organization.id,
+        })
+        const page = await tasks.list({ status, workspaceId, limit: 50 })
+        return {
+          content: [{ type: 'text', text: page.tasks.map(taskLine).join('\n') || 'No tasks.' }],
+          structuredContent: { tasks: page.tasks },
+        }
       }),
   )
 
