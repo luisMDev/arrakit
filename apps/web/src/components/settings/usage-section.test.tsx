@@ -46,12 +46,6 @@ describe('Settings > Usage', () => {
     expect(within(section).queryByText(/Add credits$/)).not.toBeInTheDocument()
   })
 
-  it('points admins to Billing', async () => {
-    await renderAs('admin')
-    expect(document.querySelector('[data-hint]')).toHaveTextContent('Add credits in Billing.')
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
-  })
-
   it('says when usage could not load', async () => {
     vi.stubGlobal(
       'fetch',

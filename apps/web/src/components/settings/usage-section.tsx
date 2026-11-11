@@ -2,13 +2,11 @@ import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '#/components/ui/skeleton'
 import { UsageCards, useUsage } from '#/components/usage/usage-cards'
-import { useCurrentUser } from '#/lib/current-user'
 
 import { SettingsSectionLayout } from './settings-ui'
 
 export function UsageSection() {
   const { t } = useTranslation()
-  const { managesBilling } = useCurrentUser()
   const { data, isPending } = useUsage()
 
   return (
@@ -17,11 +15,7 @@ export function UsageSection() {
         <>
           <UsageCards metrics={data.metrics} />
           <p data-hint className="text-muted-foreground text-sm">
-            {t(
-              managesBilling
-                ? 'settings.usageSettings.adminHint'
-                : 'settings.usageSettings.memberHint',
-            )}
+            {t('settings.usageSettings.memberHint')}
           </p>
         </>
       )}

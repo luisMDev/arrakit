@@ -3,7 +3,6 @@
     "usageSettings": {
       "title": "Usage",
       "memberHint": "Running low? An owner or an admin can add credits.",
-      "adminHint": "Add credits in Billing.",
       "notLoaded": "Couldn't load usage. Reload the page.",
       "metric": {
         "credits": "Credits",

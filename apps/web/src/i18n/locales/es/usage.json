@@ -3,7 +3,6 @@
     "usageSettings": {
       "title": "Consumo",
       "memberHint": "¿Te quedas sin créditos? Un propietario o un administrador puede añadir más.",
-      "adminHint": "Añade créditos en Facturación.",
       "notLoaded": "No se ha podido cargar el consumo. Recarga la página.",
       "metric": {
         "credits": "Créditos",
