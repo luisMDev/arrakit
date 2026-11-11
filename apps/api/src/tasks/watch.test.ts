@@ -54,6 +54,28 @@ describe('task watch hub', () => {
     expect([a.resyncs(), b.resyncs()]).toEqual([1, 1])
   })
 
+  it('hands watchers the reads in the order the notices came, even when one read is slower', async () => {
+    const { data, feeds, get } = fakeData()
+    let finishSlow!: () => void
+    get.mockImplementationOnce(
+      (id: string) =>
+        new Promise((resolve) => {
+          finishSlow = () => resolve({ id: `${id}@first` } as ListedTask)
+        }),
+    )
+    get.mockImplementationOnce(async (id: string) => ({ id: `${id}@second` }) as ListedTask)
+    const hub = taskWatchHub(data, recordingLogger().log)
+    const a = watcher()
+    await hub.watch('org-1', a.watcher)
+
+    feeds.get('org-1')!.notice({ organizationId: 'org-1', taskId: 't1' })
+    feeds.get('org-1')!.notice({ organizationId: 'org-1', taskId: 't1' })
+    await settle()
+    expect(a.rows).toEqual([])
+    finishSlow()
+    await vi.waitFor(() => expect(a.rows).toEqual(['t1@first', 't1@second']))
+  })
+
   it('stops listening to an organization once its last watcher leaves, and listens again after', async () => {
     const { data, stops } = fakeData()
     const hub = taskWatchHub(data, recordingLogger().log)

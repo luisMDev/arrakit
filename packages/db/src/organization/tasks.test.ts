@@ -174,6 +174,29 @@ describe('organization tasks', () => {
     expect((await f.tasks.get(row.id))!.updatedAt).toEqual(clock)
   })
 
+  it('lets an attempt move the task only while it is the latest one', async () => {
+    const f = await organizationOf('holly')
+    const row = await f.tasks.start(f.task())
+    const first = (await f.tasks.begin(row.id, 0))!.attempts
+    const second = (await f.tasks.begin(row.id, 1))!.attempts
+    const stale = f.tasks.attempt(row.id, first)
+    const start = data.jobs.published.length
+
+    expect(await stale.progress(1, 2)).toBeUndefined()
+    expect(await stale.heartbeat()).toBe(false)
+    expect(await stale.retrying('unexpected')).toBeUndefined()
+    expect(await stale.succeed()).toBeUndefined()
+    expect(await stale.fail('unexpected')).toBeUndefined()
+    expect(await f.tasks.get(row.id)).toMatchObject({ status: 'running', attempts: second })
+    expect(publishedSince(start)).toEqual([])
+
+    const latest = f.tasks.attempt(row.id, second)
+    expect(await latest.progress(1, 2)).toMatchObject({ progressDone: 1 })
+    expect(await latest.heartbeat()).toBe(true)
+    expect(await latest.succeed()).toMatchObject({ status: 'succeeded' })
+    expect(publishedSince(start).map((e) => e.event)).toEqual([TASK_EVENTS.succeeded])
+  })
+
   it('goes back to queued between attempts and keeps its first start', async () => {
     const f = await organizationOf('ginkgo')
     const row = await f.tasks.start(f.task())

@@ -80,7 +80,9 @@ export function startTask<Schema extends z.ZodType<object>>(
 
 const taskJobSchema = z.object({ taskId: z.guid(), organizationId: z.guid(), input: z.unknown() })
 
-function progressOf(tasks: OrganizationScope['tasks'], taskId: string, now: () => number) {
+type AttemptMoves = ReturnType<OrganizationScope['tasks']['attempt']>
+
+function progressOf(moves: AttemptMoves, now: () => number) {
   let lastWrite = -Infinity
   let total: number | undefined
   return async (done: number, newTotal?: number) => {
@@ -88,7 +90,7 @@ function progressOf(tasks: OrganizationScope['tasks'], taskId: string, now: () =
     const allDone = total !== undefined && done >= total
     if (!allDone && now() - lastWrite < PROGRESS_INTERVAL_MS) return
     lastWrite = now()
-    await tasks.progress(taskId, done, total)
+    await moves.progress(done, total)
   }
 }
 
@@ -123,9 +125,10 @@ export function trackedJob(
       }
       const task = await tasks.begin(taskId, attempt.retryCount)
       if (!task) return
+      const moves = tasks.attempt(taskId, task.attempts)
 
       const heartbeat = setInterval(() => {
-        tasks.heartbeat(taskId).catch((err: unknown) => {
+        moves.heartbeat().catch((err: unknown) => {
           log.error({ err, taskId, organizationId }, 'task heartbeat not written')
         })
       }, heartbeatMs)
@@ -133,20 +136,20 @@ export function trackedJob(
         const result = await tracked.handler(parsed.data, {
           ...context,
           task: { id: taskId, organizationId, attempt: task.attempts },
-          progress: progressOf(tasks, taskId, now),
+          progress: progressOf(moves, now),
           signal: attempt.signal,
         })
-        await tasks.succeed(taskId, result ?? undefined)
+        await moves.succeed(result ?? undefined)
       } catch (err) {
         if (err instanceof TaskError) {
           log.info({ taskId, organizationId, errorCode: err.code }, 'task failed without retries')
-          await tasks.fail(taskId, err.code)
+          await moves.fail(err.code)
           return
         }
         const lastAttempt = attempt.retryCount >= attempt.retryLimit
         await (lastAttempt
-          ? tasks.fail(taskId, TASK_ERRORS.unexpected)
-          : tasks.retrying(taskId, TASK_ERRORS.unexpected))
+          ? moves.fail(TASK_ERRORS.unexpected)
+          : moves.retrying(TASK_ERRORS.unexpected))
         throw err
       } finally {
         clearInterval(heartbeat)

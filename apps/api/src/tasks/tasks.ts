@@ -140,15 +140,16 @@ export function taskService(actor: TaskActor) {
     ): AsyncGenerator<TaskChange> {
       inWorkspaceAsked(input.workspaceId)
       const queue = changeQueue(signal)
-      const stop = await watches.watch(actor.organizationId, {
-        task: (row) => {
-          if (visible(row, input.workspaceId)) queue.push({ type: 'task', task: view(row) })
-        },
-        resync: () => queue.push({ type: 'resync' }),
-        end: queue.end,
-      })
-      queue.push({ type: 'resync' })
+      let stop = () => {}
       try {
+        stop = await watches.watch(actor.organizationId, {
+          task: (row) => {
+            if (visible(row, input.workspaceId)) queue.push({ type: 'task', task: view(row) })
+          },
+          resync: () => queue.push({ type: 'resync' }),
+          end: queue.end,
+        })
+        queue.push({ type: 'resync' })
         for (let change = await queue.next(); change; change = await queue.next()) yield change
       } finally {
         stop()

@@ -68,11 +68,13 @@ const jittered = (ms: number) => ms / 2 + Math.random() * (ms / 2)
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, ms)
-    signal.addEventListener('abort', () => {
+    const done = () => {
       clearTimeout(timer)
+      signal.removeEventListener('abort', done)
       resolve()
-    })
+    }
+    const timer = setTimeout(done, ms)
+    signal.addEventListener('abort', done, { once: true })
   })
 
 function subscribeVisibility(onChange: () => void) {

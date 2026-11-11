@@ -113,22 +113,77 @@ export function tasksScope(ctx: DataContext, organizationId: OrganizationId) {
 
   /**
    * Moves a task in one of `from`, notifying the feed, and answers it as it is now; undefined when
-   * it was in none.
+   * it was in none, or when `attempt` is given and is no longer the task's latest.
    */
   async function move(
     tx: Database,
     id: string,
     from: readonly TaskStatus[],
     values: PgUpdateSetSource<typeof tasks>,
+    attempt?: number,
   ): Promise<TaskRow | undefined> {
     const [row] = await tx
       .update(tasks)
       .set({ ...values, updatedAt: ctx.now() })
-      .where(and(byId(id), inStatus(from)))
+      .where(and(byId(id), inStatus(from), latest(attempt)))
       .returning()
     if (row) await notify(tx, id)
     return row
   }
+
+  const latest = (attempt: number | undefined) =>
+    attempt === undefined ? undefined : eq(tasks.attempts, attempt)
+
+  function progress(id: string, done: number, total?: number, attempt?: number) {
+    if (total === undefined) {
+      const capped = sql`least(${count(done)}::int, coalesce(${tasks.progressTotal}, ${count(done)}::int))`
+      return move(db, id, ['running'], { progressDone: capped }, attempt)
+    }
+    const values = {
+      progressDone: Math.min(count(done), count(total)),
+      progressTotal: count(total),
+    }
+    return move(db, id, ['running'], values, attempt)
+  }
+
+  async function heartbeat(id: string, attempt?: number): Promise<boolean> {
+    const [row] = await db
+      .update(tasks)
+      .set({ updatedAt: ctx.now() })
+      .where(and(byId(id), eq(tasks.status, 'running'), latest(attempt)))
+      .returning({ id: tasks.id })
+    return row !== undefined
+  }
+
+  const succeed = (id: string, result?: Record<string, unknown>, attempt?: number) =>
+    transaction(db, async (tx) => {
+      const row = await move(
+        tx,
+        id,
+        ['running'],
+        {
+          status: 'succeeded',
+          progressDone: sql`coalesce(${tasks.progressTotal}, ${tasks.progressDone})`,
+          result: result ?? null,
+          errorCode: null,
+          finishedAt: ctx.now(),
+        },
+        attempt,
+      )
+      if (row) await publish(tx, TASK_EVENTS.succeeded, eventOf(row))
+      return row
+    })
+
+  const retrying = (id: string, errorCode: string, attempt?: number) =>
+    move(db, id, ['running'], { status: 'queued', errorCode }, attempt)
+
+  const fail = (id: string, errorCode: string, attempt?: number) =>
+    transaction(db, async (tx) => {
+      const values = { status: 'failed' as const, errorCode, finishedAt: ctx.now() }
+      const row = await move(tx, id, ACTIVE_TASK_STATUSES, values, attempt)
+      if (row) await publish(tx, TASK_EVENTS.failed, { ...eventOf(row), errorCode })
+      return row
+    })
 
   async function assertWorkspace(tx: Database, workspaceId: string | null) {
     if (!workspaceId) return
@@ -224,56 +279,35 @@ export function tasksScope(ctx: DataContext, organizationId: OrganizationId) {
      * Records how much of a running task is done, kept within `total` (the known total when
      * absent). Also its heartbeat. Undefined when the task is not running.
      */
-    progress: (id: string, done: number, total?: number): Promise<TaskRow | undefined> => {
-      if (total === undefined) {
-        const capped = sql`least(${count(done)}::int, coalesce(${tasks.progressTotal}, ${count(done)}::int))`
-        return move(db, id, ['running'], { progressDone: capped })
-      }
-      return move(db, id, ['running'], {
-        progressDone: Math.min(count(done), count(total)),
-        progressTotal: count(total),
-      })
-    },
+    progress: (id: string, done: number, total?: number): Promise<TaskRow | undefined> =>
+      progress(id, done, total),
 
     /** Marks a running task alive without changing what it shows; false when it is not running. */
-    heartbeat: async (id: string): Promise<boolean> => {
-      const [row] = await db
-        .update(tasks)
-        .set({ updatedAt: ctx.now() })
-        .where(and(byId(id), eq(tasks.status, 'running')))
-        .returning({ id: tasks.id })
-      return row !== undefined
-    },
+    heartbeat: (id: string): Promise<boolean> => heartbeat(id),
 
     /** Running becomes succeeded, with its work all done, and task.succeeded is published. */
     succeed: (id: string, result?: Record<string, unknown>): Promise<TaskRow | undefined> =>
-      transaction(db, async (tx) => {
-        const row = await move(tx, id, ['running'], {
-          status: 'succeeded',
-          progressDone: sql`coalesce(${tasks.progressTotal}, ${tasks.progressDone})`,
-          result: result ?? null,
-          errorCode: null,
-          finishedAt: ctx.now(),
-        })
-        if (row) await publish(tx, TASK_EVENTS.succeeded, eventOf(row))
-        return row
-      }),
+      succeed(id, result),
 
     /** Running goes back to queued with why the attempt failed, waiting for the next one. */
     retrying: (id: string, errorCode: string): Promise<TaskRow | undefined> =>
-      move(db, id, ['running'], { status: 'queued', errorCode }),
+      retrying(id, errorCode),
 
     /** Queued or running becomes failed, and task.failed is published. */
-    fail: (id: string, errorCode: string): Promise<TaskRow | undefined> =>
-      transaction(db, async (tx) => {
-        const row = await move(tx, id, ACTIVE_TASK_STATUSES, {
-          status: 'failed',
-          errorCode,
-          finishedAt: ctx.now(),
-        })
-        if (row) await publish(tx, TASK_EVENTS.failed, { ...eventOf(row), errorCode })
-        return row
-      }),
+    fail: (id: string, errorCode: string): Promise<TaskRow | undefined> => fail(id, errorCode),
+
+    /**
+     * The same moves for one attempt (its `attempts` once begun): each applies only while that
+     * attempt is the task's latest, so an attempt that outlived its expiry cannot overwrite the
+     * attempt that retried it.
+     */
+    attempt: (id: string, attempt: number) => ({
+      progress: (done: number, total?: number) => progress(id, done, total, attempt),
+      heartbeat: () => heartbeat(id, attempt),
+      succeed: (result?: Record<string, unknown>) => succeed(id, result, attempt),
+      retrying: (errorCode: string) => retrying(id, errorCode, attempt),
+      fail: (errorCode: string) => fail(id, errorCode, attempt),
+    }),
   }
 }
 

@@ -37,16 +37,19 @@ export function taskWatchHub(data: ScopedData, log: Logger) {
     if (existing) return existing
     const watchers = new Set<TaskWatcher>()
     const tasks = data.forOrganization(organizationId).tasks
+    // One read at a time, in the order the notices came: a slow read must not hand watchers a
+    // task older than the one they already have.
+    let reads = Promise.resolve()
     const subscribed = data.taskFeed.subscribe(organizationId, {
       notice: ({ taskId }) => {
-        tasks.get(taskId).then(
-          (row) => {
+        reads = reads.then(async () => {
+          try {
+            const row = await tasks.get(taskId)
             if (row) each(watchers, (watcher) => watcher.task(row))
-          },
-          (err: unknown) => {
+          } catch (err) {
             log.error({ err, organizationId, taskId }, 'changed task not read')
-          },
-        )
+          }
+        })
       },
       resync: () => each(watchers, (watcher) => watcher.resync()),
     })

@@ -198,6 +198,39 @@ describe('tracked jobs', () => {
     expect(eventsOf(task.id)).toEqual([TASK_EVENTS.succeeded])
   })
 
+  it('keeps an attempt that outlived its expiry from undoing the retry that replaced it', async () => {
+    const f = await organization('cypress-late')
+    const task = await f.start()
+    const job = data.jobs.sent.at(-1)!
+    const worker = data.jobs.workers.get('test-export')!
+    const attemptOf = (retryCount: number) => ({
+      id: job.id,
+      retryCount,
+      retryLimit: 2,
+      signal: new AbortController().signal,
+    })
+    let releaseFirst!: () => void
+    const firstHeld = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    step = async ({ task: running }) => {
+      if (running.attempt === 1) {
+        await firstHeld
+        throw new Error('late failure')
+      }
+    }
+
+    const first = worker(job.data, attemptOf(0))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    await worker(job.data, attemptOf(1))
+    expect((await f.tasks.get(task.id))!.status).toBe('succeeded')
+
+    releaseFirst()
+    await expect(first).rejects.toThrow('late failure')
+    expect(await f.tasks.get(task.id)).toMatchObject({ status: 'succeeded', attempts: 2 })
+    expect(eventsOf(task.id)).toEqual([TASK_EVENTS.succeeded])
+  })
+
   it('fails the task on its last attempt and publishes task.failed', async () => {
     const f = await organization('elm')
     const task = await f.start()
