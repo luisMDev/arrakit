@@ -33,6 +33,8 @@ billing, prepaid credits, transactional email and an MCP server, in a pnpm + Tur
   and stored bytes count against `storage_gb`. Uploads, renames and deletions publish durable
   events that background subscribers react to. `pnpm dev` starts a local RustFS bucket.
 - **Jobs** with pg-boss on the same Postgres (on the PGlite instance too when `DATABASE_URL` is unset).
+  Tracked jobs are tasks people follow in **Activity**: status, retries and progress, streamed to
+  the web as they change, with `task.succeeded` and `task.failed` events to react to.
 - **Tenancy**: every organization query and file key goes through `forOrganization(id)` in
   `@arrakit/db`; ESLint refuses the database and storage drivers anywhere else.
 
@@ -93,7 +95,9 @@ Every variable is optional in development: without `DATABASE_URL` the API uses P
 `STRIPE_FAKE=1` Stripe is faked, and the `R2_*` keys of `.env.example` point at the local RustFS
 (without them uploads are kept in memory). In production set `DATABASE_URL`, `BETTER_AUTH_SECRET`,
 `BETTER_AUTH_URL`/`WEB_URL` (the web origin), `RESEND_API_KEY` and `MAIL_FROM`, the `STRIPE_*`
-keys and the `R2_*` bucket, whose CORS rule must allow PUT and GET from the web origin. The web reads
+keys and the `R2_*` bucket, whose CORS rule must allow PUT and GET from the web origin. When
+`DATABASE_URL` goes through a pooler in transaction mode, set `DATABASE_DIRECT_URL` to the direct
+host: the migration lock and the task feed's `LISTEN` need a session. The web reads
 `API_ORIGIN`, `VITE_APP_NAME` and `VITE_SITE_URL`.
 
 With real Stripe keys, create the products and prices once:

@@ -172,6 +172,11 @@ Run from the repo root; the scripts in `package.json` are the full list.
   gets its own retried queue; do not call follow-up work from the files router.
 - File types and size limits per plan: `packages/plans` (the API enforces them, the web
   pre-checks them).
+- Background work people follow in Activity: declare it with `defineTrackedJob` in the API's
+  tracked job list, start it with `startTask` (the task and its job commit together), report
+  progress from the handler and throw `TaskError` for a failure retrying cannot fix. Give its kind
+  and error codes copy under `activity.kinds` and `activity.errors`. React to a task finishing with
+  a task subscriber (`task.succeeded`, `task.failed`), not from the handler.
 
 ## Astro (apps/landing)
 
