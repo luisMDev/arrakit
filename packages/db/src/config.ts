@@ -40,6 +40,7 @@ export function loadDataConfig(env: Env): DataConfig {
 
   return {
     databaseUrl: value('DATABASE_URL'),
+    databaseDirectUrl: value('DATABASE_DIRECT_URL'),
     pgliteDir: value('PGLITE_DIR') ?? '.data/pglite',
     pgliteReset: value('PGLITE_RESET') === '1',
     s3:

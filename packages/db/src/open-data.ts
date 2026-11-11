@@ -17,6 +17,7 @@ import { forOrganization } from './organization/index'
 import { memoryStorage } from './storage/memory'
 import { s3Storage } from './storage/s3'
 import type { Storage } from './storage/types'
+import { type TaskFeed, pgliteTaskFeed, postgresTaskFeed } from './tasks/feed'
 
 export interface OpenDataOptions {
   /** Replace the storage implementation (tests). */
@@ -68,7 +69,12 @@ export async function health(ctx: DataContext): Promise<HealthReport> {
   return { status: ok ? 'ok' : 'error', postgres, storage, queue }
 }
 
-function buildData(ctx: DataContext, close: () => Promise<void>, driver: 'postgres' | 'pglite') {
+function buildData(
+  ctx: DataContext,
+  close: () => Promise<void>,
+  driver: 'postgres' | 'pglite',
+  taskFeed: TaskFeed,
+) {
   return {
     driver,
     ...membershipData(ctx),
@@ -79,6 +85,8 @@ function buildData(ctx: DataContext, close: () => Promise<void>, driver: 'postgr
     ...tasksData(ctx),
     forOrganization: (id: string) => forOrganization(ctx, id),
     jobs: ctx.jobs,
+    /** Changes to tasks as they commit. */
+    taskFeed: { subscribe: taskFeed.subscribe } satisfies Pick<TaskFeed, 'subscribe'>,
     authDatabase: authDatabase(ctx.db),
     health: () => health(ctx),
     close,
@@ -137,10 +145,15 @@ export async function openData(config: DataConfig, options: OpenDataOptions = {}
     throw err
   }
 
+  const taskFeed = connection.pglite
+    ? pgliteTaskFeed(connection.pglite, log)
+    : postgresTaskFeed((config.databaseDirectUrl ?? config.databaseUrl)!, log)
+
   let closing: Promise<void> | undefined
   const close = () => {
     closing ??= (async () => {
       try {
+        await taskFeed.close()
         await jobs.stop()
       } finally {
         await storage.close()
@@ -154,6 +167,7 @@ export async function openData(config: DataConfig, options: OpenDataOptions = {}
     { db: connection.db, jobs, storage, now: options.now ?? (() => new Date()), log },
     close,
     connection.driver,
+    taskFeed,
   )
   return { ...data, db: connection.db, storage }
 }

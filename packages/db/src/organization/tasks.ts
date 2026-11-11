@@ -13,6 +13,7 @@ import {
   workspaces,
 } from '../schema/index'
 import { TASK_EVENTS, type TaskEvent, type TaskEventPayloads } from '../tasks/events'
+import { TASK_CHANNEL, type TaskNotice } from '../tasks/feed'
 import { NO_SUCH_WORKSPACE } from './files'
 
 export type TaskRow = typeof tasks.$inferSelect
@@ -104,7 +105,16 @@ export function tasksScope(ctx: DataContext, organizationId: OrganizationId) {
     payload: TaskEventPayloads[E],
   ) => ctx.jobs.publish(event, payload, { tx })
 
-  /** Moves a task in one of `from` and answers it as it is now; undefined when it was in none. */
+  /** Tells the task feed, once `tx` commits, that the task changed. */
+  async function notify(tx: Database, taskId: string) {
+    const notice: TaskNotice = { organizationId, taskId }
+    await tx.execute(sql`select pg_notify(${TASK_CHANNEL}, ${JSON.stringify(notice)})`)
+  }
+
+  /**
+   * Moves a task in one of `from`, notifying the feed, and answers it as it is now; undefined when
+   * it was in none.
+   */
   async function move(
     tx: Database,
     id: string,
@@ -116,6 +126,7 @@ export function tasksScope(ctx: DataContext, organizationId: OrganizationId) {
       .set({ ...values, updatedAt: ctx.now() })
       .where(and(byId(id), inStatus(from)))
       .returning()
+    if (row) await notify(tx, id)
     return row
   }
 
@@ -154,6 +165,7 @@ export function tasksScope(ctx: DataContext, organizationId: OrganizationId) {
           .returning()
         const job: TaskJob = { taskId: row!.id, organizationId, input: task.input }
         await ctx.jobs.send(task.queue, job, { tx })
+        await notify(tx, row!.id)
         return row!
       }),
 

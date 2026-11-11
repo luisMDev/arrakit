@@ -27,6 +27,7 @@ export {
   type TaskStatus,
 } from './organization/tasks'
 export type { StalledTask } from './data/tasks'
+export type { TaskFeed, TaskFeedListener, TaskNotice } from './tasks/feed'
 export {
   TASK_EVENTS,
   type TaskEvent,

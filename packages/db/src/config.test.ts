@@ -32,6 +32,18 @@ describe('loadDataConfig', () => {
     })
   })
 
+  it('reads a direct Postgres URL for sessions, absent unless set', () => {
+    expect(
+      loadDataConfig({ DATABASE_URL: 'postgres://pooler/a' }).databaseDirectUrl,
+    ).toBeUndefined()
+    expect(
+      loadDataConfig({
+        DATABASE_URL: 'postgres://pooler/a',
+        DATABASE_DIRECT_URL: 'postgres://db/a',
+      }).databaseDirectUrl,
+    ).toBe('postgres://db/a')
+  })
+
   it('reads a complete R2 set, region defaulting to auto', () => {
     expect(loadDataConfig(R2).s3).toEqual({
       endpoint: R2.R2_ENDPOINT,
