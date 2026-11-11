@@ -1,6 +1,6 @@
 import { linkOptions, useMatch } from '@tanstack/react-router'
 import {
-  Activity,
+  ListChecks,
   ArrowLeft,
   Building2,
   CreditCard,
@@ -29,7 +29,7 @@ const SECTION_ICONS: Record<SettingsSection, LucideIcon> = {
   account: UserRound,
   general: Building2,
   library: Library,
-  activity: Activity,
+  tasks: ListChecks,
   usage: Gauge,
   members: Users,
   teams: UsersRound,

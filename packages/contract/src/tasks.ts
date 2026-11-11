@@ -10,7 +10,7 @@ export type TaskStatus = z.infer<typeof taskStatusSchema>
 
 export const taskSchema = z.object({
   id: z.uuid(),
-  /** Translated under `activity.kinds.<kind>`. */
+  /** Translated under `tasks.kinds.<kind>`. */
   kind: z.string(),
   /** User data shown with the task, such as a file name. */
   label: z.string().nullable(),
@@ -22,7 +22,7 @@ export const taskSchema = z.object({
   maxAttempts: z.number().int(),
   /** `total` null: how much work there is is not known. */
   progress: z.object({ done: z.number().int(), total: z.number().int().nullable() }),
-  /** Translated under `activity.errors.<code>`. */
+  /** Translated under `tasks.errors.<code>`. */
   errorCode: z.string().nullable(),
   result: z.record(z.string(), z.unknown()).nullable(),
   requestedById: z.string().nullable(),

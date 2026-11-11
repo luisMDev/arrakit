@@ -3,7 +3,7 @@ import { PanelLeft } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ActivityIndicator } from '#/components/activity/activity-indicator'
+import { TasksIndicator } from '#/components/tasks/tasks-indicator'
 import { SettingsSidebarNav } from '#/components/settings/settings-nav'
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
 import { Button } from '#/components/ui/button'
@@ -54,7 +54,7 @@ export function AppSidebar() {
       <SidebarContent className="overflow-x-hidden">
         <SidebarPanel />
       </SidebarContent>
-      <ActivityIndicator />
+      <TasksIndicator />
       <SidebarRail />
     </Sidebar>
   )

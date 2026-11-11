@@ -9,7 +9,7 @@ import { type TrackedJobDefinition, trackedJob } from './tracked-job'
 
 export const JOBS: readonly JobDefinition[] = [storagePurge, filesExpirePending, tasksMaintain]
 
-/** Background work people follow in Activity. Add a tracked job here, then start it with startTask. */
+/** Background work people follow as tasks. Add a tracked job here, then start it with startTask. */
 export const TRACKED_JOBS: readonly TrackedJobDefinition[] = []
 
 export async function registerWorkers(deps: WorkerDeps): Promise<void> {

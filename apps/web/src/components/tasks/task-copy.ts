@@ -6,7 +6,7 @@ export const isActive = (task: Pick<TaskView, 'status'>) =>
 
 /** What the task does, from its kind; a kind without copy reads as a background task. */
 export const kindOf = (t: TFunction, kind: string): string =>
-  t(`activity.kinds.${kind}`, { defaultValue: t('activity.kinds.unknown') })
+  t(`tasks.kinds.${kind}`, { defaultValue: t('tasks.kinds.unknown') })
 
 /** "Export workspace · Deals": the kind, then the task's own label when it has one. */
 export const taskTitle = (t: TFunction, task: Pick<TaskView, 'kind' | 'label'>): string =>
@@ -14,7 +14,7 @@ export const taskTitle = (t: TFunction, task: Pick<TaskView, 'kind' | 'label'>):
 
 /** Why it failed; a code without copy reads as unexpected. */
 export const errorOf = (t: TFunction, code: string): string =>
-  t(`activity.errors.${code}`, { defaultValue: t('activity.errors.unexpected') })
+  t(`tasks.errors.${code}`, { defaultValue: t('tasks.errors.unexpected') })
 
 /** 0-100, or null while how much work there is is not known. */
 export function percentOf({ progress }: Pick<TaskView, 'progress'>): number | null {
@@ -29,7 +29,7 @@ export function statusLabel(
   task: Pick<TaskView, 'status' | 'attempts' | 'maxAttempts'>,
 ) {
   if (task.status === 'queued' && task.attempts > 0) {
-    return t('activity.status.retrying', { attempt: task.attempts + 1, max: task.maxAttempts })
+    return t('tasks.status.retrying', { attempt: task.attempts + 1, max: task.maxAttempts })
   }
-  return t(`activity.status.${task.status}`)
+  return t(`tasks.status.${task.status}`)
 }

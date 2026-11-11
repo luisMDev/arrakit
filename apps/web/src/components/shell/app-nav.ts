@@ -1,6 +1,6 @@
 import { type LinkOptions, linkOptions } from '@tanstack/react-router'
 import {
-  Activity,
+  ListChecks,
   CreditCard,
   House,
   Library,
@@ -39,9 +39,9 @@ export const workspaceNav = (workspaceId: string): AppNavItem[] => [
     shows: (access) => access.can({ file: ['read'] }),
   },
   {
-    label: 'activity',
-    icon: Activity,
-    link: linkOptions({ to: '/app/workspaces/$workspaceId/activity', params: { workspaceId } }),
+    label: 'tasks',
+    icon: ListChecks,
+    link: linkOptions({ to: '/app/workspaces/$workspaceId/tasks', params: { workspaceId } }),
   },
 ]
 

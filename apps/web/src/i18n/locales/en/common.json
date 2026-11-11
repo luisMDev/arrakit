@@ -19,7 +19,7 @@
       "checkout": "Checkout",
       "welcome": "Welcome",
       "notFound": "Page not found",
-      "activity": "Activity"
+      "tasks": "Tasks"
     }
   },
   "confirmDelete": {

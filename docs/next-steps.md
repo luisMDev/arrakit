@@ -42,7 +42,7 @@ Backend
   malware scanning (a file subscriber is the place for it). Every plan has the same file policy.
   The type is checked by extension; the bytes are not inspected. An object whose delete fails
   stays in the bucket (logged), and RustFS has no release for Intel Macs (install it on PATH).
-- Tasks (Activity): no tracked job exists yet, so no journey starts one end to end. Tasks cannot be
+- Tasks: no tracked job exists yet, so no journey starts one end to end. Tasks cannot be
   cancelled, there is no limit on concurrent tasks per organization, and `result` has no shape
   the web shows (a download link, for one). The task feed is one LISTEN connection per API
   instance; a notice sent while it is down is lost and the next stream resyncs. Scale-to-zero

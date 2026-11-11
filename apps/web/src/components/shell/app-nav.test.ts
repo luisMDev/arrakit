@@ -17,19 +17,15 @@ describe('app navigation', () => {
     expect(navFor(as({ role: 'owner' }))[0]!.link).toMatchObject({ to: '/app' })
   })
 
-  it("shows the workspace's own Home and Activity and, for a role that reads files, its Library", () => {
-    expect(labels(navFor(as({ role: 'member' }), WORKSPACE))).toEqual([
-      'home',
-      'library',
-      'activity',
-    ])
+  it("shows the workspace's own Home and Tasks and, for a role that reads files, its Library", () => {
+    expect(labels(navFor(as({ role: 'member' }), WORKSPACE))).toEqual(['home', 'library', 'tasks'])
     expect(
       labels(navFor(as({ role: 'viewer', permissions: { workspace: ['read'] } }), WORKSPACE)),
-    ).toEqual(['home', 'activity'])
+    ).toEqual(['home', 'tasks'])
     expect(WORKSPACE.map((item) => item.link)).toMatchObject([
       { to: '/app/workspaces/$workspaceId', params: { workspaceId: ID } },
       { to: '/app/workspaces/$workspaceId/library', params: { workspaceId: ID } },
-      { to: '/app/workspaces/$workspaceId/activity', params: { workspaceId: ID } },
+      { to: '/app/workspaces/$workspaceId/tasks', params: { workspaceId: ID } },
     ])
   })
 

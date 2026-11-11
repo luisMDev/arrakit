@@ -33,7 +33,7 @@ billing, prepaid credits, transactional email and an MCP server, in a pnpm + Tur
   and stored bytes count against `storage_gb`. Uploads, renames and deletions publish durable
   events that background subscribers react to. `pnpm dev` starts a local RustFS bucket.
 - **Jobs** with pg-boss on the same Postgres (on the PGlite instance too when `DATABASE_URL` is unset).
-  Tracked jobs are tasks people follow in **Activity**: status, retries and progress, streamed to
+  Tracked jobs are **tasks** people follow in each workspace and in Settings: status, retries and progress, streamed to
   the web as they change, with `task.succeeded` and `task.failed` events to react to.
 - **Tenancy**: every organization query and file key goes through `forOrganization(id)` in
   `@arrakit/db`; ESLint refuses the database and storage drivers anywhere else.

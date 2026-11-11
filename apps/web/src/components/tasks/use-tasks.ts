@@ -10,7 +10,7 @@ const FINISHED_PAGE = 50
 
 /**
  * The queued or running tasks the person may see, of one workspace or of the whole organization:
- * the organization's is shared by Settings > Activity and the shell's indicator.
+ * the organization's is shared by Settings > Tasks and the shell's indicator.
  */
 export const activeTasksQuery = (workspaceId?: string) =>
   orpc.tasks.list.queryOptions({

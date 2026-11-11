@@ -6,7 +6,7 @@ import { SidebarProvider } from '#/components/ui/sidebar'
 import { TooltipProvider } from '#/components/ui/tooltip'
 import { answer, answerStream, renderAt, setupTestApi } from '#/test/rpc'
 
-import { ActivityIndicator } from './activity-indicator'
+import { TasksIndicator } from './tasks-indicator'
 import { pageOf, taskOf } from './fixtures'
 
 setupTestApi()
@@ -15,14 +15,14 @@ function openApp() {
   return renderAt(
     <TooltipProvider>
       <SidebarProvider>
-        <ActivityIndicator />
+        <TasksIndicator />
       </SidebarProvider>
     </TooltipProvider>,
     { url: '/app' },
   )
 }
 
-describe('Activity indicator', () => {
+describe('Tasks indicator', () => {
   it('stays out of the way while nothing runs, and opens no stream', async () => {
     const lists = answer('tasks/list', pageOf([]))
     const streams = answerStream('tasks/watch')
@@ -50,9 +50,9 @@ describe('Activity indicator', () => {
     expect(
       within(list).getByRole('progressbar', { name: 'Background task · Deals: 75% done' }),
     ).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'View all activity' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'View all tasks' })).toHaveAttribute(
       'href',
-      '/app/settings?section=activity',
+      '/app/settings?section=tasks',
     )
   })
 

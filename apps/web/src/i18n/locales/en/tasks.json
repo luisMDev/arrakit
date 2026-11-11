@@ -1,6 +1,6 @@
 {
-  "activity": {
-    "title": "Activity",
+  "tasks": {
+    "title": "Tasks",
     "hint": "Background work across {{organization}}: every workspace and the organization itself.",
     "hintOwn": "Background work you started, in every workspace and the organization itself.",
     "tabs": {
@@ -11,7 +11,7 @@
       "active": "Nothing is running right now.",
       "finished": "Nothing has finished yet."
     },
-    "notLoaded": "Couldn't load the activity. Reload the page.",
+    "notLoaded": "Couldn't load the tasks. Reload the page.",
     "loadMore": "Show more",
     "columns": {
       "task": "Task",
@@ -47,7 +47,7 @@
     "indicator": {
       "label_one": "{{count}} task in progress",
       "label_other": "{{count}} tasks in progress",
-      "viewAll": "View all activity"
+      "viewAll": "View all tasks"
     },
     "workspaceHint": "Background work in {{workspace}}, and how far along it is.",
     "workspaceHintOwn": "Background work you started in {{workspace}}, and how far along it is.",

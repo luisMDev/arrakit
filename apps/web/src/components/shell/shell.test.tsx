@@ -252,7 +252,7 @@ describe('Signed-in shell', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Workspace' })).toBeInTheDocument()
     await waitFor(() => expect(menuButton).toHaveTextContent('Deals'))
     expect(menuButton).toHaveTextContent('Acme')
-    expect(destinations()).toEqual(['Home', 'Library', 'Activity'])
+    expect(destinations()).toEqual(['Home', 'Library', 'Tasks'])
     expect(sidebarLink('Home')).toHaveAttribute('href', home)
     expect(sidebarLink('Home')).toHaveAttribute('aria-current', 'page')
 
@@ -270,7 +270,7 @@ describe('Signed-in shell', () => {
     const { location } = await open(`/app/workspaces/${DEALS.id}/library`, viewer, [DEALS])
     expect(await screen.findByRole('heading', { level: 1, name: 'Workspace' })).toBeInTheDocument()
     expect(location()).toBe(`/app/workspaces/${DEALS.id}`)
-    expect(destinations()).toEqual(['Home', 'Activity'])
+    expect(destinations()).toEqual(['Home', 'Tasks'])
   })
 
   it('leaves Members and Billing out of the menu of a member', async () => {

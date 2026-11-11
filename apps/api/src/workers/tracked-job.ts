@@ -3,14 +3,14 @@ import { z } from 'zod'
 
 import { type JobContext, type JobDefinition, defineJob } from './job'
 
-/** Codes every task may fail with, translated under `activity.errors.<code>`. */
+/** Codes every task may fail with, translated under `tasks.errors.<code>`. */
 export const TASK_ERRORS = {
   unexpected: 'unexpected',
   invalidInput: 'invalid_input',
   stalled: 'stalled',
 } as const
 
-/** A failure retrying cannot fix. `code` is shown, translated under `activity.errors.<code>`. */
+/** A failure retrying cannot fix. `code` is shown, translated under `tasks.errors.<code>`. */
 export class TaskError extends Error {
   constructor(
     readonly code: string,
@@ -35,11 +35,11 @@ export interface TaskContext extends JobContext {
   signal: AbortSignal
 }
 
-/** A job whose runs people follow in Activity, as a task. */
+/** A job whose runs people follow as tasks. */
 export interface TrackedJobDefinition<Schema extends z.ZodType<object> = z.ZodType<object>> {
   /** The queue. */
   name: string
-  /** Translated under `activity.kinds.<kind>`. */
+  /** Translated under `tasks.kinds.<kind>`. */
   kind: string
   schema: Schema
   policy: QueuePolicy

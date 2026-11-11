@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { answer, renderAt, setupTestApi } from '#/test/rpc'
 
 import { pageOf, taskOf } from './fixtures'
-import { TaskActivity } from './task-activity'
+import { TaskOverview } from './task-overview'
 
 setupTestApi()
 
@@ -14,7 +14,7 @@ const workspaces = [{ id: DEALS, name: 'Deals', description: '', createdOn: '202
 
 const rowOf = (name: string) => screen.getByText(name).closest('tr') as HTMLElement
 
-describe('TaskActivity', () => {
+describe('TaskOverview', () => {
   it('lists the tasks in progress with their status, progress and who started them', async () => {
     answer('workspaces/list', workspaces)
     answer(
@@ -31,7 +31,7 @@ describe('TaskActivity', () => {
         }),
       ]),
     )
-    renderAt(<TaskActivity />)
+    renderAt(<TaskOverview />)
 
     const table = await screen.findByRole('table', { name: 'In progress' })
     expect(within(table).getAllByRole('row')).toHaveLength(4)
@@ -56,7 +56,7 @@ describe('TaskActivity', () => {
       'tasks/list',
       pageOf([taskOf({ label: 'Export', workspaceId: DEALS }), taskOf({ label: 'Invoices' })]),
     )
-    renderAt(<TaskActivity />)
+    renderAt(<TaskOverview />)
 
     expect(await screen.findByRole('columnheader', { name: 'Where' })).toBeInTheDocument()
     expect(await within(rowOf('Background task · Export')).findByText('Deals')).toBeInTheDocument()
@@ -68,7 +68,7 @@ describe('TaskActivity', () => {
 
   it("keeps to one workspace's tasks, without saying where they run", async () => {
     const calls = answer('tasks/list', pageOf([taskOf({ label: 'Export', workspaceId: DEALS })]))
-    renderAt(<TaskActivity workspaceId={DEALS} />)
+    renderAt(<TaskOverview workspaceId={DEALS} />)
 
     await screen.findByText('Background task · Export')
     expect(screen.queryByRole('columnheader', { name: 'Where' })).toBeNull()
@@ -77,7 +77,7 @@ describe('TaskActivity', () => {
 
   it('says when nothing is running', async () => {
     answer('tasks/list', pageOf([]))
-    renderAt(<TaskActivity workspaceId={DEALS} />)
+    renderAt(<TaskOverview workspaceId={DEALS} />)
     expect(await screen.findByText('Nothing is running right now.')).toBeInTheDocument()
   })
 
@@ -98,7 +98,7 @@ describe('TaskActivity', () => {
       ),
       pageOf([taskOf({ label: 'Leads', status: 'succeeded', progress: { done: 3, total: 3 } })]),
     )
-    renderAt(<TaskActivity workspaceId={DEALS} />)
+    renderAt(<TaskOverview workspaceId={DEALS} />)
     const user = userEvent.setup()
     await screen.findByText('Nothing is running right now.')
     await user.click(screen.getByRole('tab', { name: 'Finished' }))

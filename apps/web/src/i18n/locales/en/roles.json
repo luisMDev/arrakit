@@ -41,7 +41,7 @@
         "usage": "Usage",
         "workspace": "Workspaces",
         "file": "Files",
-        "task": "Activity"
+        "task": "Tasks"
       },
       "actions": {
         "create": "Create",

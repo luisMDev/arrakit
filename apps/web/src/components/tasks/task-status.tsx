@@ -27,7 +27,7 @@ export function TaskProgress({ task }: { task: TaskView }) {
     return (
       <span className="text-muted-foreground flex items-center gap-2 text-sm">
         <Spinner />
-        {t('activity.working')}
+        {t('tasks.working')}
       </span>
     )
   }
@@ -36,7 +36,7 @@ export function TaskProgress({ task }: { task: TaskView }) {
       <Progress
         value={percent}
         className="w-24"
-        aria-label={t('activity.progressLabel', { task: taskTitle(t, task), percent })}
+        aria-label={t('tasks.progressLabel', { task: taskTitle(t, task), percent })}
       />
       <span className="text-muted-foreground w-10 text-sm tabular-nums">{percent}%</span>
     </span>

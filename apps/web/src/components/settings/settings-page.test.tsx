@@ -69,7 +69,7 @@ describe('SettingsPage with its sidebar', () => {
     expect(organizationLinks()).toEqual([
       'General',
       'Library',
-      'Activity',
+      'Tasks',
       'Members',
       'Teams',
       'Roles',
@@ -125,7 +125,7 @@ describe('SettingsPage with its sidebar', () => {
     expect(organizationLinks()).toEqual([
       'General',
       'Library',
-      'Activity',
+      'Tasks',
       'Usage',
       'Teams',
       'Security and data',
@@ -137,17 +137,17 @@ describe('SettingsPage with its sidebar', () => {
     await screen.findByRole('heading', { level: 2, name: 'Account' })
     expect(organizationLinks()).toEqual([
       'General',
-      'Activity',
+      'Tasks',
       'Teams',
       'Billing',
       'Security and data',
     ])
   })
 
-  it('opens Activity on the background work of the whole organization', async () => {
+  it('opens Tasks on the background work of the whole organization', async () => {
     const listed = answer('tasks/list', { tasks: [], next: null })
-    renderAs('owner', 'activity')
-    expect(await screen.findByRole('heading', { level: 2, name: 'Activity' })).toBeInTheDocument()
+    renderAs('owner', 'tasks')
+    expect(await screen.findByRole('heading', { level: 2, name: 'Tasks' })).toBeInTheDocument()
     expect(
       screen.getByText('Background work across Acme: every workspace and the organization itself.'),
     ).toBeInTheDocument()
@@ -155,9 +155,9 @@ describe('SettingsPage with its sidebar', () => {
     expect(listed[0]).toEqual({ input: { status: 'active', limit: 100 } })
   })
 
-  it('tells a member that Activity shows the work they started', async () => {
+  it('tells a member that Tasks shows the work they started', async () => {
     answer('tasks/list', { tasks: [], next: null })
-    renderAs('member', 'activity')
+    renderAs('member', 'tasks')
     expect(
       await screen.findByText(
         'Background work you started, in every workspace and the organization itself.',

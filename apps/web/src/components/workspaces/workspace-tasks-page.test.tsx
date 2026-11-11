@@ -2,10 +2,10 @@ import type { Workspace } from '@arrakit/contract'
 import { screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { pageOf, taskOf } from '#/components/activity/fixtures'
+import { pageOf, taskOf } from '#/components/tasks/fixtures'
 import { answer, meAs, quiet, renderAt, setupTestApi } from '#/test/rpc'
 
-import { WorkspaceActivityPage } from './workspace-activity-page'
+import { WorkspaceTasksPage } from './workspace-tasks-page'
 
 setupTestApi()
 
@@ -17,12 +17,12 @@ const DEALS: Workspace = {
 }
 
 const renderPage = (me = meAs()) =>
-  renderAt(<WorkspaceActivityPage workspaceId={DEALS.id} />, {
-    url: `/app/workspaces/${DEALS.id}/activity`,
+  renderAt(<WorkspaceTasksPage workspaceId={DEALS.id} />, {
+    url: `/app/workspaces/${DEALS.id}/tasks`,
     me,
   })
 
-describe('WorkspaceActivityPage', () => {
+describe('WorkspaceTasksPage', () => {
   it("shows the workspace's own background work", async () => {
     answer('workspaces/get', DEALS)
     const listed = answer(
@@ -31,7 +31,7 @@ describe('WorkspaceActivityPage', () => {
     )
     renderPage()
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Activity' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Tasks' })).toBeInTheDocument()
     expect(
       screen.getByText('Background work in Deals, and how far along it is.'),
     ).toBeInTheDocument()

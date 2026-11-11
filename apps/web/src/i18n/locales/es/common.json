@@ -19,7 +19,7 @@
       "checkout": "Pago",
       "welcome": "Bienvenida",
       "notFound": "Página no encontrada",
-      "activity": "Actividad"
+      "tasks": "Tareas"
     }
   },
   "confirmDelete": {

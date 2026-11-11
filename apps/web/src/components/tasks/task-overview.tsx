@@ -1,6 +1,6 @@
 import type { TaskView } from '@arrakit/contract'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { Activity, CircleCheck } from 'lucide-react'
+import { CircleCheck, ListChecks } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -23,7 +23,7 @@ import { errorOf, taskTitle } from './task-copy'
 import { TaskProgress, TaskStatus } from './task-status'
 import { activeTasksQuery, finishedTasksQuery } from './use-tasks'
 
-const K = 'activity'
+const K = 'tasks'
 
 type Tab = 'active' | 'finished'
 
@@ -31,7 +31,7 @@ type Tab = 'active' | 'finished'
  * The tasks in progress and the finished ones, of one workspace or, without `workspaceId`, of the
  * whole organization, with where each one runs.
  */
-export function TaskActivity({ workspaceId }: { workspaceId?: string }) {
+export function TaskOverview({ workspaceId }: { workspaceId?: string }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<Tab>('active')
   return (
@@ -58,7 +58,7 @@ function ActiveTasks({ workspaceId }: { workspaceId?: string }) {
   })
   if (!tasks.data) return null
   if (tasks.data.tasks.length === 0) {
-    return <EmptyState icon={Activity} title={t(`${K}.empty.active`)} />
+    return <EmptyState icon={ListChecks} title={t(`${K}.empty.active`)} />
   }
   return (
     <TaskTable label={t(`${K}.tabs.active`)} tasks={tasks.data.tasks} showsWhere={!workspaceId} />

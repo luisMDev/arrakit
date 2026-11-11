@@ -22,41 +22,39 @@ const SHOWN = 5
 
 /**
  * How many tasks are in progress, with the first few and how far along they are. It keeps the
- * task lists current while any task runs or Activity is open, and tells the person when one they
+ * task lists current while any task runs or a task screen is open, and tells the person when one they
  * started finishes.
  */
-export function ActivityIndicator() {
+export function TasksIndicator() {
   const { t } = useTranslation()
   const matchRoute = useMatchRoute()
   const [open, setOpen] = useState(false)
   const active = useQuery(activeTasksQuery()).data?.tasks ?? []
-  const inSettingsActivity = useMatch({
+  const inSettingsTasks = useMatch({
     from: '/app/settings',
     shouldThrow: false,
-    select: (match) => match.search.section === 'activity',
+    select: (match) => match.search.section === 'tasks',
   })
-  const onActivity =
-    Boolean(inSettingsActivity) ||
-    Boolean(matchRoute({ to: '/app/workspaces/$workspaceId/activity' }))
+  const onTaskScreen =
+    Boolean(inSettingsTasks) || Boolean(matchRoute({ to: '/app/workspaces/$workspaceId/tasks' }))
 
   const announce = useCallback(
     (task: TaskView) => {
       if (!task.requestedByYou) return
       const title = taskTitle(t, task)
-      if (task.status === 'succeeded')
-        notify.success(t('activity.notices.succeeded', { task: title }))
+      if (task.status === 'succeeded') notify.success(t('tasks.notices.succeeded', { task: title }))
       else {
-        notify.error(t('activity.notices.failed', { task: title }), {
+        notify.error(t('tasks.notices.failed', { task: title }), {
           description: task.errorCode ? errorOf(t, task.errorCode) : undefined,
         })
       }
     },
     [t],
   )
-  useTaskWatch(active.length > 0 || onActivity, announce)
+  useTaskWatch(active.length > 0 || onTaskScreen, announce)
 
   if (active.length === 0) return null
-  const label = t('activity.indicator.label', { count: active.length })
+  const label = t('tasks.indicator.label', { count: active.length })
   return (
     <SidebarFooter>
       <SidebarMenu>
@@ -79,11 +77,11 @@ export function ActivityIndicator() {
               </ul>
               <Link
                 to="/app/settings"
-                search={{ section: 'activity' }}
+                search={{ section: 'tasks' }}
                 className="text-sm underline-offset-4 hover:underline"
                 onClick={() => setOpen(false)}
               >
-                {t('activity.indicator.viewAll')}
+                {t('tasks.indicator.viewAll')}
               </Link>
             </PopoverContent>
           </Popover>

@@ -9,11 +9,11 @@ test('finds all the background work in Settings, and each workspace keeps its ow
   await page.goto('/app/settings')
   await page
     .getByRole('navigation', { name: 'Settings' })
-    .getByRole('link', { name: 'Activity' })
+    .getByRole('link', { name: 'Tasks' })
     .click()
 
-  await expect(page).toHaveURL(/\/app\/settings\?section=activity$/)
-  await expect(page.getByRole('heading', { level: 2, name: 'Activity' })).toBeVisible()
+  await expect(page).toHaveURL(/\/app\/settings\?section=tasks$/)
+  await expect(page.getByRole('heading', { level: 2, name: 'Tasks' })).toBeVisible()
   await expect(page.getByText(/every workspace and the organization itself/)).toBeVisible()
   await expect(page.getByText('Nothing is running right now.')).toBeVisible()
   await page.getByRole('tab', { name: 'Finished' }).click()
@@ -26,10 +26,10 @@ test('finds all the background work in Settings, and each workspace keeps its ow
   await page.goto(`/app/workspaces/${workspace.id}`)
   await page
     .getByRole('navigation', { name: 'Navigation' })
-    .getByRole('link', { name: 'Activity' })
+    .getByRole('link', { name: 'Tasks' })
     .click()
-  await expect(page).toHaveURL(new RegExp(`/app/workspaces/${workspace.id}/activity$`))
-  await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`/app/workspaces/${workspace.id}/tasks$`))
+  await expect(page.getByRole('heading', { level: 1, name: 'Tasks' })).toBeVisible()
   await expect(page.getByText('Background work in Deals, and how far along it is.')).toBeVisible()
   await expect(page.getByText('Nothing is running right now.')).toBeVisible()
 })
@@ -38,7 +38,7 @@ test('streams task changes through the web origin as they happen, not when the s
   page,
 }) => {
   await signedInOwner(page, { organization: 'Aspen Partners' })
-  await page.goto('/app/settings?section=activity')
+  await page.goto('/app/settings?section=tasks')
 
   const first = await page.evaluate(async () => {
     const started = performance.now()

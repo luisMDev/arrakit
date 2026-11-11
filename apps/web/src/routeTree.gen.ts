@@ -30,8 +30,8 @@ import { Route as JoinInvitationIdRouteImport } from './routes/join.$invitationI
 import { Route as OauthConsentRouteImport } from './routes/oauth/consent'
 import { Route as OauthSigninRouteImport } from './routes/oauth/signin'
 import { Route as AppWorkspacesWorkspaceIdRouteImport } from './routes/app/workspaces_.$workspaceId'
-import { Route as AppWorkspacesWorkspaceIdActivityRouteImport } from './routes/app/workspaces_.$workspaceId_.activity'
 import { Route as AppWorkspacesWorkspaceIdLibraryRouteImport } from './routes/app/workspaces_.$workspaceId_.library'
+import { Route as AppWorkspacesWorkspaceIdTasksRouteImport } from './routes/app/workspaces_.$workspaceId_.tasks'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -139,16 +139,16 @@ const AppWorkspacesWorkspaceIdRoute =
     path: '/workspaces/$workspaceId',
     getParentRoute: () => AppRoute,
   } as any)
-const AppWorkspacesWorkspaceIdActivityRoute =
-  AppWorkspacesWorkspaceIdActivityRouteImport.update({
-    id: '/workspaces_/$workspaceId_/activity',
-    path: '/workspaces/$workspaceId/activity',
-    getParentRoute: () => AppRoute,
-  } as any)
 const AppWorkspacesWorkspaceIdLibraryRoute =
   AppWorkspacesWorkspaceIdLibraryRouteImport.update({
     id: '/workspaces_/$workspaceId_/library',
     path: '/workspaces/$workspaceId/library',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppWorkspacesWorkspaceIdTasksRoute =
+  AppWorkspacesWorkspaceIdTasksRouteImport.update({
+    id: '/workspaces_/$workspaceId_/tasks',
+    path: '/workspaces/$workspaceId/tasks',
     getParentRoute: () => AppRoute,
   } as any)
 
@@ -174,8 +174,8 @@ export interface FileRoutesByFullPath {
   '/oauth/signin': typeof OauthSigninRoute
   '/app/': typeof AppIndexRoute
   '/app/workspaces/$workspaceId': typeof AppWorkspacesWorkspaceIdRoute
-  '/app/workspaces/$workspaceId/activity': typeof AppWorkspacesWorkspaceIdActivityRoute
   '/app/workspaces/$workspaceId/library': typeof AppWorkspacesWorkspaceIdLibraryRoute
+  '/app/workspaces/$workspaceId/tasks': typeof AppWorkspacesWorkspaceIdTasksRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -198,8 +198,8 @@ export interface FileRoutesByTo {
   '/oauth/signin': typeof OauthSigninRoute
   '/app': typeof AppIndexRoute
   '/app/workspaces/$workspaceId': typeof AppWorkspacesWorkspaceIdRoute
-  '/app/workspaces/$workspaceId/activity': typeof AppWorkspacesWorkspaceIdActivityRoute
   '/app/workspaces/$workspaceId/library': typeof AppWorkspacesWorkspaceIdLibraryRoute
+  '/app/workspaces/$workspaceId/tasks': typeof AppWorkspacesWorkspaceIdTasksRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -224,8 +224,8 @@ export interface FileRoutesById {
   '/oauth/signin': typeof OauthSigninRoute
   '/app/': typeof AppIndexRoute
   '/app/workspaces_/$workspaceId': typeof AppWorkspacesWorkspaceIdRoute
-  '/app/workspaces_/$workspaceId_/activity': typeof AppWorkspacesWorkspaceIdActivityRoute
   '/app/workspaces_/$workspaceId_/library': typeof AppWorkspacesWorkspaceIdLibraryRoute
+  '/app/workspaces_/$workspaceId_/tasks': typeof AppWorkspacesWorkspaceIdTasksRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -251,8 +251,8 @@ export interface FileRouteTypes {
     | '/oauth/signin'
     | '/app/'
     | '/app/workspaces/$workspaceId'
-    | '/app/workspaces/$workspaceId/activity'
     | '/app/workspaces/$workspaceId/library'
+    | '/app/workspaces/$workspaceId/tasks'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -275,8 +275,8 @@ export interface FileRouteTypes {
     | '/oauth/signin'
     | '/app'
     | '/app/workspaces/$workspaceId'
-    | '/app/workspaces/$workspaceId/activity'
     | '/app/workspaces/$workspaceId/library'
+    | '/app/workspaces/$workspaceId/tasks'
   id:
     | '__root__'
     | '/'
@@ -300,8 +300,8 @@ export interface FileRouteTypes {
     | '/oauth/signin'
     | '/app/'
     | '/app/workspaces_/$workspaceId'
-    | '/app/workspaces_/$workspaceId_/activity'
     | '/app/workspaces_/$workspaceId_/library'
+    | '/app/workspaces_/$workspaceId_/tasks'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -467,18 +467,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspacesWorkspaceIdRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/workspaces_/$workspaceId_/activity': {
-      id: '/app/workspaces_/$workspaceId_/activity'
-      path: '/workspaces/$workspaceId/activity'
-      fullPath: '/app/workspaces/$workspaceId/activity'
-      preLoaderRoute: typeof AppWorkspacesWorkspaceIdActivityRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/app/workspaces_/$workspaceId_/library': {
       id: '/app/workspaces_/$workspaceId_/library'
       path: '/workspaces/$workspaceId/library'
       fullPath: '/app/workspaces/$workspaceId/library'
       preLoaderRoute: typeof AppWorkspacesWorkspaceIdLibraryRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/workspaces_/$workspaceId_/tasks': {
+      id: '/app/workspaces_/$workspaceId_/tasks'
+      path: '/workspaces/$workspaceId/tasks'
+      fullPath: '/app/workspaces/$workspaceId/tasks'
+      preLoaderRoute: typeof AppWorkspacesWorkspaceIdTasksRouteImport
       parentRoute: typeof AppRoute
     }
   }
@@ -495,8 +495,8 @@ interface AppRouteChildren {
   AppWorkspacesRoute: typeof AppWorkspacesRoute
   AppIndexRoute: typeof AppIndexRoute
   AppWorkspacesWorkspaceIdRoute: typeof AppWorkspacesWorkspaceIdRoute
-  AppWorkspacesWorkspaceIdActivityRoute: typeof AppWorkspacesWorkspaceIdActivityRoute
   AppWorkspacesWorkspaceIdLibraryRoute: typeof AppWorkspacesWorkspaceIdLibraryRoute
+  AppWorkspacesWorkspaceIdTasksRoute: typeof AppWorkspacesWorkspaceIdTasksRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -510,8 +510,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppWorkspacesRoute: AppWorkspacesRoute,
   AppIndexRoute: AppIndexRoute,
   AppWorkspacesWorkspaceIdRoute: AppWorkspacesWorkspaceIdRoute,
-  AppWorkspacesWorkspaceIdActivityRoute: AppWorkspacesWorkspaceIdActivityRoute,
   AppWorkspacesWorkspaceIdLibraryRoute: AppWorkspacesWorkspaceIdLibraryRoute,
+  AppWorkspacesWorkspaceIdTasksRoute: AppWorkspacesWorkspaceIdTasksRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

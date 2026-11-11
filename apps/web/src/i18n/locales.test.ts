@@ -18,7 +18,6 @@ describe('locales', () => {
   it('have one file per module in each language', () => {
     expect(names(esFiles)).toEqual(names(enFiles))
     expect(names(enFiles)).toEqual([
-      'activity.json',
       'auth.json',
       'billing.json',
       'common.json',
@@ -30,6 +29,7 @@ describe('locales', () => {
       'roles.json',
       'settings.json',
       'shell.json',
+      'tasks.json',
       'teams.json',
       'usage.json',
       'workspaces.json',

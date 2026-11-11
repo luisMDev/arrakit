@@ -35,7 +35,7 @@ export interface HealthReport {
   postgres: ProbeState
   storage: ProbeState
   queue: ProbeState
-  /** Whether task changes reach the task feed (live Activity). */
+  /** Whether task changes reach the task feed (live task updates). */
   taskFeed: ProbeState
 }
 
