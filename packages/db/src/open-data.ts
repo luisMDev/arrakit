@@ -10,6 +10,7 @@ import { filesData } from './data/files'
 import { invitationsData } from './data/invitations'
 import { membershipData } from './data/membership'
 import { organizationsData } from './data/organizations'
+import { tasksData } from './data/tasks'
 import { pgBossJobs } from './jobs/pg-boss'
 import type { JobsRuntime } from './jobs/types'
 import { forOrganization } from './organization/index'
@@ -75,6 +76,7 @@ function buildData(ctx: DataContext, close: () => Promise<void>, driver: 'postgr
     ...invitationsData(ctx),
     ...accountData(ctx),
     ...filesData(ctx),
+    ...tasksData(ctx),
     forOrganization: (id: string) => forOrganization(ctx, id),
     jobs: ctx.jobs,
     authDatabase: authDatabase(ctx.db),

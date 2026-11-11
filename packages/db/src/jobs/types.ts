@@ -39,6 +39,17 @@ export interface ScheduleOptions {
   tz?: string
 }
 
+/** The attempt a worker is running. */
+export interface JobAttempt {
+  id: string
+  /** 0 on the first run, then one more on each retry. */
+  retryCount: number
+  /** The last attempt is the one whose `retryCount` reaches it. */
+  retryLimit: number
+  /** Aborted when the job expires or the runner stops. */
+  signal: AbortSignal
+}
+
 export interface Jobs {
   /**
    * Creates `<name>__dead`, then `<name>` dead-lettering into it. A queue that already exists
@@ -50,7 +61,10 @@ export interface Jobs {
    * `singletonKey`. Throws if the job was not queued for any other reason.
    */
   send(name: string, data: object, options?: SendOptions): Promise<string | null>
-  work<T extends object>(name: string, handler: (data: T) => Promise<void>): Promise<void>
+  work<T extends object>(
+    name: string,
+    handler: (data: T, attempt: JobAttempt) => Promise<void>,
+  ): Promise<void>
   /** Every event published from now on is also sent to `queue` (which must be defined). */
   subscribe(event: string, queue: string): Promise<void>
   /** Sends `data` to every queue subscribed to `event`; none subscribed is not an error. */

@@ -8,6 +8,7 @@ import { type OrganizationId, toOrganizationId } from '../organization-id'
 import { organizationRoles, organizations, teamMembers, teams, users } from '../schema/index'
 import { filesScope } from './files'
 import { membersScope } from './members'
+import { tasksScope } from './tasks'
 import { usageScope } from './usage'
 import { workspacesScope } from './workspaces'
 
@@ -93,6 +94,7 @@ export function forOrganization(ctx: DataContext, id: string) {
     members: membersScope(ctx, organizationId),
     usage,
     files,
+    tasks: tasksScope(ctx, organizationId),
     workspaces: workspacesScope(ctx, organizationId, files),
   }
 }

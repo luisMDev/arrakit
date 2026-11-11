@@ -47,8 +47,11 @@ export async function pgBossJobs(
       return id
     },
     async work(name, handler) {
-      await boss.work<object>(name, { pollingIntervalSeconds: 2, batchSize: 1 }, async (jobs) => {
-        for (const job of jobs) await handler(job.data as never)
+      const options = { pollingIntervalSeconds: 2, batchSize: 1, includeMetadata: true } as const
+      await boss.work<object, unknown, typeof options>(name, options, async (jobs) => {
+        for (const { id, data, retryCount, retryLimit, signal } of jobs) {
+          await handler(data as never, { id, retryCount, retryLimit, signal })
+        }
       })
     },
     async subscribe(event, queue) {

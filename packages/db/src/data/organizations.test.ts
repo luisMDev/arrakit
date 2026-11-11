@@ -16,6 +16,7 @@ import {
   organizationRoles,
   organizations,
   sessions,
+  tasks,
   teamMembers,
   teams,
   usageLevels,
@@ -213,6 +214,13 @@ describe('organizations', () => {
           contentType: 'application/pdf',
           sizeBytes: 10,
           status: 'ready',
+        })
+        await data.db.insert(tasks).values({
+          organizationId: id,
+          workspaceId: workspace!.id,
+          kind: 'workspace.export',
+          requestedBy: organization.owner,
+          maxAttempts: 1,
         })
         return id
       }

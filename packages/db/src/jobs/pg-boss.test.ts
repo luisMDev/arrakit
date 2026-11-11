@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { pgBossJobs } from './pg-boss'
 import { consoleLog } from '../context'
-import { type JobsRuntime, WORKER_RETRY_POLICY, deadLetterOf } from './types'
+import { type JobAttempt, type JobsRuntime, WORKER_RETRY_POLICY, deadLetterOf } from './types'
 
 /**
  * The real pg-boss runtime (packages/db/src/jobs/pg-boss.ts), not a fake. It always runs on PGlite
@@ -108,6 +108,26 @@ describe.each(targets)('pgBossJobs on $name', (target) => {
     expect(attempts).toBe(2)
     await waitFor(async () => (await jobsOn(deadLetterOf(queue))).length > 0)
     expect((await jobsOn(deadLetterOf(queue))).map((job) => job.data)).toEqual([{ n: 1 }])
+  }, 30_000)
+
+  it('hands the worker the attempt it runs: id, retry count and limit, and an abort signal', async () => {
+    const queue = queueName()
+    await jobs.defineQueue(queue, { retryLimit: 1, retryDelay: 1, retryBackoff: false })
+    const attempts: JobAttempt[] = []
+    await jobs.work(queue, async (_data, attempt) => {
+      attempts.push(attempt)
+      if (attempts.length === 1) throw new Error('once')
+    })
+    const id = await jobs.send(queue, { n: 10 })
+    await waitFor(async () => (await stateOf(queue, id)) === 'completed')
+
+    expect(
+      attempts.map(({ id, retryCount, retryLimit }) => ({ id, retryCount, retryLimit })),
+    ).toEqual([
+      { id, retryCount: 0, retryLimit: 1 },
+      { id, retryCount: 1, retryLimit: 1 },
+    ])
+    expect(attempts.every((attempt) => attempt.signal instanceof AbortSignal)).toBe(true)
   }, 30_000)
 
   it('completes a job that fails once and then succeeds, and dead-letters nothing', async () => {

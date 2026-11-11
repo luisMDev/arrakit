@@ -17,6 +17,24 @@ export {
   type FileRow,
 } from './organization/files'
 export {
+  type ListedTask,
+  type NewTask,
+  type TaskCursor,
+  type TaskJob,
+  type TaskListOptions,
+  type TaskPage,
+  type TaskRow,
+  type TaskStatus,
+} from './organization/tasks'
+export type { StalledTask } from './data/tasks'
+export {
+  TASK_EVENTS,
+  type TaskEvent,
+  type TaskEventName,
+  type TaskEventPayloads,
+  type TaskFailedEvent,
+} from './tasks/events'
+export {
   FILE_EVENTS,
   type FileEvent,
   type FileEventName,
@@ -28,6 +46,7 @@ export { authDatabase } from './auth-database'
 export {
   STORAGE_PURGE_QUEUE,
   WORKER_RETRY_POLICY,
+  type JobAttempt,
   type Jobs,
   type QueuePolicy,
   type ScheduleOptions,

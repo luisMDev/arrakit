@@ -43,6 +43,13 @@
       "when": 1793697262958,
       "tag": "0005_spooky_mysterio",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794422096195,
+      "tag": "0006_mighty_ikaris",
+      "breakpoints": true
     }
   ]
 }

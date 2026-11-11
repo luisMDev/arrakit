@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import {
   DEFAULT_EXPIRE_IN_SECONDS,
   deadLetterOf,
+  type JobAttempt,
   type JobsRuntime,
   type PublishOptions,
   type QueuePolicy,
@@ -31,14 +32,18 @@ export interface ScheduledJob {
 
 export interface MemoryJobs extends JobsRuntime {
   queues: Map<string, Required<QueuePolicy>>
-  workers: Map<string, (data: object) => Promise<void>>
+  /** Without `attempt`, a first attempt on the queue's retry limit. */
+  workers: Map<string, (data: object, attempt?: JobAttempt) => Promise<void>>
   sent: SentJob[]
   published: PublishedEvent[]
   /** Queues by event. */
   subscriptions: Map<string, Set<string>>
   schedules: Map<string, ScheduledJob>
-  /** Runs the registered worker on every job of `name` not run yet, ignoring `startAfter`. */
-  run(name: string): Promise<void>
+  /**
+   * Runs the registered worker on every job of `name` not run yet, ignoring `startAfter`, as
+   * attempt `retryCount` (0 when absent).
+   */
+  run(name: string, attempt?: { retryCount?: number }): Promise<void>
 }
 
 /**
@@ -47,6 +52,12 @@ export interface MemoryJobs extends JobsRuntime {
  */
 export function memoryJobs(): MemoryJobs {
   let stopped = false
+  const attemptOf = (name: string, id: string, retryCount: number): JobAttempt => ({
+    id,
+    retryCount,
+    retryLimit: fake.queues.get(name)?.retryLimit ?? 0,
+    signal: new AbortController().signal,
+  })
   const done = new Set<string>()
   const fake: MemoryJobs = {
     queues: new Map(),
@@ -68,7 +79,9 @@ export function memoryJobs(): MemoryJobs {
       return id
     },
     async work(name, handler) {
-      fake.workers.set(name, handler as (data: object) => Promise<void>)
+      fake.workers.set(name, (data, attempt) =>
+        handler(data as never, attempt ?? attemptOf(name, randomUUID(), 0)),
+      )
     },
     async subscribe(event, queue) {
       const queues = fake.subscriptions.get(event) ?? new Set()
@@ -87,12 +100,12 @@ export function memoryJobs(): MemoryJobs {
     async unschedule(name) {
       fake.schedules.delete(name)
     },
-    async run(name) {
+    async run(name, { retryCount = 0 } = {}) {
       const worker = fake.workers.get(name)
       if (!worker) throw new Error(`no worker for ${name}`)
       for (const job of fake.sent) {
         if (job.name !== name || done.has(job.id)) continue
-        await worker(job.data)
+        await worker(job.data, attemptOf(name, job.id, retryCount))
         done.add(job.id)
       }
     },
