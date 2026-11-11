@@ -18,6 +18,8 @@ import {
   trackedJob,
 } from './tracked-job'
 
+const HEARTBEAT_MS = 20
+
 type Step = (context: TaskContext) => Promise<Record<string, unknown> | void>
 
 describe('tracked jobs', () => {
@@ -41,7 +43,11 @@ describe('tracked jobs', () => {
 
   beforeAll(async () => {
     data = await openTestData()
-    await registerJobs([trackedJob(exporter, () => clock)], { data, log, errors })
+    await registerJobs([trackedJob(exporter, { now: () => clock, heartbeatMs: HEARTBEAT_MS })], {
+      data,
+      log,
+      errors,
+    })
   })
   beforeEach(async () => {
     step = async () => {}
@@ -145,6 +151,24 @@ describe('tracked jobs', () => {
     }
     await data.jobs.run('test-export')
     expect(seen).toEqual([1, 1, 3, 10])
+  })
+
+  it('marks the running task alive while the handler works, and stops once it is done', async () => {
+    const f = await organization('cypress')
+    const task = await f.start()
+    const beats: Date[] = []
+    step = async () => {
+      for (let i = 0; i < 3; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_MS * 2))
+        beats.push((await f.tasks.get(task.id))!.updatedAt)
+      }
+    }
+    await data.jobs.run('test-export')
+    expect(new Set(beats.map(Number)).size).toBe(3)
+
+    const settled = (await f.tasks.get(task.id))!.updatedAt
+    await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_MS * 3))
+    expect((await f.tasks.get(task.id))!.updatedAt).toEqual(settled)
   })
 
   it('waits as queued after a failed attempt, then retries it, reporting the error', async () => {

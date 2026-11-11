@@ -164,6 +164,16 @@ describe('organization tasks', () => {
     expect(await f.tasks.progress(row.id, 2.7, 4)).toMatchObject({ progressDone: 2 })
   })
 
+  it('keeps a running task alive with a heartbeat, and only a running one', async () => {
+    const f = await organizationOf('hornbeam')
+    const row = await f.tasks.start(f.task())
+    expect(await f.tasks.heartbeat(row.id)).toBe(false)
+    await f.tasks.begin(row.id, 0)
+    advance(minutes(5))
+    expect(await f.tasks.heartbeat(row.id)).toBe(true)
+    expect((await f.tasks.get(row.id))!.updatedAt).toEqual(clock)
+  })
+
   it('goes back to queued between attempts and keeps its first start', async () => {
     const f = await organizationOf('ginkgo')
     const row = await f.tasks.start(f.task())

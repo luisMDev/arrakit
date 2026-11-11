@@ -235,6 +235,16 @@ export function tasksScope(ctx: DataContext, organizationId: OrganizationId) {
       })
     },
 
+    /** Marks a running task alive without changing what it shows; false when it is not running. */
+    heartbeat: async (id: string): Promise<boolean> => {
+      const [row] = await db
+        .update(tasks)
+        .set({ updatedAt: ctx.now() })
+        .where(and(byId(id), eq(tasks.status, 'running')))
+        .returning({ id: tasks.id })
+      return row !== undefined
+    },
+
     /** Running becomes succeeded, with its work all done, and task.succeeded is published. */
     succeed: (id: string, result?: Record<string, unknown>): Promise<TaskRow | undefined> =>
       transaction(db, async (tx) => {

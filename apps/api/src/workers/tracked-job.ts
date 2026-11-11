@@ -21,6 +21,8 @@ export class TaskError extends Error {
 }
 
 export const PROGRESS_INTERVAL_MS = 1000
+/** How often a running task is marked alive, whether or not it reports progress. */
+export const HEARTBEAT_INTERVAL_MS = 60_000
 
 export interface TaskContext extends JobContext {
   task: { id: string; organizationId: string; attempt: number }
@@ -96,7 +98,10 @@ function progressOf(tasks: OrganizationScope['tasks'], taskId: string, now: () =
  * attempt fails it; a TaskError fails it at once; an input the schema rejects fails it and is
  * dead-lettered.
  */
-export function trackedJob(tracked: TrackedJobDefinition, now = Date.now): JobDefinition {
+export function trackedJob(
+  tracked: TrackedJobDefinition,
+  { now = Date.now, heartbeatMs = HEARTBEAT_INTERVAL_MS } = {},
+): JobDefinition {
   return defineJob({
     name: tracked.name,
     schema: taskJobSchema,
@@ -119,6 +124,11 @@ export function trackedJob(tracked: TrackedJobDefinition, now = Date.now): JobDe
       const task = await tasks.begin(taskId, attempt.retryCount)
       if (!task) return
 
+      const heartbeat = setInterval(() => {
+        tasks.heartbeat(taskId).catch((err: unknown) => {
+          log.error({ err, taskId, organizationId }, 'task heartbeat not written')
+        })
+      }, heartbeatMs)
       try {
         const result = await tracked.handler(parsed.data, {
           ...context,
@@ -138,6 +148,8 @@ export function trackedJob(tracked: TrackedJobDefinition, now = Date.now): JobDe
           ? tasks.fail(taskId, TASK_ERRORS.unexpected)
           : tasks.retrying(taskId, TASK_ERRORS.unexpected))
         throw err
+      } finally {
+        clearInterval(heartbeat)
       }
     },
   })
