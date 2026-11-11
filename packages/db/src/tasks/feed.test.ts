@@ -1,9 +1,17 @@
+import type { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { transaction } from '../connection'
 import { consoleLog } from '../context'
 import { type TestData, insertOrganization, insertUser, openTestData } from '../testing'
-import { TASK_CHANNEL, type TaskFeedListener, type TaskNotice, postgresTaskFeed } from './feed'
+import {
+  FEED_NOT_RECEIVING,
+  TASK_CHANNEL,
+  type TaskFeedListener,
+  type TaskNotice,
+  pgliteTaskFeed,
+  postgresTaskFeed,
+} from './feed'
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
 
@@ -92,6 +100,13 @@ describe('task feed on PGlite', () => {
     expect(watcher.notices).toHaveLength(1)
   })
 
+  it('passes its probe when a notice sent through the database reaches it, and fails when none does', async () => {
+    await expect(data.taskFeed.probe()).resolves.toBeUndefined()
+    const feed = pgliteTaskFeed((data.db as unknown as { $client: PGlite }).$client, consoleLog)
+    await expect(feed.probe(async () => {}, 50)).rejects.toThrow(FEED_NOT_RECEIVING)
+    await feed.close()
+  })
+
   it('keeps telling the others when a listener throws', async () => {
     const f = await organization('elm')
     const watcher = recorder()
@@ -140,6 +155,10 @@ describe.runIf(url)('task feed on Postgres (DATABASE_URL)', () => {
       await notify()
       await settle()
       expect(watcher.notices).toHaveLength(2)
+
+      await expect(
+        feed.probe((payload) => admin.query('select pg_notify($1, $2)', [TASK_CHANNEL, payload])),
+      ).resolves.toBeUndefined()
     } finally {
       await feed.close()
       await admin.end()

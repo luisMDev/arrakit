@@ -12,6 +12,9 @@ const log = createLogger(loadLogEnv(process.env))
 async function main() {
   const deps = await depsFromEnv(process.env, log)
   await registerWorkers(deps)
+  deps.data.taskFeed.probe().catch((err: unknown) => {
+    log.error({ err }, 'task feed receives no notices; live Activity will lag')
+  })
   const mcp = mcpHandler(log)
   const app = createApp(deps, mcp)
   const server = serve({ fetch: app.fetch, port: deps.env.PORT }, (info) => {

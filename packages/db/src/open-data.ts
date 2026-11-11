@@ -17,7 +17,7 @@ import { forOrganization } from './organization/index'
 import { memoryStorage } from './storage/memory'
 import { s3Storage } from './storage/s3'
 import type { Storage } from './storage/types'
-import { type TaskFeed, pgliteTaskFeed, postgresTaskFeed } from './tasks/feed'
+import { TASK_CHANNEL, type TaskFeed, pgliteTaskFeed, postgresTaskFeed } from './tasks/feed'
 
 export interface OpenDataOptions {
   /** Replace the storage implementation (tests). */
@@ -35,6 +35,8 @@ export interface HealthReport {
   postgres: ProbeState
   storage: ProbeState
   queue: ProbeState
+  /** Whether task changes reach the task feed (live Activity). */
+  taskFeed: ProbeState
 }
 
 const PROBE_TIMEOUT_MS = 3000
@@ -59,14 +61,19 @@ async function probe(
   }
 }
 
-export async function health(ctx: DataContext): Promise<HealthReport> {
-  const [postgres, storage, queue] = await Promise.all([
+/** Sends a test notice through the connection task changes are written on. */
+const probeTaskFeed = (ctx: DataContext, taskFeed: TaskFeed) =>
+  taskFeed.probe((payload) => ctx.db.execute(sql`select pg_notify(${TASK_CHANNEL}, ${payload})`))
+
+export async function health(ctx: DataContext, taskFeed: TaskFeed): Promise<HealthReport> {
+  const [postgres, storage, queue, feed] = await Promise.all([
     probe(ctx, 'postgres', () => ctx.db.execute(sql`select 1`)),
     probe(ctx, 'storage', (signal) => ctx.storage.probe(signal)),
     probe(ctx, 'queue', (signal) => ctx.jobs.probe(signal)),
+    probe(ctx, 'taskFeed', () => probeTaskFeed(ctx, taskFeed)),
   ])
-  const ok = postgres === 'up' && storage === 'up' && queue === 'up'
-  return { status: ok ? 'ok' : 'error', postgres, storage, queue }
+  const ok = postgres === 'up' && storage === 'up' && queue === 'up' && feed === 'up'
+  return { status: ok ? 'ok' : 'error', postgres, storage, queue, taskFeed: feed }
 }
 
 function buildData(
@@ -86,9 +93,13 @@ function buildData(
     forOrganization: (id: string) => forOrganization(ctx, id),
     jobs: ctx.jobs,
     /** Changes to tasks as they commit. */
-    taskFeed: { subscribe: taskFeed.subscribe } satisfies Pick<TaskFeed, 'subscribe'>,
+    taskFeed: {
+      subscribe: taskFeed.subscribe,
+      /** Rejects with what to fix when task changes do not reach the feed. */
+      probe: () => probeTaskFeed(ctx, taskFeed),
+    },
     authDatabase: authDatabase(ctx.db),
-    health: () => health(ctx),
+    health: () => health(ctx, taskFeed),
     close,
   }
 }

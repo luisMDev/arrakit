@@ -13,11 +13,23 @@ describe('api app', () => {
   it('answers /health with every probe up', async () => {
     const res = await t.request('/health')
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ status: 'ok', postgres: 'up', storage: 'up', queue: 'up' })
+    expect(await res.json()).toEqual({
+      status: 'ok',
+      postgres: 'up',
+      storage: 'up',
+      queue: 'up',
+      taskFeed: 'up',
+    })
   })
 
   it('answers /health 503 with the same shape when a probe is down', async () => {
-    const down = { status: 'error', postgres: 'up', storage: 'down', queue: 'up' } as const
+    const down = {
+      status: 'error',
+      postgres: 'up',
+      storage: 'up',
+      queue: 'up',
+      taskFeed: 'down',
+    } as const
     vi.spyOn(t.data, 'health').mockResolvedValueOnce(down)
     const res = await t.request('/health')
     expect(res.status).toBe(503)

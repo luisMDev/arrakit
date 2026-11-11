@@ -4,10 +4,11 @@ import { afterAll, afterEach, beforeAll, describe, expect, expectTypeOf, it, vi 
 import { connect, transaction } from './connection'
 import { consoleLog } from './context'
 import { WORKER_RETRY_POLICY } from './jobs/types'
-import type { Data, ScopedData } from './open-data'
+import { type Data, type ScopedData, health } from './open-data'
 import { organizations } from './schema/index'
 import { memoryStorage } from './storage/memory'
 import type { Storage } from './storage/types'
+import { FEED_NOT_RECEIVING, type TaskFeed } from './tasks/feed'
 import {
   type TestData,
   insertMember,
@@ -32,6 +33,7 @@ describe('openTestData', () => {
       postgres: 'up',
       storage: 'up',
       queue: 'up',
+      taskFeed: 'up',
     })
   })
 
@@ -82,6 +84,7 @@ describe('health', () => {
       postgres: 'up',
       storage: 'up',
       queue: 'up',
+      taskFeed: 'up',
     })
     await data.close()
   })
@@ -100,6 +103,7 @@ describe('health', () => {
       postgres: 'up',
       storage: 'down',
       queue: 'up',
+      taskFeed: 'up',
     })
     expect(log.error).toHaveBeenCalledWith(
       { err: expect.objectContaining({ message: 'NoSuchBucket' }), probe: 'storage' },
@@ -116,6 +120,32 @@ describe('health', () => {
     const report = await data.health()
     expect(report.queue).toBe('down')
     expect(report.status).toBe('error')
+  })
+
+  it('reports the task feed down, with what to fix, when notices do not reach it', async () => {
+    const log = { info: vi.fn(), error: vi.fn() }
+    const data = await openTestData({ log })
+    const deaf: TaskFeed = {
+      subscribe: async () => () => {},
+      probe: async () => {
+        throw new Error(FEED_NOT_RECEIVING)
+      },
+      close: async () => {},
+    }
+    const ctx = { db: data.db, jobs: data.jobs, storage: data.storage, now: () => new Date(), log }
+    expect(await health(ctx, deaf)).toEqual({
+      status: 'error',
+      postgres: 'up',
+      storage: 'up',
+      queue: 'up',
+      taskFeed: 'down',
+    })
+    expect(log.error).toHaveBeenCalledWith(
+      { err: expect.objectContaining({ message: FEED_NOT_RECEIVING }), probe: 'taskFeed' },
+      'health probe down',
+    )
+    await expect(data.taskFeed.probe()).resolves.toBeUndefined()
+    await data.close()
   })
 
   it('gives up on a hanging probe after about three seconds', async () => {

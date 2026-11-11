@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import type { PGlite } from '@electric-sql/pglite'
 import pg from 'pg'
 
@@ -25,10 +27,19 @@ export interface TaskFeedListener {
 export interface TaskFeed {
   /** Resolves once listening; the function it resolves to stops the listener. */
   subscribe(organizationId: string, listener: TaskFeedListener): Promise<() => void>
+  /**
+   * Resolves once a test notice that `send` publishes on TASK_CHANNEL (through the connection the
+   * changes are written on) reaches the feed. Rejects when none does within `timeoutMs`: notices
+   * are then lost, as when the feed listens through a pooler in transaction mode.
+   */
+  probe(send: (payload: string) => Promise<unknown>, timeoutMs?: number): Promise<void>
   close(): Promise<void>
 }
 
 const MAX_RETRY_MS = 30_000
+export const FEED_PROBE_TIMEOUT_MS = 2500
+export const FEED_NOT_RECEIVING =
+  '[data] the task feed receives no notices: set DATABASE_DIRECT_URL to a Postgres URL without a pooler in transaction mode'
 
 function listeners(log: DataLog) {
   const byOrganization = new Map<string, Set<TaskFeedListener>>()
@@ -41,7 +52,29 @@ function listeners(log: DataLog) {
       }
     }
   }
+  const probes = new Map<string, () => void>()
   return {
+    /** Publishes a test notice with `send` once `listening`, and waits for it. */
+    async probe(
+      listening: () => Promise<unknown>,
+      send: (payload: string) => Promise<unknown>,
+      timeoutMs: number,
+    ) {
+      await listening()
+      const token = randomUUID()
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const arrived = new Promise<void>((resolve, reject) => {
+        probes.set(token, resolve)
+        timer = setTimeout(() => reject(new Error(FEED_NOT_RECEIVING)), timeoutMs)
+      })
+      try {
+        await send(JSON.stringify({ probe: token }))
+        await arrived
+      } finally {
+        clearTimeout(timer)
+        probes.delete(token)
+      }
+    },
     add(organizationId: string, listener: TaskFeedListener) {
       const set = byOrganization.get(organizationId) ?? new Set()
       byOrganization.set(organizationId, set.add(listener))
@@ -51,11 +84,15 @@ function listeners(log: DataLog) {
       }
     },
     deliver(payload: string | undefined) {
-      let notice: TaskNotice
+      let notice: TaskNotice & { probe?: string }
       try {
-        notice = JSON.parse(payload ?? '') as TaskNotice
+        notice = JSON.parse(payload ?? '') as TaskNotice & { probe?: string }
       } catch (err) {
         log.error({ err }, 'task notice unreadable')
+        return
+      }
+      if (notice.probe !== undefined) {
+        probes.get(notice.probe)?.()
         return
       }
       each(
@@ -76,13 +113,17 @@ function listeners(log: DataLog) {
 export function pgliteTaskFeed(db: PGlite, log: DataLog): TaskFeed {
   const fanOut = listeners(log)
   let listening: Promise<() => Promise<void>> | undefined
+  const listen = () => {
+    listening ??= db.listen(TASK_CHANNEL, (payload) => fanOut.deliver(payload))
+    return listening
+  }
   return {
     async subscribe(organizationId, listener) {
       const remove = fanOut.add(organizationId, listener)
-      listening ??= db.listen(TASK_CHANNEL, (payload) => fanOut.deliver(payload))
-      await listening
+      await listen()
       return remove
     },
+    probe: (send, timeoutMs = FEED_PROBE_TIMEOUT_MS) => fanOut.probe(listen, send, timeoutMs),
     async close() {
       const unlisten = await listening
       if (unlisten && !db.closed) await unlisten()
@@ -168,6 +209,7 @@ export function postgresTaskFeed(
       }
       return remove
     },
+    probe: (send, timeoutMs = FEED_PROBE_TIMEOUT_MS) => fanOut.probe(listen, send, timeoutMs),
     async close() {
       closed = true
       if (retry) clearTimeout(retry)
