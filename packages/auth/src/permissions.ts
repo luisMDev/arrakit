@@ -12,6 +12,7 @@ export const statements = {
   usage: ['read'],
   workspace: ['read', 'create', 'update', 'delete'],
   file: ['read', 'upload', 'update', 'delete'],
+  artifact: ['read', 'create', 'update', 'delete'],
   /** Everyone sees the tasks they started; `read` sees every task of the organization. */
   task: ['read'],
 } as const
@@ -28,6 +29,7 @@ export const roles = {
     usage: ['read'],
     workspace: statements.workspace,
     file: statements.file,
+    artifact: statements.artifact,
     task: statements.task,
   }),
   admin: ac.newRole({
@@ -36,6 +38,7 @@ export const roles = {
     usage: ['read'],
     workspace: statements.workspace,
     file: statements.file,
+    artifact: statements.artifact,
     task: statements.task,
   }),
   member: ac.newRole({
@@ -43,6 +46,7 @@ export const roles = {
     usage: ['read'],
     workspace: ['read', 'create'],
     file: ['read', 'upload'],
+    artifact: ['read', 'create'],
   }),
 }
 

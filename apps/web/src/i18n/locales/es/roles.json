@@ -41,6 +41,7 @@
         "usage": "Uso",
         "workspace": "Espacios de trabajo",
         "file": "Archivos",
+        "artifact": "Artefactos",
         "task": "Tareas"
       },
       "actions": {
