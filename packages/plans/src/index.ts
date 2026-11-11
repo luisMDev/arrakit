@@ -215,3 +215,4 @@ export function metricBalance(metric: Metric, sums: MetricSums, level = 0): Metr
 }
 
 export * from './files'
+export * from './artifacts'
