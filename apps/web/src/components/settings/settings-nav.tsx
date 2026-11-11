@@ -4,6 +4,7 @@ import {
   Building2,
   CreditCard,
   Gauge,
+  Library,
   Lock,
   type LucideIcon,
   ShieldCheck,
@@ -26,6 +27,7 @@ import { SETTINGS_SECTIONS, type SettingsSection, useSettingsSections } from './
 const SECTION_ICONS: Record<SettingsSection, LucideIcon> = {
   account: UserRound,
   general: Building2,
+  library: Library,
   usage: Gauge,
   members: Users,
   teams: UsersRound,

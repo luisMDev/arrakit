@@ -2,10 +2,12 @@
   "settings": {
     "back": "Volver",
     "title": "Ajustes",
+    "signedInAs": "Sesión iniciada como",
     "mySettings": "Mis ajustes",
     "account": "Cuenta",
     "organizationSettings": "Ajustes de la organización",
     "general": "General",
+    "library": "Biblioteca",
     "usage": "Consumo",
     "members": "Miembros",
     "teams": "Equipos",

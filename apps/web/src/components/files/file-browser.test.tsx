@@ -41,7 +41,7 @@ const renderBrowser = (
   workspaceId?: string,
 ) => {
   return renderAt(<FileBrowser workspaceId={workspaceId} />, {
-    url: '/app/files',
+    url: '/app/settings',
     me: meAs({ role, ...(permissions ? { permissions } : {}) }),
   })
 }

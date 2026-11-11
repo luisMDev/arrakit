@@ -21,7 +21,6 @@ import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppSplatRouteImport } from './routes/app/$'
 import { Route as AppBillingRouteImport } from './routes/app/billing'
 import { Route as AppCheckoutRouteImport } from './routes/app/checkout'
-import { Route as AppFilesRouteImport } from './routes/app/files'
 import { Route as AppMembersRouteImport } from './routes/app/members'
 import { Route as AppPlansRouteImport } from './routes/app/plans'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
@@ -31,6 +30,7 @@ import { Route as JoinInvitationIdRouteImport } from './routes/join.$invitationI
 import { Route as OauthConsentRouteImport } from './routes/oauth/consent'
 import { Route as OauthSigninRouteImport } from './routes/oauth/signin'
 import { Route as AppWorkspacesWorkspaceIdRouteImport } from './routes/app/workspaces_.$workspaceId'
+import { Route as AppWorkspacesWorkspaceIdLibraryRouteImport } from './routes/app/workspaces_.$workspaceId_.library'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -92,11 +92,6 @@ const AppCheckoutRoute = AppCheckoutRouteImport.update({
   path: '/checkout',
   getParentRoute: () => AppRoute,
 } as any)
-const AppFilesRoute = AppFilesRouteImport.update({
-  id: '/files',
-  path: '/files',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppMembersRoute = AppMembersRouteImport.update({
   id: '/members',
   path: '/members',
@@ -143,6 +138,12 @@ const AppWorkspacesWorkspaceIdRoute =
     path: '/workspaces/$workspaceId',
     getParentRoute: () => AppRoute,
   } as any)
+const AppWorkspacesWorkspaceIdLibraryRoute =
+  AppWorkspacesWorkspaceIdLibraryRouteImport.update({
+    id: '/workspaces_/$workspaceId_/library',
+    path: '/workspaces/$workspaceId/library',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -156,7 +157,6 @@ export interface FileRoutesByFullPath {
   '/app/$': typeof AppSplatRoute
   '/app/billing': typeof AppBillingRoute
   '/app/checkout': typeof AppCheckoutRoute
-  '/app/files': typeof AppFilesRoute
   '/app/members': typeof AppMembersRoute
   '/app/plans': typeof AppPlansRoute
   '/app/settings': typeof AppSettingsRoute
@@ -167,6 +167,7 @@ export interface FileRoutesByFullPath {
   '/oauth/signin': typeof OauthSigninRoute
   '/app/': typeof AppIndexRoute
   '/app/workspaces/$workspaceId': typeof AppWorkspacesWorkspaceIdRoute
+  '/app/workspaces/$workspaceId/library': typeof AppWorkspacesWorkspaceIdLibraryRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -179,7 +180,6 @@ export interface FileRoutesByTo {
   '/app/$': typeof AppSplatRoute
   '/app/billing': typeof AppBillingRoute
   '/app/checkout': typeof AppCheckoutRoute
-  '/app/files': typeof AppFilesRoute
   '/app/members': typeof AppMembersRoute
   '/app/plans': typeof AppPlansRoute
   '/app/settings': typeof AppSettingsRoute
@@ -190,6 +190,7 @@ export interface FileRoutesByTo {
   '/oauth/signin': typeof OauthSigninRoute
   '/app': typeof AppIndexRoute
   '/app/workspaces/$workspaceId': typeof AppWorkspacesWorkspaceIdRoute
+  '/app/workspaces/$workspaceId/library': typeof AppWorkspacesWorkspaceIdLibraryRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -204,7 +205,6 @@ export interface FileRoutesById {
   '/app/$': typeof AppSplatRoute
   '/app/billing': typeof AppBillingRoute
   '/app/checkout': typeof AppCheckoutRoute
-  '/app/files': typeof AppFilesRoute
   '/app/members': typeof AppMembersRoute
   '/app/plans': typeof AppPlansRoute
   '/app/settings': typeof AppSettingsRoute
@@ -215,6 +215,7 @@ export interface FileRoutesById {
   '/oauth/signin': typeof OauthSigninRoute
   '/app/': typeof AppIndexRoute
   '/app/workspaces_/$workspaceId': typeof AppWorkspacesWorkspaceIdRoute
+  '/app/workspaces_/$workspaceId_/library': typeof AppWorkspacesWorkspaceIdLibraryRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -230,7 +231,6 @@ export interface FileRouteTypes {
     | '/app/$'
     | '/app/billing'
     | '/app/checkout'
-    | '/app/files'
     | '/app/members'
     | '/app/plans'
     | '/app/settings'
@@ -241,6 +241,7 @@ export interface FileRouteTypes {
     | '/oauth/signin'
     | '/app/'
     | '/app/workspaces/$workspaceId'
+    | '/app/workspaces/$workspaceId/library'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -253,7 +254,6 @@ export interface FileRouteTypes {
     | '/app/$'
     | '/app/billing'
     | '/app/checkout'
-    | '/app/files'
     | '/app/members'
     | '/app/plans'
     | '/app/settings'
@@ -264,6 +264,7 @@ export interface FileRouteTypes {
     | '/oauth/signin'
     | '/app'
     | '/app/workspaces/$workspaceId'
+    | '/app/workspaces/$workspaceId/library'
   id:
     | '__root__'
     | '/'
@@ -277,7 +278,6 @@ export interface FileRouteTypes {
     | '/app/$'
     | '/app/billing'
     | '/app/checkout'
-    | '/app/files'
     | '/app/members'
     | '/app/plans'
     | '/app/settings'
@@ -288,6 +288,7 @@ export interface FileRouteTypes {
     | '/oauth/signin'
     | '/app/'
     | '/app/workspaces_/$workspaceId'
+    | '/app/workspaces_/$workspaceId_/library'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -390,13 +391,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCheckoutRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/files': {
-      id: '/app/files'
-      path: '/files'
-      fullPath: '/app/files'
-      preLoaderRoute: typeof AppFilesRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/app/members': {
       id: '/app/members'
       path: '/members'
@@ -460,6 +454,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspacesWorkspaceIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/workspaces_/$workspaceId_/library': {
+      id: '/app/workspaces_/$workspaceId_/library'
+      path: '/workspaces/$workspaceId/library'
+      fullPath: '/app/workspaces/$workspaceId/library'
+      preLoaderRoute: typeof AppWorkspacesWorkspaceIdLibraryRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -467,7 +468,6 @@ interface AppRouteChildren {
   AppSplatRoute: typeof AppSplatRoute
   AppBillingRoute: typeof AppBillingRoute
   AppCheckoutRoute: typeof AppCheckoutRoute
-  AppFilesRoute: typeof AppFilesRoute
   AppMembersRoute: typeof AppMembersRoute
   AppPlansRoute: typeof AppPlansRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -475,13 +475,13 @@ interface AppRouteChildren {
   AppWorkspacesRoute: typeof AppWorkspacesRoute
   AppIndexRoute: typeof AppIndexRoute
   AppWorkspacesWorkspaceIdRoute: typeof AppWorkspacesWorkspaceIdRoute
+  AppWorkspacesWorkspaceIdLibraryRoute: typeof AppWorkspacesWorkspaceIdLibraryRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppSplatRoute: AppSplatRoute,
   AppBillingRoute: AppBillingRoute,
   AppCheckoutRoute: AppCheckoutRoute,
-  AppFilesRoute: AppFilesRoute,
   AppMembersRoute: AppMembersRoute,
   AppPlansRoute: AppPlansRoute,
   AppSettingsRoute: AppSettingsRoute,
@@ -489,6 +489,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppWorkspacesRoute: AppWorkspacesRoute,
   AppIndexRoute: AppIndexRoute,
   AppWorkspacesWorkspaceIdRoute: AppWorkspacesWorkspaceIdRoute,
+  AppWorkspacesWorkspaceIdLibraryRoute: AppWorkspacesWorkspaceIdLibraryRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

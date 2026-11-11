@@ -1,14 +1,19 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { Plus } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { planLabel } from '#/components/billing/plan-copy'
 import { Button } from '#/components/ui/button'
+import { WorkspaceFormDialog } from '#/components/workspaces/workspace-form-dialog'
 import { useMember } from '#/lib/current-user'
 
-/** The first screen once signed in: where the product's own dashboard starts. */
+/** Home while the organization has no workspace to open; with one, Home is that workspace's. */
 export function HomePage() {
   const { t } = useTranslation()
-  const { user, name, managesMembers, managesBilling } = useMember()
+  const navigate = useNavigate()
+  const { user, name, can, managesMembers, managesBilling } = useMember()
+  const [creating, setCreating] = useState(false)
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6">
       <div className="flex flex-col gap-2">
@@ -21,7 +26,13 @@ export function HomePage() {
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button asChild>
+        {can({ workspace: ['create'] }) ? (
+          <Button onClick={() => setCreating(true)}>
+            <Plus />
+            {t('workspaces.new')}
+          </Button>
+        ) : null}
+        <Button asChild variant="outline">
           <Link to="/app/settings">{t('home.settings')}</Link>
         </Button>
         {managesMembers ? (
@@ -37,6 +48,16 @@ export function HomePage() {
           </Button>
         ) : null}
       </div>
+      <WorkspaceFormDialog
+        open={creating}
+        onOpenChange={setCreating}
+        onCreated={(workspace) =>
+          void navigate({
+            to: '/app/workspaces/$workspaceId',
+            params: { workspaceId: workspace.id },
+          })
+        }
+      />
     </main>
   )
 }

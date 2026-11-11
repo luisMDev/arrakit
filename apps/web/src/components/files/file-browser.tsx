@@ -59,7 +59,7 @@ export function FileBrowser({ workspaceId }: { workspaceId?: string }) {
       {files.data?.length === 0 ? (
         <EmptyState icon={FileText} title={t(`${K}.empty`)} />
       ) : files.data ? (
-        <Table aria-label={t(`${K}.title`)}>
+        <Table aria-label={t(`${K}.table`)}>
           <TableHeader>
             <TableRow>
               <TableHead>{t(`${K}.name`)}</TableHead>

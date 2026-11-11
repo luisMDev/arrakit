@@ -31,7 +31,9 @@
     "deleted": "{{workspace}} eliminado.",
     "notDeleted": "No se pudo eliminar el espacio de trabajo. Inténtalo de nuevo.",
     "back": "Todos los espacios",
-    "files": "Archivos",
-    "notLoadedOne": "No se pudo cargar el espacio de trabajo. Recarga la página."
+    "library": "Biblioteca",
+    "notLoadedOne": "No se pudo cargar el espacio de trabajo. Recarga la página.",
+    "home": "Un espacio de trabajo de {{organization}}. Aquí empieza tu producto.",
+    "libraryHint": "Archivos compartidos en {{workspace}}."
   }
 }

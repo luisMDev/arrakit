@@ -68,7 +68,7 @@ describe('SettingsPage with its sidebar', () => {
     ).toEqual(['Account'])
     expect(organizationLinks()).toEqual([
       'General',
-      'Usage',
+      'Library',
       'Members',
       'Teams',
       'Roles',
@@ -103,16 +103,52 @@ describe('SettingsPage with its sidebar', () => {
     },
   )
 
+  it.each<Me['role']>(['owner', 'admin'])(
+    'hides Usage from an %s, who reads it in Billing and gets Account for section usage',
+    async (role) => {
+      renderAs(role, 'usage')
+      expect(await screen.findByRole('heading', { level: 2, name: 'Account' })).toBeInTheDocument()
+      expect(within(nav()).queryByRole('link', { name: 'Usage' })).toBeNull()
+      expect(within(nav()).getByRole('link', { name: 'Billing' })).toBeInTheDocument()
+    },
+  )
+
+  it('opens Usage for a member', async () => {
+    renderAs('member', 'usage')
+    expect(await screen.findByRole('heading', { level: 2, name: 'Usage' })).toBeInTheDocument()
+  })
+
   it('shows a member what their role reads: no Members, Roles or Billing', async () => {
     renderAs('member')
     await screen.findByRole('heading', { level: 2, name: 'Account' })
-    expect(organizationLinks()).toEqual(['General', 'Usage', 'Teams', 'Security and data'])
+    expect(organizationLinks()).toEqual([
+      'General',
+      'Library',
+      'Usage',
+      'Teams',
+      'Security and data',
+    ])
   })
 
   it('shows a custom role the sections its permissions open', async () => {
     renderAs('finance', 'account', { billing: ['read'] })
     await screen.findByRole('heading', { level: 2, name: 'Account' })
     expect(organizationLinks()).toEqual(['General', 'Teams', 'Billing', 'Security and data'])
+  })
+
+  it("opens Library on the organization's files", async () => {
+    const listed = answer('files/list', [])
+    renderAs('member', 'library')
+    expect(await screen.findByRole('heading', { level: 2, name: 'Library' })).toBeInTheDocument()
+    expect(screen.getByText(/Documents shared by everyone in Acme/)).toBeInTheDocument()
+    expect(await screen.findByText('No files yet.')).toBeInTheDocument()
+    expect(listed).toEqual([{ input: {} }])
+  })
+
+  it('hides Library from a role without file read, who gets Account for it', async () => {
+    renderAs('auditor', 'library', { usage: ['read'] })
+    expect(await screen.findByRole('heading', { level: 2, name: 'Account' })).toBeInTheDocument()
+    expect(within(nav()).queryByRole('link', { name: 'Library' })).toBeNull()
   })
 
   it('opens Teams and Roles', async () => {

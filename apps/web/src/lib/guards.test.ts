@@ -7,7 +7,14 @@ import type { ChoiceSearch } from '#/lib/checkout-choice'
 import { orpc } from '#/lib/orpc'
 import { meAs, testQueryClient } from '#/test/rpc'
 
-import { canCheckout, requireAccount, requirePermission, skipWhenSignedIn } from './guards'
+import {
+  canCheckout,
+  requireAccount,
+  requirePermission,
+  skipWhenSignedIn,
+  toWorkspaceHome,
+} from './guards'
+import { rememberWorkspace } from './last-workspace'
 
 const ORG: NonNullable<Me['organization']> = {
   id: '0f8fad5b-d9cb-469f-a165-70867728950e',
@@ -169,6 +176,53 @@ describe('requirePermission', () => {
 
   it('sends a role without it Home', async () => {
     expect(await visit({ usage: ['read'] })).toMatchObject({ to: '/app' })
+  })
+})
+
+describe('toWorkspaceHome (/app)', () => {
+  const DEALS = { id: '7c9e6679-7425-40de-944b-e07fc1f90ae7', name: 'Deals' }
+  const RESEARCH = { id: '0f8fad5b-d9cb-469f-a165-708677289508', name: 'Research' }
+  const home = (id: string) => ({ to: '/app/workspaces/$workspaceId', params: { workspaceId: id } })
+
+  const visit = (answer: Answer, permissions: Me['permissions'] = { workspace: ['read'] }) => {
+    api(answer)
+    const queryClient = testQueryClient()
+    queryClient.setQueryData(orpc.me.get.queryOptions().queryKey, meAs({ permissions }))
+    return (async () => {
+      try {
+        await toWorkspaceHome({ context: { queryClient } })
+        return 'render'
+      } catch (err) {
+        if (isRedirect(err)) return { to: err.options.to, params: err.options.params }
+        throw err
+      }
+    })()
+  }
+
+  afterEach(() => localStorage.clear())
+
+  it('renders the general Home for an organization without workspaces', async () => {
+    expect(await visit({ status: 200, body: [] })).toBe('render')
+  })
+
+  it("opens the first workspace's Home", async () => {
+    expect(await visit({ status: 200, body: [DEALS, RESEARCH] })).toEqual(home(DEALS.id))
+  })
+
+  it('opens the workspace last opened on this device, while it still exists', async () => {
+    rememberWorkspace(ORG.id, RESEARCH.id)
+    expect(await visit({ status: 200, body: [DEALS, RESEARCH] })).toEqual(home(RESEARCH.id))
+    expect(await visit({ status: 200, body: [DEALS] })).toEqual(home(DEALS.id))
+  })
+
+  it('renders the general Home for a role that reads no workspaces, asking for none', async () => {
+    expect(await visit({ status: 200, body: [DEALS] }, { usage: ['read'] })).toBe('render')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('renders the general Home when the workspaces do not load, reporting it', async () => {
+    expect(await visit({ status: 500 })).toBe('render')
+    expect(reported).toHaveBeenCalled()
   })
 })
 

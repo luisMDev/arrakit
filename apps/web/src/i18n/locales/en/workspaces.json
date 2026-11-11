@@ -31,7 +31,9 @@
     "deleted": "{{workspace}} deleted.",
     "notDeleted": "Couldn't delete the workspace. Try again.",
     "back": "All workspaces",
-    "files": "Files",
-    "notLoadedOne": "Couldn't load the workspace. Reload the page."
+    "library": "Library",
+    "notLoadedOne": "Couldn't load the workspace. Reload the page.",
+    "home": "A workspace of {{organization}}. This is where your product starts.",
+    "libraryHint": "Files shared in {{workspace}}."
   }
 }

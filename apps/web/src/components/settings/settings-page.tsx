@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { AccountSection } from '#/components/settings/account-section'
 import { BillingSection } from '#/components/settings/billing-section'
 import { GeneralSection } from '#/components/settings/general-section'
+import { LibrarySection } from '#/components/settings/library-section'
 import { MembersSection } from '#/components/settings/members-section'
 import { RolesSection } from '#/components/settings/roles-section'
 import { SecuritySection } from '#/components/settings/security-section'
@@ -14,6 +15,7 @@ import { type SettingsSection, useSettingsSections } from './settings-sections'
 const SECTIONS = {
   account: AccountSection,
   general: GeneralSection,
+  library: LibrarySection,
   usage: UsageSection,
   members: MembersSection,
   teams: TeamsSection,

@@ -45,15 +45,17 @@ const workspaceForm = (t: TFunction) =>
 
 const EMPTY: WorkspaceInput = { name: '', description: '' }
 
-/** Creates a workspace, or edits `workspace` when given. */
+/** Creates a workspace, or edits `workspace` when given; `onCreated` gets the new one. */
 export function WorkspaceFormDialog({
   workspace,
   open,
   onOpenChange,
+  onCreated,
 }: {
   workspace?: Workspace
   open: boolean
   onOpenChange: (open: boolean) => void
+  onCreated?: (workspace: Workspace) => void
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -77,7 +79,10 @@ export function WorkspaceFormDialog({
 
   const create = useApiMutation({
     ...orpc.workspaces.create.mutationOptions(),
-    onSuccess: (saved) => done(saved, 'workspaces.created'),
+    onSuccess: async (saved) => {
+      await done(saved, 'workspaces.created')
+      onCreated?.(saved)
+    },
     meta: { failure: t('workspaces.notCreated') },
   })
   const update = useApiMutation({

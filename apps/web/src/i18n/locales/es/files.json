@@ -1,7 +1,8 @@
 {
   "files": {
-    "title": "Archivos",
-    "hint": "Documentos que comparte todo {{organization}}. Los archivos de cada espacio de trabajo están en su página.",
+    "title": "Biblioteca",
+    "hint": "Documentos que comparte todo {{organization}}. Cada espacio de trabajo tiene su propia biblioteca.",
+    "table": "Archivos",
     "empty": "Todavía no hay archivos.",
     "notLoaded": "No se pudieron cargar los archivos. Recarga la página.",
     "dropHint": "Arrastra archivos aquí o elígelos desde tu dispositivo.",

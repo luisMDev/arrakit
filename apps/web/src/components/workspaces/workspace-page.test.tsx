@@ -22,30 +22,26 @@ const renderPage = (permissions?: Record<string, string[]>) =>
   })
 
 describe('WorkspacePage', () => {
-  it('shows the workspace and its files', async () => {
+  it("is the workspace's Home: its name, what it is for and the way to its library", async () => {
     const asked = answer('workspaces/get', DEALS)
-    const listed = answer('files/list', [])
     renderPage()
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Deals' })).toBeInTheDocument()
     expect(screen.getByText('Open pipeline')).toBeInTheDocument()
-    expect(await screen.findByText('No files yet.')).toBeInTheDocument()
+    expect(screen.getByText(/A workspace of Acme\./)).toBeInTheDocument()
     expect(asked).toEqual([{ input: { id: DEALS.id } }])
-    expect(listed).toEqual([{ input: { workspaceId: DEALS.id } }])
-    expect(screen.getByRole('link', { name: 'All workspaces' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Library' })).toHaveAttribute(
       'href',
-      '/app/workspaces',
+      `/app/workspaces/${DEALS.id}/library`,
     )
   })
 
-  it('leaves the files out for a role without file read', async () => {
+  it('leaves the library out for a role without file read', async () => {
     answer('workspaces/get', DEALS)
-    const listed = answer('files/list', [])
     renderPage({ workspace: ['read'] })
 
     await screen.findByRole('heading', { level: 1, name: 'Deals' })
-    expect(screen.queryByRole('heading', { name: 'Files' })).toBeNull()
-    expect(listed).toEqual([])
+    expect(screen.queryByRole('link', { name: 'Library' })).toBeNull()
   })
 
   it('says why a workspace could not be loaded, and shows nothing of it', async () => {

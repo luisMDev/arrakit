@@ -1,7 +1,8 @@
 {
   "files": {
-    "title": "Files",
-    "hint": "Documents shared by everyone in {{organization}}. Workspace files are on each workspace's page.",
+    "title": "Library",
+    "hint": "Documents shared by everyone in {{organization}}. Each workspace keeps its own library.",
+    "table": "Files",
     "empty": "No files yet.",
     "notLoaded": "Couldn't load the files. Reload the page.",
     "dropHint": "Drag files here, or choose them from your device.",

@@ -2,10 +2,12 @@
   "settings": {
     "back": "Back",
     "title": "Settings",
+    "signedInAs": "Signed in as",
     "mySettings": "My settings",
     "account": "Account",
     "organizationSettings": "Organization settings",
     "general": "General",
+    "library": "Library",
     "usage": "Usage",
     "members": "Members",
     "teams": "Teams",

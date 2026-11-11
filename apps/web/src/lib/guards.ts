@@ -10,6 +10,7 @@ import { loadLanguage } from '#/i18n'
 import { statusOf } from '#/lib/api-errors'
 import { type ChoiceSearch, appLanding, checkoutChoice } from '#/lib/checkout-choice'
 import { grants } from '#/lib/current-user'
+import { lastWorkspace } from '#/lib/last-workspace'
 import { orpc } from '#/lib/orpc'
 import { searchText } from '#/lib/search-params'
 
@@ -71,6 +72,27 @@ export const requirePermission =
   ({ context }: Pick<GuardArgs, 'context'>) => {
     if (!grants(cachedMe(context.queryClient) ?? null, wanted)) throw redirect({ to: '/app' })
   }
+
+/**
+ * Home belongs to a workspace once the organization has one: the one last opened on this device,
+ * else the first. The general Home is for an organization without workspaces, or a role that
+ * reads none. `requireUser` loaded the person.
+ */
+export async function toWorkspaceHome({ context }: Pick<GuardArgs, 'context'>) {
+  const me = cachedMe(context.queryClient) ?? null
+  if (!me?.organization || !grants(me, { workspace: ['read'] })) return
+  const workspaces = await context.queryClient
+    .fetchQuery(orpc.workspaces.list.queryOptions())
+    .catch((err: unknown) => {
+      console.error('[toWorkspaceHome] listing the workspaces failed', err)
+      return []
+    })
+  const last = lastWorkspace(me.organization.id)
+  const workspace = workspaces.find(({ id }) => id === last) ?? workspaces[0]
+  if (workspace) {
+    throw redirect({ to: '/app/workspaces/$workspaceId', params: { workspaceId: workspace.id } })
+  }
+}
 
 /** Checkout is for a paid plan and someone who manages billing; `requireUser` loaded the person. */
 export function canCheckout({ context, search }: Omit<GuardArgs, 'location'>): {
