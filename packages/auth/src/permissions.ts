@@ -92,6 +92,38 @@ export function allows(granted: Permissions, wanted: Permissions): boolean {
   })
 }
 
+/** What RLS reads from a person acting in an organization; the browser token carries the same. */
+export interface MemberClaims {
+  sub: string
+  role: 'authenticated'
+  org_id: string
+  permissions: string[]
+  actor: 'user'
+}
+
+/** A permission matrix as the sorted `resource:action` strings RLS checks. */
+export const permissionClaims = (
+  permissions: Record<string, readonly string[] | undefined>,
+): string[] =>
+  Object.entries(permissions)
+    .flatMap(([resource, actions]) => (actions ?? []).map((action) => `${resource}:${action}`))
+    .sort()
+
+/** The claims of a member, from the permissions their role string grants. */
+export function claimsFor(member: {
+  userId: string
+  organizationId: string
+  permissions: Permissions
+}): MemberClaims {
+  return {
+    sub: member.userId,
+    role: 'authenticated',
+    org_id: member.organizationId,
+    permissions: permissionClaims(member.permissions),
+    actor: 'user',
+  }
+}
+
 /** Parses a custom role's stored `permission` JSON; anything malformed grants nothing. */
 export function parsePermissions(raw: string): Permissions {
   let parsed: unknown

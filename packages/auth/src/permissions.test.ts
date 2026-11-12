@@ -3,12 +3,15 @@ import { describe, expect, it } from 'vitest'
 import {
   type MemberChange,
   allows,
+  claimsFor,
   customRoleMap,
   isOwnerRole,
   memberChangeRefusal,
   parsePermissions,
+  permissionClaims,
   permissionsOf,
   roles,
+  statements,
 } from './permissions'
 
 describe('permissions', () => {
@@ -170,5 +173,53 @@ describe('customRoleMap', () => {
         { role: 'broken', permission: 'not json' },
       ]),
     ).toEqual({ finance: { billing: ['read'] }, broken: {} })
+  })
+})
+
+describe('claims', () => {
+  const ids = { userId: 'u-1', organizationId: 'org-1' }
+
+  it('flattens a matrix to sorted resource:action strings, skipping empty resources', () => {
+    expect(
+      permissionClaims({
+        workspace: ['update', 'create'],
+        billing: [],
+        file: ['read'],
+        task: undefined,
+      }),
+    ).toEqual(['file:read', 'workspace:create', 'workspace:update'])
+  })
+
+  it("answers a member's claims for RLS", () => {
+    expect(claimsFor({ ...ids, permissions: { file: ['upload', 'read'] } })).toEqual({
+      sub: 'u-1',
+      role: 'authenticated',
+      org_id: 'org-1',
+      permissions: ['file:read', 'file:upload'],
+      actor: 'user',
+    })
+  })
+
+  it('gives the owner every action of every statement', () => {
+    expect(claimsFor({ ...ids, permissions: permissionsOf('owner') }).permissions).toEqual(
+      permissionClaims(statements),
+    )
+  })
+
+  it("carries a custom role's permissions through permissionsOf", () => {
+    const custom = customRoleMap([{ role: 'finance', permission: '{"billing":["read","manage"]}' }])
+    expect(
+      claimsFor({ ...ids, permissions: permissionsOf('member,finance', custom) }).permissions,
+    ).toEqual(expect.arrayContaining(['billing:manage', 'billing:read', 'workspace:create']))
+    expect(
+      claimsFor({ ...ids, permissions: permissionsOf('finance', custom) }).permissions,
+    ).toEqual(['billing:manage', 'billing:read'])
+  })
+
+  it('adds nothing for a role it does not know', () => {
+    expect(claimsFor({ ...ids, permissions: permissionsOf('ghost') }).permissions).toEqual([])
+    expect(claimsFor({ ...ids, permissions: permissionsOf('member,ghost') }).permissions).toEqual(
+      claimsFor({ ...ids, permissions: permissionsOf('member') }).permissions,
+    )
   })
 })
