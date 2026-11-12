@@ -1,7 +1,4 @@
-import { ARTIFACT_SUBSCRIBERS } from '../artifacts/subscribers'
-import { registerEventSubscribers } from '../events/subscribers'
-import { FILE_SUBSCRIBERS } from '../files/subscribers'
-import { TASK_SUBSCRIBERS } from '../tasks/subscribers'
+import { type EventSubscriber, registerEventSubscribers } from '../events/subscribers'
 import { filesExpirePending } from './files-expire-pending'
 import { type JobDefinition, type WorkerDeps, registerJobs } from './job'
 import { storagePurge } from './storage-purge'
@@ -13,10 +10,10 @@ export const JOBS: readonly JobDefinition[] = [storagePurge, filesExpirePending,
 /** Background work people follow as tasks. Add a tracked job here, then start it with startTask. */
 export const TRACKED_JOBS: readonly TrackedJobDefinition[] = []
 
+/** What reacts to domain events. Add a subscriber here, defined with defineEventSubscriber. */
+export const SUBSCRIBERS: readonly EventSubscriber[] = []
+
 export async function registerWorkers(deps: WorkerDeps): Promise<void> {
   await registerJobs([...JOBS, ...TRACKED_JOBS.map((job) => trackedJob(job))], deps)
-  await registerEventSubscribers(
-    [...FILE_SUBSCRIBERS, ...TASK_SUBSCRIBERS, ...ARTIFACT_SUBSCRIBERS],
-    deps,
-  )
+  await registerEventSubscribers(SUBSCRIBERS, deps)
 }

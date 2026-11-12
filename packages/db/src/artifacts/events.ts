@@ -7,8 +7,6 @@ export const ARTIFACT_EVENTS = {
   deleted: 'artifact.deleted',
 } as const
 
-export type ArtifactEventName = (typeof ARTIFACT_EVENTS)[keyof typeof ARTIFACT_EVENTS]
-
 /** What every artifact event carries; `workspaceId` null means an organization artifact. */
 export interface ArtifactEvent {
   organizationId: string

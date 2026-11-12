@@ -3,8 +3,6 @@ export const TASK_EVENTS = {
   failed: 'task.failed',
 } as const
 
-export type TaskEventName = (typeof TASK_EVENTS)[keyof typeof TASK_EVENTS]
-
 /** What every task event carries; `workspaceId` null means organization-wide work. */
 export interface TaskEvent {
   organizationId: string

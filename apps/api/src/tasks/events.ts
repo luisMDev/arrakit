@@ -1,5 +1,7 @@
-import { TASK_EVENTS, type TaskEventName } from '@arrakit/db'
+import { TASK_EVENTS, type TaskEventPayloads } from '@arrakit/db'
 import { z } from 'zod'
+
+import { defineEventDomain } from '../events/domain'
 
 const taskEventSchema = z.object({
   organizationId: z.guid(),
@@ -12,7 +14,11 @@ const taskEventSchema = z.object({
   occurredAt: z.iso.datetime(),
 })
 
-export const TASK_EVENT_SCHEMAS = {
-  [TASK_EVENTS.succeeded]: taskEventSchema,
-  [TASK_EVENTS.failed]: taskEventSchema.extend({ errorCode: z.string() }),
-} satisfies Record<TaskEventName, z.ZodType<object>>
+/** Published for a task of any kind: a subscriber checks `payload.kind` to react to one. */
+export const taskEvents = defineEventDomain<TaskEventPayloads>()({
+  schemas: {
+    [TASK_EVENTS.succeeded]: taskEventSchema,
+    [TASK_EVENTS.failed]: taskEventSchema.extend({ errorCode: z.string() }),
+  },
+  logFields: ({ organizationId, taskId }) => ({ organizationId, taskId }),
+})

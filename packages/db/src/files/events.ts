@@ -4,8 +4,6 @@ export const FILE_EVENTS = {
   deleted: 'file.deleted',
 } as const
 
-export type FileEventName = (typeof FILE_EVENTS)[keyof typeof FILE_EVENTS]
-
 /** What every file event carries; `workspaceId` null means an organization file. */
 export interface FileEvent {
   organizationId: string

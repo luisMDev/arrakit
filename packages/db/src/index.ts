@@ -27,16 +27,10 @@ export { TASK_SIGNAL_EVENT, type TaskSignal, taskTopics } from './tasks/signals'
 export {
   TASK_EVENTS,
   type TaskEvent,
-  type TaskEventName,
   type TaskEventPayloads,
   type TaskFailedEvent,
 } from './tasks/events'
-export {
-  FILE_EVENTS,
-  type FileEvent,
-  type FileEventName,
-  type FileEventPayloads,
-} from './files/events'
+export { FILE_EVENTS, type FileEvent, type FileEventPayloads } from './files/events'
 export {
   type ArtifactRow,
   type ArtifactVersionRow,
@@ -47,7 +41,6 @@ export {
 export {
   ARTIFACT_EVENTS,
   type ArtifactEvent,
-  type ArtifactEventName,
   type ArtifactEventPayloads,
   type ArtifactRenamedEvent,
   type ArtifactVersionPublishedEvent,

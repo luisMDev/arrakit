@@ -9,13 +9,14 @@ import {
 import { type TestData, insertOrganization, insertUser, openTestData } from '@arrakit/db/testing'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { ARTIFACT_SUBSCRIBERS, defineArtifactSubscriber } from '../artifacts/subscribers'
-import { FILE_SUBSCRIBERS, defineFileSubscriber } from '../files/subscribers'
+import { artifactEvents } from '../artifacts/events'
+import { fileEvents } from '../files/events'
 import { noErrorReporter } from '../observability/error-reporter'
 import { recordingLogger } from '../observability/logger'
-import { TASK_SUBSCRIBERS, defineTaskSubscriber } from '../tasks/subscribers'
+import { taskEvents } from '../tasks/events'
+import { SUBSCRIBERS } from '../workers'
 
-import { registerEventSubscribers, subscriberQueue } from './subscribers'
+import { defineEventSubscriber, registerEventSubscribers } from './subscribers'
 
 describe('event subscribers', () => {
   let data: TestData
@@ -23,14 +24,14 @@ describe('event subscribers', () => {
   const indexed: FileEvent[] = []
   const finished: TaskEvent[] = []
   const republished: ArtifactVersionPublishedEvent[] = []
-  const indexer = defineFileSubscriber({
+  const indexer = defineEventSubscriber(fileEvents, {
     name: 'vector-index',
     event: FILE_EVENTS.uploaded,
     async handler(payload) {
       indexed.push(payload)
     },
   })
-  const notifier = defineTaskSubscriber({
+  const notifier = defineEventSubscriber(taskEvents, {
     name: 'notify',
     event: TASK_EVENTS.succeeded,
     async handler(payload) {
@@ -38,7 +39,7 @@ describe('event subscribers', () => {
     },
   })
 
-  const announcer = defineArtifactSubscriber({
+  const announcer = defineEventSubscriber(artifactEvents, {
     name: 'announce',
     event: ARTIFACT_EVENTS.versionPublished,
     async handler(payload) {
@@ -57,9 +58,9 @@ describe('event subscribers', () => {
   afterAll(() => data.close())
 
   it('gives each subscriber its own queue, subscribed to its event', () => {
-    expect(subscriberQueue(indexer)).toBe('file.uploaded.vector-index')
-    expect(subscriberQueue(notifier)).toBe('task.succeeded.notify')
-    expect(subscriberQueue(announcer)).toBe('artifact.version_published.announce')
+    expect(indexer.job.name).toBe('file.uploaded.vector-index')
+    expect(notifier.job.name).toBe('task.succeeded.notify')
+    expect(announcer.job.name).toBe('artifact.version_published.announce')
     expect(data.jobs.subscriptions.get(ARTIFACT_EVENTS.versionPublished)).toEqual(
       new Set(['artifact.version_published.announce']),
     )
@@ -85,7 +86,7 @@ describe('event subscribers', () => {
     })
     await files.complete(file.id)
 
-    await data.jobs.run(subscriberQueue(indexer))
+    await data.jobs.run(indexer.job.name)
     expect(indexed).toEqual([
       expect.objectContaining({ organizationId, fileId: file.id, name: 'deck.pdf' }),
     ])
@@ -106,7 +107,7 @@ describe('event subscribers', () => {
     await tasks.begin(task.id, 0)
     await tasks.succeed(task.id)
 
-    await data.jobs.run(subscriberQueue(notifier))
+    await data.jobs.run(notifier.job.name)
     expect(finished).toEqual([
       expect.objectContaining({ organizationId, taskId: task.id, kind: 'workspace.export' }),
     ])
@@ -125,7 +126,7 @@ describe('event subscribers', () => {
     })
     await artifacts.publish(artifact.id, { content: '# v2', publishedBy: owner })
 
-    await data.jobs.run(subscriberQueue(announcer))
+    await data.jobs.run(announcer.job.name)
     expect(republished).toEqual([
       expect.objectContaining({
         organizationId,
@@ -138,15 +139,30 @@ describe('event subscribers', () => {
   })
 
   it('dead-letters an event payload that does not match the event', async () => {
-    await data.jobs.send(subscriberQueue(indexer), { fileId: 'not-an-event' })
-    await data.jobs.run(subscriberQueue(indexer))
+    await data.jobs.send(indexer.job.name, { fileId: 'not-an-event' })
+    await data.jobs.run(indexer.job.name)
     expect(data.jobs.sent.at(-1)).toMatchObject({ name: 'file.uploaded.vector-index__dead' })
   })
 
+  it('types a subscriber, when type-checked, by its domain and its event', () => {
+    defineEventSubscriber(fileEvents, {
+      name: 'other-domain',
+      // @ts-expect-error a task event is not one of the file events
+      event: TASK_EVENTS.succeeded,
+      async handler() {},
+    })
+    defineEventSubscriber(fileEvents, {
+      name: 'other-event',
+      event: FILE_EVENTS.uploaded,
+      async handler(payload) {
+        // @ts-expect-error only file.renamed carries the previous name
+        void payload.previousName
+      },
+    })
+  })
+
   it('names every subscriber uniquely per event', () => {
-    const queues = [...FILE_SUBSCRIBERS, ...TASK_SUBSCRIBERS, ...ARTIFACT_SUBSCRIBERS].map(
-      subscriberQueue,
-    )
+    const queues = SUBSCRIBERS.map(({ job }) => job.name)
     expect(new Set(queues).size).toBe(queues.length)
   })
 })

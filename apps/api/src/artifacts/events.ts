@@ -1,6 +1,8 @@
-import { ARTIFACT_EVENTS, type ArtifactEventName } from '@arrakit/db'
+import { ARTIFACT_EVENTS, type ArtifactEventPayloads } from '@arrakit/db'
 import { ARTIFACT_FORMATS } from '@arrakit/plans'
 import { z } from 'zod'
+
+import { defineEventDomain } from '../events/domain'
 
 const artifactEventSchema = z.object({
   organizationId: z.guid(),
@@ -18,9 +20,12 @@ const versionPublishedSchema = artifactEventSchema.extend({
   publishedBy: z.string().nullable(),
 })
 
-export const ARTIFACT_EVENT_SCHEMAS = {
-  [ARTIFACT_EVENTS.created]: versionPublishedSchema,
-  [ARTIFACT_EVENTS.versionPublished]: versionPublishedSchema,
-  [ARTIFACT_EVENTS.renamed]: artifactEventSchema.extend({ previousTitle: z.string() }),
-  [ARTIFACT_EVENTS.deleted]: artifactEventSchema,
-} satisfies Record<ArtifactEventName, z.ZodType<object>>
+export const artifactEvents = defineEventDomain<ArtifactEventPayloads>()({
+  schemas: {
+    [ARTIFACT_EVENTS.created]: versionPublishedSchema,
+    [ARTIFACT_EVENTS.versionPublished]: versionPublishedSchema,
+    [ARTIFACT_EVENTS.renamed]: artifactEventSchema.extend({ previousTitle: z.string() }),
+    [ARTIFACT_EVENTS.deleted]: artifactEventSchema,
+  },
+  logFields: ({ organizationId, artifactId }) => ({ organizationId, artifactId }),
+})

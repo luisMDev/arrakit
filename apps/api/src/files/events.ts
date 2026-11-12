@@ -1,5 +1,7 @@
-import { FILE_EVENTS, type FileEventName } from '@arrakit/db'
+import { FILE_EVENTS, type FileEventPayloads } from '@arrakit/db'
 import { z } from 'zod'
+
+import { defineEventDomain } from '../events/domain'
 
 const fileEventSchema = z.object({
   organizationId: z.guid(),
@@ -12,8 +14,11 @@ const fileEventSchema = z.object({
   occurredAt: z.iso.datetime(),
 })
 
-export const FILE_EVENT_SCHEMAS = {
-  [FILE_EVENTS.uploaded]: fileEventSchema,
-  [FILE_EVENTS.renamed]: fileEventSchema.extend({ previousName: z.string() }),
-  [FILE_EVENTS.deleted]: fileEventSchema,
-} satisfies Record<FileEventName, z.ZodType<object>>
+export const fileEvents = defineEventDomain<FileEventPayloads>()({
+  schemas: {
+    [FILE_EVENTS.uploaded]: fileEventSchema,
+    [FILE_EVENTS.renamed]: fileEventSchema.extend({ previousName: z.string() }),
+    [FILE_EVENTS.deleted]: fileEventSchema,
+  },
+  logFields: ({ organizationId, fileId }) => ({ organizationId, fileId }),
+})

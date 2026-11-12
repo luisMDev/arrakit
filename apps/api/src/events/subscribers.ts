@@ -1,17 +1,5 @@
-import {
-  type ArtifactEventName,
-  type ArtifactEventPayloads,
-  type FileEventName,
-  type FileEventPayloads,
-  type QueuePolicy,
-  type TaskEventName,
-  type TaskEventPayloads,
-  WORKER_RETRY_POLICY,
-} from '@arrakit/db'
+import { type QueuePolicy, WORKER_RETRY_POLICY } from '@arrakit/db'
 
-import { ARTIFACT_EVENT_SCHEMAS } from '../artifacts/events'
-import { FILE_EVENT_SCHEMAS } from '../files/events'
-import { TASK_EVENT_SCHEMAS } from '../tasks/events'
 import {
   type JobContext,
   type JobDefinition,
@@ -19,48 +7,42 @@ import {
   defineJob,
   registerJobs,
 } from '../workers/job'
-
-export type EventName = FileEventName | TaskEventName | ArtifactEventName
-export type EventPayloads = FileEventPayloads & TaskEventPayloads & ArtifactEventPayloads
-
-const EVENT_SCHEMAS = { ...FILE_EVENT_SCHEMAS, ...TASK_EVENT_SCHEMAS, ...ARTIFACT_EVENT_SCHEMAS }
+import type { EventDomain } from './domain'
 
 /**
  * Reacts to a domain event in the background: each subscriber has its own queue, so it retries
  * and dead-letters on its own, and an event published inside a rolled-back change never reaches
  * it.
  */
-export interface EventSubscriber<E extends EventName = EventName> {
-  /** Unique per event; the queue is `<event>.<name>`. */
-  name: string
-  event: E
-  handler(payload: EventPayloads[E], context: JobContext): Promise<void>
-  policy?: QueuePolicy
+export interface EventSubscriber {
+  event: string
+  /** The worker on the subscriber's own queue, `<event>.<name>`. */
+  job: JobDefinition
 }
 
-export const defineEventSubscriber = <E extends EventName>(
-  subscriber: EventSubscriber<E>,
-): EventSubscriber<E> => subscriber
-
-export const subscriberQueue = (subscriber: EventSubscriber) =>
-  `${subscriber.event}.${subscriber.name}`
-
-export function subscriberJob(subscriber: EventSubscriber): JobDefinition {
-  return defineJob({
-    name: subscriberQueue(subscriber),
-    schema: EVENT_SCHEMAS[subscriber.event],
-    policy: subscriber.policy ?? WORKER_RETRY_POLICY,
-    handler: (payload, context) => subscriber.handler(payload as never, context),
-    logFields: (payload) => {
-      const { organizationId, fileId, taskId, artifactId } = payload as {
-        organizationId: string
-        fileId?: string
-        taskId?: string
-        artifactId?: string
-      }
-      return { organizationId, fileId, taskId, artifactId }
-    },
-  })
+export function defineEventSubscriber<
+  Payloads extends Record<keyof Payloads, object>,
+  E extends keyof Payloads & string,
+>(
+  domain: EventDomain<Payloads>,
+  subscriber: {
+    /** Unique per event. */
+    name: string
+    event: E
+    handler(payload: Payloads[E], context: JobContext): Promise<void>
+    policy?: QueuePolicy
+  },
+): EventSubscriber {
+  return {
+    event: subscriber.event,
+    job: defineJob({
+      name: `${subscriber.event}.${subscriber.name}`,
+      schema: domain.schemas[subscriber.event],
+      policy: subscriber.policy ?? WORKER_RETRY_POLICY,
+      handler: (payload, context) => subscriber.handler(payload, context),
+      logFields: domain.logFields,
+    }),
+  }
 }
 
 /** Starts each subscriber's worker, then subscribes its queue to the event. */
@@ -68,8 +50,9 @@ export async function registerEventSubscribers(
   subscribers: readonly EventSubscriber[],
   deps: WorkerDeps,
 ): Promise<void> {
-  await registerJobs(subscribers.map(subscriberJob), deps)
-  for (const subscriber of subscribers) {
-    await deps.data.jobs.subscribe(subscriber.event, subscriberQueue(subscriber))
-  }
+  await registerJobs(
+    subscribers.map(({ job }) => job),
+    deps,
+  )
+  for (const { event, job } of subscribers) await deps.data.jobs.subscribe(event, job.name)
 }
