@@ -1,3 +1,5 @@
+import { generateKeyPairSync } from 'node:crypto'
+
 import { describe, expect, it } from 'vitest'
 
 import { isTrustedOrigin, loadAuthConfig, mcpResourceURL, oauthIssuer } from './config'
@@ -85,6 +87,27 @@ describe('loadAuthConfig', () => {
     })
     expect(config.google).toEqual({ clientId: 'g', clientSecret: 'gs' })
     expect(config.microsoft).toEqual({ clientId: 'm', clientSecret: 'ms' })
+  })
+
+  describe('BETTER_AUTH_JWT_KEY', () => {
+    it('leaves the key to the JWT plugin when unset or empty', () => {
+      expect(loadAuthConfig(base).jwtKey).toBeUndefined()
+      expect(loadAuthConfig({ ...base, BETTER_AUTH_JWT_KEY: '' }).jwtKey).toBeUndefined()
+    })
+
+    it('reads a private ES256 JWK', () => {
+      const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+      const jwk = { ...privateKey.export({ format: 'jwk' }), kid: 'dev-key' }
+      const config = loadAuthConfig({ ...base, BETTER_AUTH_JWT_KEY: JSON.stringify(jwk) })
+      expect(config.jwtKey?.kid).toBe('dev-key')
+      expect(config.jwtKey?.privateJwk.d).toBe(jwk.d)
+    })
+
+    it('refuses anything else', () => {
+      expect(() => loadAuthConfig({ ...base, BETTER_AUTH_JWT_KEY: '{"kty":"EC"}' })).toThrow(
+        '[auth] BETTER_AUTH_JWT_KEY must be a private ES256 JWK',
+      )
+    })
   })
 
   it('derives the trusted origins from the base and web URLs', () => {

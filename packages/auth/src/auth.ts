@@ -16,6 +16,7 @@ import {
   oauthIssuer,
 } from './config'
 import { type InvitationLinks, afterHook, beforeHook } from './hooks'
+import { fixedKeyAdapter } from './jwt-key'
 import { magicLinkSender } from './magic-link'
 import { connectorProvider } from './oauth'
 import { organizationPlugin } from './organization'
@@ -107,7 +108,15 @@ export function createAuth(deps: AuthDeps) {
         storeToken: 'hashed',
         sendMagicLink: magicLinkSender(deps),
       }),
-      jwt({ disableSettingJwtHeader: true, jwt: { issuer: oauthIssuer(config.baseURL) } }),
+      jwt({
+        disableSettingJwtHeader: true,
+        jwt: { issuer: oauthIssuer(config.baseURL) },
+        jwks: {
+          keyPairConfig: { alg: 'ES256' },
+          ...(config.jwtKey ? { disablePrivateKeyEncryption: true } : {}),
+        },
+        ...(config.jwtKey ? { adapter: fixedKeyAdapter(config.jwtKey) } : {}),
+      }),
       organizationPlugin(deps),
       connectorProvider(deps),
       ...(deps.testing ? [testUtils({ captureOTP: true })] : []),

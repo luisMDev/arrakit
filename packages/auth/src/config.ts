@@ -1,3 +1,5 @@
+import { type JwtKey, parseJwtKey } from './jwt-key'
+
 export const AUTH_BASE_PATH = '/api/auth'
 export const MCP_PATH = '/api/mcp'
 export const MAGIC_LINK_MINUTES = 15
@@ -20,6 +22,8 @@ export interface AuthConfig {
   webOrigin: string
   google?: OAuthClientConfig
   microsoft?: OAuthClientConfig
+  /** The fixed key the JWT plugin signs with; it mints and stores its own when unset. */
+  jwtKey?: JwtKey
 }
 
 type Env = Record<string, string | undefined>
@@ -58,6 +62,7 @@ export function loadAuthConfig(env: Env): AuthConfig {
     )
   const baseURL = originOf(env.BETTER_AUTH_URL!, 'BETTER_AUTH_URL')
   const webOrigin = value('WEB_URL') ? originOf(env.WEB_URL!, 'WEB_URL') : baseURL
+  const rawJwtKey = value('BETTER_AUTH_JWT_KEY')
 
   return {
     secret,
@@ -66,6 +71,7 @@ export function loadAuthConfig(env: Env): AuthConfig {
     trustedOrigins: [...new Set([baseURL, webOrigin])],
     google,
     microsoft,
+    ...(rawJwtKey ? { jwtKey: parseJwtKey(rawJwtKey) } : {}),
   }
 }
 

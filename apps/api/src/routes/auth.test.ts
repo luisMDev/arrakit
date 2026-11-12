@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { generateKeyPairSync, randomUUID } from 'node:crypto'
 
 import type { Permissions } from '@arrakit/auth/permissions'
 import { ORPCError, call, os } from '@orpc/server'
@@ -198,6 +198,24 @@ describe('Better Auth routes on Hono', () => {
       const err = await errorOf(call(ownerOnly, undefined, { context: t.context(admin.headers) }))
       expect(err.status).toBe(403)
     })
+  })
+})
+
+describe('a fixed JWT signing key', () => {
+  it('serves only the configured public key at /api/auth/jwks', async () => {
+    const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+    const jwk = { ...privateKey.export({ format: 'jwk' }), kid: randomUUID() }
+    const t = await createTestApp({ env: { BETTER_AUTH_JWT_KEY: JSON.stringify(jwk) } })
+    try {
+      const res = await t.app.request('/api/auth/jwks')
+      expect(res.status).toBe(200)
+      const { keys } = (await res.json()) as { keys: Record<string, unknown>[] }
+      expect(keys).toHaveLength(1)
+      expect(keys[0]).toMatchObject({ kid: jwk.kid, kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y })
+      expect(keys[0]).not.toHaveProperty('d')
+    } finally {
+      await t.close()
+    }
   })
 })
 

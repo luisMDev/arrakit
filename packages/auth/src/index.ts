@@ -10,3 +10,5 @@ export {
   type AuthConfig,
 } from './config'
 export { createAuth, type Auth, type AuthDeps, type OrganizationDeps } from './auth'
+export { type JwtKey, parseJwtKey } from './jwt-key'
+export { SUPABASE_TOKEN_SECONDS, signSupabaseToken } from './supabase-token'

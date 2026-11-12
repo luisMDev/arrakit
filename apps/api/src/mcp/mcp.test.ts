@@ -372,11 +372,13 @@ describe('the OAuth 2.1 provider for the MCP connector', () => {
   it('serves its signing keys with one key row after first use', async () => {
     const res = await t.request('/api/auth/jwks')
     expect(res.status).toBe(200)
-    const { keys } = (await res.json()) as { keys: { kid: string }[] }
+    const { keys } = (await res.json()) as { keys: { kid: string; alg: string }[] }
     const { jwks } = await import('@arrakit/db/schema')
     const rows = await t.data.db.select().from(jwks)
     expect(rows).toHaveLength(1)
     expect(keys.map((key) => key.kid)).toEqual(rows.map((row) => row.id))
+    expect(keys.map((key) => key.alg)).toEqual(['ES256'])
+    expect(rows.map((row) => row.alg)).toEqual(['ES256'])
   })
 })
 
