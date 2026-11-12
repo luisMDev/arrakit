@@ -146,8 +146,8 @@ and pg-boss 12.38:
    small stack suite and the e2e suite run against the real local stack and catch drift. The
    alternative (every test on the Docker stack) needs the same stand-in for any non-default
    database and makes `pnpm test` depend on Docker.
-5. **The Data API is not used.** The web keeps calling only `/api/*` through oRPC. `public` is
-   removed from the exposed schemas; RLS and explicit grants are defence in depth.
+5. **The Data API is not used.** The web keeps calling only `/api/*` through oRPC. The Data API is
+   switched off; RLS and explicit grants are defence in depth.
 6. **pg-boss stays; Supabase Queues is not adopted.** pgmq only stores and hands out messages. The
    retry limit, backoff, dead letters, event fan-out and schedules the code uses today would have
    to be rebuilt and tested by hand. pg-boss keeps them, runs on the Supabase Postgres unchanged
@@ -172,39 +172,23 @@ Each phase ends with `pnpm typecheck`, `pnpm lint`, `pnpm test` and `pnpm test:e
 
 ### Phase 0. Local stack and migrations
 
-Outcome: the app runs unchanged on the Supabase Postgres, started by the CLI.
+Landed. The app runs on the local Supabase stack, the Supabase CLI applies the migrations, and
+Better Auth's identity and OAuth tables are in the `better_auth` schema. Two things turned out
+differently from the plan and matter to the next phases:
 
-- Already done: `supabase` CLI as a root dev dependency, `supabase/config.toml`, a git-ignored
-  `supabase/signing_keys.json`, `signing_keys_path` enabled, the Supabase agent skills in
-  `.claude/skills`.
-- `config.toml`: site URL and ports for the web origin, sign-ups and the email provider disabled in
-  `[auth]`, `public` removed from `[api].schemas`, analytics off, a private `files` bucket, and the
-  pooler enabled so dev uses the same pooled path as a hosted project.
-- Root scripts: `pnpm dev` starts the stack and then Turborepo; add stop and reset scripts. A setup
-  script writes the keys file when it is missing: the key the emulator itself signs with, plus
-  (from phase 2) Better Auth's public key.
-- `.env.example`: `DATABASE_URL` through the local pooler (user `postgres.pooler-dev`, port 54329),
-  `DATABASE_DIRECT_URL` on port 54322 (the task feed's LISTEN needs it until phase 2),
-  `MAILPIT_URL` pointing at port 54324. Remove `scripts/mailpit.sh` and its Turborepo task.
-- pg-boss is untouched: it creates its `pgboss` schema at boot, as it does today.
-- drizzle-kit: output to `supabase/migrations`, `migrations.prefix: 'supabase'`,
-  `entities.roles.provider: 'supabase'`. Declare the identity and OAuth tables in
-  `pgSchema('better_auth')`, widen `schemaFilter` to both schemas, then regenerate one baseline
-  migration.
-- Remove the boot-time migrator and the bundled migrations folder; the API checks at boot that the
-  newest migration is applied and fails with a clear message otherwise.
-- `@arrakit/db/testing`: the Supabase prelude, then the same SQL files applied in order.
-- PGlite stops being a runtime mode: `DATABASE_URL` becomes required outside tests; e2e points at
-  the local stack and drops `PGLITE_DIR`.
-
-Tests: the prelude has its own test (roles exist, `auth.jwt()` reads the claims); every existing
-test passes on the new migration path.
+- An empty `[api].schemas` does not unexpose `public` (the CLI falls back to it), so the Data API
+  is switched off locally with `[api] enabled = false`. Realtime, Storage and Studio do not need
+  it. On hosted the same is a project setting.
+- `auto_expose_new_tables = false` keeps `select`, `insert`, `update` and `delete` from `anon` and
+  `authenticated`, but new `public` tables still grant them `truncate`, `trigger` and
+  `references`. Phase 1 revokes those.
 
 ### Phase 1. Tenancy and permissions in the database
 
 Outcome: no query can cross an organization, enforced by Postgres and proven by a generic test.
 
-- Custom migration: the `app` schema and its helpers; `alter default privileges` so tables created
+- Custom migration: the `app` schema and its helpers; revoke what `anon` and `authenticated` hold
+  on the existing `public` tables; `alter default privileges` so tables created
   in `public` by migrations grant `select, insert, update, delete` to `authenticated` and nothing
   to `anon`. `better_auth` gets no grant except the column-level `select` on `users`.
 - Schema: `enableRLS()` on every table. A Drizzle helper adds the tenant policies; per-resource
@@ -293,7 +277,7 @@ Outcome: a documented path to a hosted project, and no leftovers.
   add a Custom OIDC integration under Third-Party Auth with the Better Auth issuer
   (`<web origin>/api/auth`) and confirm a token is accepted (the first run of that path outside
   the emulator), disable sign-ups and providers in
-  Supabase Auth, switch Realtime to private channels only, unexpose the Data API, set the bucket
+  Supabase Auth, switch Realtime to private channels only, switch off the Data API, set the bucket
   limits. `DATABASE_URL` is the transaction pooler; the app needs no direct connection.
 - Run the database advisors (`supabase db advisors`) and fix what they report; add it to the
   checks a change runs.

@@ -25,14 +25,14 @@ billing, prepaid credits, transactional email and an MCP server, in a pnpm + Tur
   Checkout, which adds to every metric at once and never expires. Uses spend the plan's grant
   first. See [Credits and usage](#credits-and-usage).
 - **Email** through Resend, rendered from `packages/emails`; without `RESEND_API_KEY` mail goes
-  to a local Mailpit inbox (http://localhost:5025, started by `pnpm dev`).
+  to the local Supabase stack's Mailpit inbox (http://127.0.0.1:54324).
 - **MCP server** at `/api/mcp`, with OAuth 2.1 sign-in through Better Auth's OAuth provider
   (Claude's custom connectors work with it) and one example tool, `whoami`.
 - **Files** for the organization and for each workspace: browsers upload and download straight to
   any S3-compatible bucket with presigned URLs; the plan sets the allowed types and the size limit,
   and stored bytes count against `storage_gb`. Uploads, renames and deletions publish durable
   events that background subscribers react to. `pnpm dev` starts a local RustFS bucket.
-- **Jobs** with pg-boss on the same Postgres (on the PGlite instance too when `DATABASE_URL` is unset).
+- **Jobs** with pg-boss on the same Postgres.
   Tracked jobs are **tasks** people follow in each workspace and in Settings: status, retries and progress, streamed to
   the web as they change, with `task.succeeded` and `task.failed` events to react to.
 - **Tenancy**: every organization query and file key goes through `forOrganization(id)` in
@@ -70,7 +70,8 @@ creates it with its custom-amount price); the webhook credits `checkout.session.
 
 | Path                | What                                                                  |
 | ------------------- | --------------------------------------------------------------------- |
-| `packages/db`       | Drizzle schema and migrations, tenancy, jobs (pg-boss), storage (S3)  |
+| `packages/db`       | Drizzle schema, tenancy, jobs (pg-boss), storage (S3)                 |
+| `supabase`          | Local Supabase stack config and the SQL migrations                    |
 | `packages/contract` | The oRPC contract (Zod) the API implements and the web calls          |
 | `packages/auth`     | Better Auth setup (magic link, social, organizations, OAuth provider) |
 | `packages/plans`    | Plans, prices, metrics and the usage arithmetic                       |
@@ -81,24 +82,29 @@ The layout, package boundaries and rules are in [AGENTS.md](AGENTS.md).
 
 ## Run it
 
-Node 24 and pnpm 12 (`engines` and `packageManager` in `package.json`).
+Node 24 and pnpm 12 (`engines` and `packageManager` in `package.json`), and Docker for the local
+Supabase stack.
 
 ```bash
 pnpm install
 cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env
-pnpm dev        # api :5000 (migrations applied on boot), web :5200 (/api proxied), landing :5321
+pnpm dev        # local Supabase stack, api :5000, web :5200 (/api proxied), landing :5321
 ```
 
-Every variable is optional in development: without `DATABASE_URL` the API uses PGlite in
-`PGLITE_DIR`, without `RESEND_API_KEY` mail goes to Mailpit (`MAILPIT_URL`), or to the console when that is unset, with
-`STRIPE_FAKE=1` Stripe is faked, and the `R2_*` keys of `.env.example` point at the local RustFS
-(without them uploads are kept in memory). In production set `DATABASE_URL`, `BETTER_AUTH_SECRET`,
-`BETTER_AUTH_URL`/`WEB_URL` (the web origin), `RESEND_API_KEY` and `MAIL_FROM`, the `STRIPE_*`
-keys and the `R2_*` bucket, whose CORS rule must allow PUT and GET from the web origin. When
-`DATABASE_URL` goes through a pooler in transaction mode, set `DATABASE_DIRECT_URL` to the direct
-host: the migration lock and the task feed's `LISTEN` need a session. The web reads
-`API_ORIGIN`, `VITE_APP_NAME` and `VITE_SITE_URL`.
+`pnpm dev` starts the local Supabase stack (Postgres, its pooler, Studio at http://127.0.0.1:54323
+and a Mailpit inbox) and applies the migrations in `supabase/migrations`; `.env.example` points
+`DATABASE_URL` at it. `pnpm supabase:stop` stops it and `pnpm db:reset` recreates its database (restart the API after
+a reset: pg-boss creates its schema on boot).
+Without `RESEND_API_KEY` mail goes to Mailpit (`MAILPIT_URL`), or to the console when that is
+unset, with `STRIPE_FAKE=1` Stripe is faked, and the `R2_*` keys of `.env.example` point at the
+local RustFS (without them uploads are kept in memory). In production set `DATABASE_URL`,
+`BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`/`WEB_URL` (the web origin), `RESEND_API_KEY` and
+`MAIL_FROM`, the `STRIPE_*` keys and the `R2_*` bucket, whose CORS rule must allow PUT and GET from
+the web origin. Migrations are applied with the Supabase CLI, not on boot: the API refuses to
+start on a database that is behind. When `DATABASE_URL` goes through a pooler in transaction mode,
+set `DATABASE_DIRECT_URL` to the direct host: the task feed's `LISTEN` needs a session. The web
+reads `API_ORIGIN`, `VITE_APP_NAME` and `VITE_SITE_URL`.
 
 With real Stripe keys, create the products and prices once:
 `pnpm --filter @arrakit/api stripe:prices`. The OpenAPI document of the API is written by
@@ -110,7 +116,7 @@ With real Stripe keys, create the products and prices once:
 pnpm typecheck
 pnpm lint
 pnpm test       # Vitest: unit, API integration on PGlite, React Testing Library
-pnpm test:e2e   # Playwright: boots the api (throwaway PGlite, fake Stripe) and the web
+pnpm test:e2e   # Playwright: boots the api (local Supabase stack, fake Stripe) and the web
 pnpm format:check
 ```
 

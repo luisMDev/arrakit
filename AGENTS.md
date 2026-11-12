@@ -15,25 +15,25 @@ For the same reason, keep this file to rules: no file inventories, helper lists 
 
 ## Stack
 
-| Area     | Choice                                                                                 |
-| -------- | -------------------------------------------------------------------------------------- |
-| Monorepo | pnpm workspaces + Turborepo                                                            |
-| Web app  | React + TanStack Start (file-based routing, TanStack Router + TanStack Query), Nitro   |
-| UI       | Tailwind CSS + shadcn/ui (default theme, Radix primitives, lucide icons), sonner       |
-| i18n     | i18next + react-i18next, `en` (bundled, fallback) and `es` (lazy)                      |
-| API      | Hono on Node + oRPC (contract-first) + Zod                                             |
-| DB       | Postgres + Drizzle ORM (drizzle-kit migrations); PGlite when `DATABASE_URL` is unset   |
-| Auth     | Better Auth (magic link, social providers, organization plugin, OAuth provider + JWT)  |
-| Payments | Stripe, with a fake gateway in dev and tests                                           |
-| Email    | Resend in production; Mailpit (local inbox) in dev and e2e; recording mailer in tests  |
-| Jobs     | pg-boss on Postgres, or on the PGlite instance Drizzle uses                            |
-| Logs     | Pino (JSON lines), request id per request; Sentry                                      |
-| Files    | S3-compatible storage, presigned uploads; RustFS in dev and e2e; in-memory in tests    |
-| MCP      | `@modelcontextprotocol/server` (stateless Streamable HTTP) behind Better Auth OAuth    |
-| Landing  | Astro (static) + Tailwind                                                              |
-| Tests    | Vitest, React Testing Library, Better Auth `testUtils` plugin, PGlite, msw, Playwright |
-| Lint/fmt | ESLint flat config (typescript-eslint) + Prettier                                      |
-| Types    | TypeScript 6 (typescript-eslint does not support 7 yet; do not upgrade)                |
+| Area     | Choice                                                                                         |
+| -------- | ---------------------------------------------------------------------------------------------- |
+| Monorepo | pnpm workspaces + Turborepo                                                                    |
+| Web app  | React + TanStack Start (file-based routing, TanStack Router + TanStack Query), Nitro           |
+| UI       | Tailwind CSS + shadcn/ui (default theme, Radix primitives, lucide icons), sonner               |
+| i18n     | i18next + react-i18next, `en` (bundled, fallback) and `es` (lazy)                              |
+| API      | Hono on Node + oRPC (contract-first) + Zod                                                     |
+| DB       | Supabase Postgres + Drizzle ORM (drizzle-kit writes migrations, the Supabase CLI applies them) |
+| Auth     | Better Auth (magic link, social providers, organization plugin, OAuth provider + JWT)          |
+| Payments | Stripe, with a fake gateway in dev and tests                                                   |
+| Email    | Resend in production; the local stack's Mailpit in dev and e2e; recording mailer in tests      |
+| Jobs     | pg-boss on the same Postgres (on PGlite in tests)                                              |
+| Logs     | Pino (JSON lines), request id per request; Sentry                                              |
+| Files    | S3-compatible storage, presigned uploads; RustFS in dev and e2e; in-memory in tests            |
+| MCP      | `@modelcontextprotocol/server` (stateless Streamable HTTP) behind Better Auth OAuth            |
+| Landing  | Astro (static) + Tailwind                                                                      |
+| Tests    | Vitest, React Testing Library, Better Auth `testUtils` plugin, PGlite, msw, Playwright         |
+| Lint/fmt | ESLint flat config (typescript-eslint) + Prettier                                              |
+| Types    | TypeScript 6 (typescript-eslint does not support 7 yet; do not upgrade)                        |
 
 Exact versions live in the `package.json` files.
 
@@ -52,6 +52,7 @@ apps/web        TanStack Start app; the only home of shadcn/ui
 apps/api        Hono server: Better Auth, the oRPC router, webhooks, MCP
 apps/landing    Astro static site
 packages/*      Shared workspaces (db, auth, contract, plans, address, emails, tsconfig, eslint-config)
+supabase/       Local Supabase stack config and the SQL migrations
 docs/next-steps.md  Known gaps and the prioritised backlog
 ```
 
@@ -88,17 +89,19 @@ is truly missing, stop and report it.
 
 Run from the repo root; the scripts in `package.json` are the full list.
 
-| Command                                      | What it does                                 |
-| -------------------------------------------- | -------------------------------------------- |
-| `pnpm install`                               | Install                                      |
-| `pnpm dev`                                   | api + web + landing (and Mailpit, RustFS)    |
-| `pnpm typecheck` / `pnpm lint` / `pnpm test` | Turborepo across all workspaces              |
-| `pnpm build`                                 | Build web, api and landing                   |
-| `pnpm test:e2e`                              | Playwright against api + web on PGlite       |
-| `pnpm --filter @arrakit/<pkg> <script>`      | One workspace's script                       |
-| `pnpm --filter @arrakit/db db:generate`      | Generate a Drizzle migration from the schema |
-| `pnpm format`                                | Prettier                                     |
-| `pnpm init:project --name "<Product>"`       | Rename product name, slug and npm scope      |
+| Command                                      | What it does                                                 |
+| -------------------------------------------- | ------------------------------------------------------------ |
+| `pnpm install`                               | Install                                                      |
+| `pnpm dev`                                   | Local Supabase stack, then api + web + landing (and RustFS)  |
+| `pnpm supabase:start` / `pnpm supabase:stop` | Start (and migrate) or stop the local Supabase stack         |
+| `pnpm db:migrate` / `pnpm db:reset`          | Apply pending migrations, or recreate the local database     |
+| `pnpm typecheck` / `pnpm lint` / `pnpm test` | Turborepo across all workspaces                              |
+| `pnpm build`                                 | Build web, api and landing                                   |
+| `pnpm test:e2e`                              | Playwright against api + web on the local Supabase stack     |
+| `pnpm --filter @arrakit/<pkg> <script>`      | One workspace's script                                       |
+| `pnpm --filter @arrakit/db db:generate`      | Write a migration from the schema into `supabase/migrations` |
+| `pnpm format`                                | Prettier                                                     |
+| `pnpm init:project --name "<Product>"`       | Rename product name, slug and npm scope                      |
 
 ## Conventions
 
@@ -108,6 +111,12 @@ Run from the repo root; the scripts in `package.json` are the full list.
 - **Tests are required** for every feature: unit tests for pure logic, integration tests for API
   procedures (PGlite), component tests for screens (RTL), and end-to-end tests for the main
   journeys (Playwright).
+- **Migrations**: drizzle-kit writes them into `supabase/migrations` from the Drizzle schema and
+  the Supabase CLI applies them (`pnpm db:migrate`), never the API: it refuses to start on a
+  database that is behind. Hand-written SQL goes in a `db:generate --custom` migration, so it
+  enters the journal the API reads.
+- **Better Auth's identity and OAuth tables** live in the `better_auth` schema (a test enforces
+  which); raw SQL names them with the schema.
 - **Tenancy**: every table, except the named exceptions in the schema (a test enforces it), has
   `organization_id uuid not null references organizations(id) on delete cascade`, and
   organization data is only reached through `forOrganization(orgId)`.
@@ -139,7 +148,7 @@ Run from the repo root; the scripts in `package.json` are the full list.
   middleware answers first.
 - Both servers send security headers; OAuth and MCP paths stay readable cross-origin, and proxied
   responses keep the API's headers.
-- Mail in dev and e2e goes to Mailpit when `RESEND_API_KEY` is unset; `pnpm dev` starts it.
+- Mail in dev and e2e goes to the local Supabase stack's Mailpit when `RESEND_API_KEY` is unset.
 - Files in dev and e2e go to a local RustFS (`pnpm rustfs`, started by `pnpm dev`). Browsers upload
   and download straight to the bucket through presigned URLs, never through the API, so a
   production bucket needs a CORS rule allowing PUT and GET from the web origin.
@@ -147,14 +156,17 @@ Run from the repo root; the scripts in `package.json` are the full list.
 ## Testing
 
 - **Vitest** everywhere: node environment for packages and api, jsdom for web.
-- **Database**: in-memory PGlite per test file (Docker is not available), through `@arrakit/db/testing`.
+- **Database**: in-memory PGlite per test file, through `@arrakit/db/testing`, which first creates
+  what a Supabase database already has and then applies the same migrations. Unit and integration
+  tests need no Docker; `pnpm dev` and `pnpm test:e2e` do, for the local Supabase stack.
 - **Auth**: Better Auth's `testUtils` plugin, enabled only in tests. (`@better-auth/test-utils` on
   npm is for adapter conformance, not for this.)
 - **Shared kits**: the API, the web and the e2e suite each have a testing kit (in-process app,
   people helpers, msw answers, render helpers, Mailpit readers). Read it and reuse it before
   writing a new helper.
-- **E2E**: Playwright boots the API on PGlite with fake Stripe, Mailpit and RustFS, plus the web
-  dev server. Embedded Checkout cannot load with the fake gateway's client secret, so e2e asserts
+- **E2E**: Playwright boots the API on the local Supabase stack with fake Stripe and RustFS, plus
+  the web dev server. The database and the inbox are the ones `pnpm dev` uses and are not reset:
+  tests make their own people and organizations. Embedded Checkout cannot load with the fake gateway's client secret, so e2e asserts
   reaching the checkout page and drives payments through the fake webhook.
 
 ## Make it yours
