@@ -146,9 +146,9 @@ allowed_mime_types = [
   "image/webp"
 ]
 
-# Allow connections via S3 compatible clients
+# Nothing uses the S3 protocol endpoint: files go through signed URLs.
 [storage.s3_protocol]
-enabled = true
+enabled = false
 
 # Image transformation API is available to Supabase Pro plan.
 # [storage.image_transformation]

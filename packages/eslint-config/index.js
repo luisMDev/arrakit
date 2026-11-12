@@ -7,8 +7,8 @@ import tseslint from 'typescript-eslint'
 
 /**
  * Database, queue and storage drivers that only packages/db may import.
- * Everything else (apps/api included) must go through `openData()` / `forOrganization(id)` from
- * `@arrakit/db`.
+ * Everything else (apps/api included) must go through `openData()` and its scopes,
+ * `forOrganization(claims)` and `asSystem(id)`, from `@arrakit/db`.
  */
 const DATA_ONLY_MODULES = [
   'pg',
@@ -133,7 +133,6 @@ export function base({ restrictData = true, ...restricted } = {}) {
         '**/.astro/**',
         '**/coverage/**',
         '**/routeTree.gen.ts',
-        '**/drizzle/**',
       ],
     },
     js.configs.recommended,
