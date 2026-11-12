@@ -6,12 +6,26 @@ import { describe, expect, it } from 'vitest'
 const repo = fileURLToPath(new URL('../../../', import.meta.url))
 const GUARD_RULES = ['no-restricted-imports', 'no-restricted-syntax']
 
-const eslint = new ESLint({ cwd: repo })
+// typescript-eslint cannot infer tsconfigRootDir once several workspace configs are loaded in one
+// process, so each workspace gets an instance that names its own.
+const instances = new Map<string, ESLint>()
+const eslintFor = (file: string) => {
+  const workspace = file.split('/').slice(0, 2).join('/')
+  let eslint = instances.get(workspace)
+  if (!eslint) {
+    eslint = new ESLint({
+      cwd: repo,
+      overrideConfig: { languageOptions: { parserOptions: { tsconfigRootDir: repo + workspace } } },
+    })
+    instances.set(workspace, eslint)
+  }
+  return eslint
+}
 
 const lint = async (file: string, code: string) => {
-  const [result] = await eslint.lintText(code, { filePath: `${repo}${file}` })
+  const [result] = await eslintFor(file).lintText(code, { filePath: `${repo}${file}` })
   return (result?.messages ?? [])
-    .filter((message) => GUARD_RULES.includes(message.ruleId ?? ''))
+    .filter((message) => message.fatal || GUARD_RULES.includes(message.ruleId ?? ''))
     .map((message) => message.message)
 }
 
@@ -110,5 +124,51 @@ describe('the data import guard', () => {
   it('allows the drivers inside packages/db', async () => {
     const code = `${DRIVERS.filter((line) => !line.includes('require') && !line.includes('await')).join('\n')}\nexport {}\n`
     expect(await lint('packages/db/src/guard-probe.ts', code)).toEqual([])
+  })
+}, 60_000)
+
+const SUPABASE = [
+  "import { createClient } from '@supabase/supabase-js'",
+  "import type { SupabaseClient } from '@supabase/supabase-js'",
+  "await import('@supabase/supabase-js')",
+]
+
+describe('the module guards', () => {
+  it.each(
+    [
+      'apps/api/src/guard-probe.ts',
+      'apps/web/src/components/guard-probe.tsx',
+      'packages/auth/src/guard-probe.ts',
+      'packages/contract/src/guard-probe.ts',
+    ].flatMap((file) => SUPABASE.map((code) => [file, code])),
+  )('refuse the Supabase client in %s: %s', async (file, code) => {
+    const messages = await lint(file, `${code}\nexport {}\n`)
+    expect(messages).toHaveLength(1)
+    expect(messages[0]).toMatch(/Supabase client|joinChannel from '#\/lib\/realtime'/)
+  })
+
+  it.each([
+    'apps/web/src/lib/realtime.ts',
+    'packages/db/src/guard-probe.ts',
+    'apps/web/e2e/guard-probe.ts',
+  ])('let the Supabase client through in %s', async (file) => {
+    expect(await lint(file, `${SUPABASE.join('\n')}\nexport {}\n`)).toEqual([])
+  })
+
+  it('keep each exception to its own module', async () => {
+    const toast = "import { toast } from 'sonner'\nexport {}\n"
+    expect(await lint('apps/web/src/lib/notify.ts', toast)).toEqual([])
+    expect(await lint('apps/web/src/lib/realtime.ts', toast)).toEqual([
+      "'sonner' import is restricted from being used. Show toasts with notify from '#/lib/notify'.",
+    ])
+    expect(await lint('apps/web/src/lib/notify.ts', `${SUPABASE[0]}\nexport {}\n`)).toHaveLength(1)
+  })
+
+  it('refuse @arrakit/db in web code and let the e2e suite use it', async () => {
+    const code = "import { openData } from '@arrakit/db'\nexport {}\n"
+    expect(await lint('apps/web/src/lib/guard-probe.ts', code)).toEqual([
+      "'@arrakit/db' import is restricted from being used. The web never talks to the database; it only calls /api/*.",
+    ])
+    expect(await lint('apps/web/e2e/guard-probe.ts', code)).toEqual([])
   })
 }, 60_000)
