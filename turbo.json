@@ -14,8 +14,6 @@
     "LOG_FORMAT",
     "SENTRY_*",
     "SUPABASE_*",
-    "R2_*",
-    "S3_*",
     "GOOGLE_*",
     "MICROSOFT_*",
     "WEB_URL",
@@ -33,11 +31,16 @@
     "typecheck": {},
     "lint": {},
     "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/supabase/config.toml",
+        "$TURBO_ROOT$/supabase/migrations/**"
+      ],
       "outputs": ["coverage/**"]
     },
     "test:e2e": {
       "cache": false,
-      "passThroughEnv": ["E2E_WEB_PORT", "E2E_API_PORT", "E2E_RUSTFS_PORT"]
+      "passThroughEnv": ["E2E_WEB_PORT", "E2E_API_PORT"]
     },
     "dev": {
       "cache": false,
@@ -48,10 +51,6 @@
     },
     "//#test:scripts": {
       "inputs": ["scripts/**"]
-    },
-    "//#rustfs": {
-      "cache": false,
-      "persistent": true
     }
   }
 }

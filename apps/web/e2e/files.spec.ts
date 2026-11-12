@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 
+import type { RealtimeAccess, UploadTicket } from '@arrakit/contract'
 import { expect, test } from '@playwright/test'
+import { createClient } from '@supabase/supabase-js'
 
 import { magicLinkFor } from './mailpit'
 import { inviteMember, payFor, rpc, signedInOwner, uniqueEmail } from './session'
@@ -110,4 +113,42 @@ test('files go straight to storage for the organization and each workspace', asy
   await expect(page.getByText('minutes.md deleted.')).toBeVisible()
   await expect(page.locator('[data-file]')).toHaveCount(1)
   await expect(page.locator('[data-file="mine.md"]')).toBeVisible()
+})
+
+test('bytes go to the stack bucket, and a member token reaches nothing there directly', async ({
+  page,
+}) => {
+  const { organizationId } = await signedInOwner(page, { organization: 'Larch Partners' })
+  const text = '# Private notes'
+  const data = Buffer.from(text)
+
+  const ticket = await rpc<UploadTicket>(page, 'files/requestUpload', {
+    name: 'notes.md',
+    sizeBytes: data.byteLength,
+  })
+  const put = await page.request.put(ticket.upload.url, { headers: ticket.upload.headers, data })
+  expect(put.ok(), await put.text()).toBe(true)
+  const { id } = await rpc<{ id: string }>(page, 'files/completeUpload', { id: ticket.file.id })
+
+  const access = await rpc<RealtimeAccess | null>(page, 'realtime/access')
+  expect(access).not.toBeNull()
+  expect(new URL(ticket.upload.url).origin).toBe(new URL(access!.url).origin)
+
+  const bucket = createClient(access!.url, access!.publishableKey, {
+    accessToken: async () => access!.token,
+  }).storage.from('files')
+  const key = `${organizationId}/files/${id}`
+  const listed = await bucket.list(`${organizationId}/files`)
+  expect(listed.data).toEqual([])
+  expect((await bucket.download(key)).error).not.toBeNull()
+  const written = await bucket.upload(`${organizationId}/files/${randomUUID()}`, 'x', {
+    contentType: 'text/plain',
+  })
+  expect(written.error?.message).toMatch(/row-level security/i)
+  expect((await bucket.remove([key])).data).toEqual([])
+
+  const link = await rpc<{ url: string }>(page, 'files/downloadUrl', { id })
+  const got = await page.request.get(link.url)
+  expect(got.ok()).toBe(true)
+  expect(await got.text()).toBe(text)
 })

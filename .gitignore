@@ -12,8 +12,6 @@ coverage
 .env.*
 !.env.example
 .DS_Store
-# Local file storage and downloaded binaries
-.data
 # Playwright
 test-results
 playwright-report
