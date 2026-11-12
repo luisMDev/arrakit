@@ -151,7 +151,7 @@ describe('organization rename and delete (Better Auth organization plugin)', () 
       stripe.failNext(null)
 
       const { rows } = await sqlOf(t)(
-        'select active_organization_id from sessions where user_id = $1',
+        'select active_organization_id from better_auth.sessions where user_id = $1',
         [owner.userId],
       )
       expect(rows.map((row) => row.active_organization_id)).toEqual([second.id])

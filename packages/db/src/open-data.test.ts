@@ -1,8 +1,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, describe, expect, expectTypeOf, it, vi } from 'vitest'
 
-import { connect, transaction } from './connection'
-import { consoleLog } from './context'
+import { transaction } from './connection'
 import { WORKER_RETRY_POLICY } from './jobs/types'
 import { type Data, type ScopedData, health } from './open-data'
 import { organizations } from './schema/index'
@@ -27,7 +26,6 @@ describe('openTestData', () => {
   afterAll(() => data.close())
 
   it('applies the migrations and reports healthy', async () => {
-    expect(data).toMatchObject({ driver: 'pglite' })
     await expect(data.health()).resolves.toEqual({
       status: 'ok',
       postgres: 'up',
@@ -52,13 +50,6 @@ describe('openTestData', () => {
 
     await data.db.delete(organizations).where(eq(organizations.id, org.id))
     expect(await data.memberOf(ana)).toBeNull()
-  })
-
-  it('migrating twice is a no-op', async () => {
-    const connection = await connect({}, consoleLog)
-    await connection.migrate()
-    await connection.migrate()
-    await connection.close()
   })
 })
 

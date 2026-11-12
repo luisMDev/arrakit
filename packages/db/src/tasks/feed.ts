@@ -109,7 +109,7 @@ function listeners(log: DataLog) {
   }
 }
 
-/** Listens on the PGlite instance Drizzle uses (dev, tests and e2e). */
+/** Listens on the PGlite instance Drizzle uses in tests. */
 export function pgliteTaskFeed(db: PGlite, log: DataLog): TaskFeed {
   const fanOut = listeners(log)
   let listening: Promise<() => Promise<void>> | undefined

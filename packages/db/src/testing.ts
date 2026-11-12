@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto'
 
 import type { Plan } from '@arrakit/plans'
+import { fromPglite } from 'pg-boss'
 
+import type { Connection } from './connection'
 import { type MemoryJobs, memoryJobs } from './jobs/memory'
-import { type Data, type OpenDataOptions, openData } from './open-data'
+import { pgBossJobs } from './jobs/pg-boss'
+import { type Data, type OpenDataOptions, openDataOn } from './open-data'
 import type { OrganizationRow } from './organization/index'
 import { members, organizations, users } from './schema/index'
 import { type MemoryStorage, memoryStorage } from './storage/memory'
+import { pgliteTaskFeed } from './tasks/feed'
+import { openTestDatabase } from './test-database'
 
 /** Data with the recording jobs fake and the in-memory storage. */
 export type TestData = Data & { jobs: MemoryJobs; storage: MemoryStorage }
@@ -14,23 +19,38 @@ export type TestData = Data & { jobs: MemoryJobs; storage: MemoryStorage }
 /** Data with real pg-boss jobs and the in-memory storage. */
 export type QueuedTestData = Data & { storage: MemoryStorage }
 
+async function testConnection(): Promise<Connection> {
+  const { client, db } = await openTestDatabase()
+  return {
+    db,
+    openJobs: (log) => pgBossJobs({ db: fromPglite(client), backend: 'pglite' }, log),
+    openTaskFeed: (log) => pgliteTaskFeed(client, log),
+    close: () => client.close(),
+  }
+}
+
 /** Opens a fresh in-memory database with migrations applied. Remember `await data.close()`. */
 export async function openTestData(options: OpenDataOptions = {}): Promise<TestData> {
-  const data = await openData(
-    { pgliteDir: 'memory://' },
+  const data = await openDataOn(
+    await testConnection(),
+    {},
     { storage: memoryStorage(), jobs: memoryJobs(), ...options },
   )
   return data as TestData
 }
 
 /**
- * A fresh in-memory database whose jobs run on pg-boss over the same PGlite, as `pnpm dev` does.
- * Slower than openTestData(): use it only to drive a job end to end.
+ * A fresh in-memory database whose jobs run on pg-boss over the same PGlite, the runtime the API
+ * uses on Postgres. Slower than openTestData(): use it only to drive a job end to end.
  */
 export async function openTestDataWithQueue(
   options: Omit<OpenDataOptions, 'jobs'> = {},
 ): Promise<QueuedTestData> {
-  const data = await openData({ pgliteDir: 'memory://' }, { storage: memoryStorage(), ...options })
+  const data = await openDataOn(
+    await testConnection(),
+    {},
+    { storage: memoryStorage(), ...options },
+  )
   return data as QueuedTestData
 }
 

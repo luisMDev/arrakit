@@ -18,7 +18,7 @@ async function main() {
   const mcp = mcpHandler(log)
   const app = createApp(deps, mcp)
   const server = serve({ fetch: app.fetch, port: deps.env.PORT }, (info) => {
-    log.info({ port: info.port, driver: deps.data.driver }, 'listening')
+    log.info({ port: info.port }, 'listening')
   })
 
   let stopping = false

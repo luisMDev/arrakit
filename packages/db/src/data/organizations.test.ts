@@ -170,7 +170,7 @@ describe('organizations', () => {
       expect(references).toEqual(
         [
           ...tables.map((table) => `${table}.organization_id:c`),
-          'sessions.active_organization_id:n',
+          'better_auth.sessions.active_organization_id:n',
         ].sort(),
       )
       const { rows: nullable } = await raw().query<{ table: string }>(

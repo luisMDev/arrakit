@@ -45,10 +45,10 @@ describe('the active organization', () => {
     const member = await joined(t, owner, 'ana@elm.vc')
     expect(await activeOf(member.headers)).toBe(owner.organizationId)
 
-    await sqlOf(t)('update sessions set active_organization_id = $1 where user_id = $2', [
-      stranger.organizationId,
-      member.userId,
-    ])
+    await sqlOf(t)(
+      'update better_auth.sessions set active_organization_id = $1 where user_id = $2',
+      [stranger.organizationId, member.userId],
+    )
     await expect(t.client(member.headers).me.get()).resolves.toMatchObject({
       organization: { id: owner.organizationId },
       role: 'member',
@@ -72,7 +72,7 @@ describe('the active organization', () => {
     await createOrganization(t, first.headers, 'Later')
     const again = await t.signIn({ email: 'ana@hazel.vc' })
     const { rows } = await sqlOf(t)(
-      'select active_organization_id from sessions where token = $1',
+      'select active_organization_id from better_auth.sessions where token = $1',
       [again.headers.get('cookie')!.match(/session_token=([^.;]+)/)![1]],
     )
     expect(rows[0]?.active_organization_id).toBe(first.organizationId)

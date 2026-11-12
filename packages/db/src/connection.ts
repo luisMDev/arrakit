@@ -1,44 +1,35 @@
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
-import { dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-import { PGlite } from '@electric-sql/pglite'
-import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres'
-import { migrate as migratePg } from 'drizzle-orm/node-postgres/migrator'
+import { drizzle } from 'drizzle-orm/node-postgres'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
-import { drizzle as drizzlePglite } from 'drizzle-orm/pglite'
-import { migrate as migratePglite } from 'drizzle-orm/pglite/migrator'
 import pg from 'pg'
 
 import type { DataLog } from './context'
+import { pgBossJobs } from './jobs/pg-boss'
+import type { JobsRuntime } from './jobs/types'
 import * as schema from './schema/index'
+import { type TaskFeed, postgresTaskFeed } from './tasks/feed'
 
 type Schema = typeof schema
 
-/** Drizzle over node-postgres or PGlite; transactions are assignable to it too. */
+/** Drizzle over node-postgres (over PGlite in tests); transactions are assignable to it too. */
 export type Database = PgDatabase<PgQueryResultHKT, Schema>
 
 export interface ConnectionConfig {
-  /** Real Postgres. When absent, PGlite is used. */
-  databaseUrl?: string
+  /** Postgres, reached directly or through a pooler in transaction mode. */
+  databaseUrl: string
   /**
-   * The same Postgres without a pooler in transaction mode, for what needs a session (the
-   * migration lock, LISTEN). Defaults to `databaseUrl`.
+   * The same Postgres on a connection that keeps its session, which LISTEN needs. Defaults to
+   * `databaseUrl`; set it when that one goes through a pooler in transaction mode.
    */
   databaseDirectUrl?: string
-  /** PGlite data directory. Absent (or 'memory://') means in-memory. */
-  pgliteDir?: string
-  /** Delete the PGlite directory before opening it (throwaway e2e databases). */
-  pgliteReset?: boolean
 }
 
+/** An open database and what runs on it. */
 export interface Connection {
   db: Database
-  driver: 'postgres' | 'pglite'
-  /** The embedded database behind `db` when the driver is PGlite. */
-  pglite?: PGlite
-  /** Applies pending migrations (under an advisory lock on Postgres). Idempotent. */
-  migrate(): Promise<void>
+  /** pg-boss in its own schema of this database. */
+  openJobs(log: DataLog): Promise<JobsRuntime>
+  /** Task changes as they commit on this database. */
+  openTaskFeed(log: DataLog): TaskFeed
   close(): Promise<void>
 }
 
@@ -47,92 +38,27 @@ export function transaction<R>(db: Database, work: (tx: Database) => Promise<R>)
   return db.transaction((tx) => work(tx as unknown as Database))
 }
 
-/** Key of the advisory lock held while migrating, so two instances booting together serialize. */
-export const MIGRATION_LOCK = 724083001
-
-/**
- * The migrations folder. From source it is packages/db/drizzle; in the bundled API (tsdown copies
- * the folder next to dist/main.mjs) it is ./drizzle beside the bundle.
- */
-export function defaultMigrationsFolder(): string {
-  const bundled = fileURLToPath(new URL('./drizzle', import.meta.url))
-  if (existsSync(bundled)) return bundled
-  return fileURLToPath(new URL('../drizzle', import.meta.url))
+/** Opens Drizzle over a node-postgres pool. Nothing is sent until the first query. */
+export function connect(config: ConnectionConfig, log: DataLog): Connection {
+  return postgresConnection(
+    new pg.Pool({ connectionString: config.databaseUrl, connectionTimeoutMillis: 5000 }),
+    config,
+    log,
+  )
 }
 
-/** Opens Drizzle over node-postgres when DATABASE_URL is set, otherwise over PGlite. */
-export async function connect(config: ConnectionConfig, log: DataLog): Promise<Connection> {
-  const migrationsFolder = defaultMigrationsFolder()
-
-  if (config.databaseUrl) {
-    const pool = new pg.Pool({
-      connectionString: config.databaseUrl,
-      connectionTimeoutMillis: 5000,
-    })
-    const sessions = config.databaseDirectUrl
-      ? new pg.Pool({
-          connectionString: config.databaseDirectUrl,
-          max: 1,
-          connectionTimeoutMillis: 5000,
-        })
-      : undefined
-    return postgresConnection(pool, migrationsFolder, log, sessions)
-  }
-
-  const dir = config.pgliteDir && config.pgliteDir !== 'memory://' ? config.pgliteDir : undefined
-  if (dir && config.pgliteReset) rmSync(dir, { recursive: true, force: true })
-  if (dir) mkdirSync(dirname(dir), { recursive: true })
-  const client = new PGlite(dir ?? 'memory://')
-  await client.waitReady
-  const db = drizzlePglite({ client, schema })
-  return {
-    db: db as unknown as Database,
-    driver: 'pglite',
-    pglite: client,
-    migrate: () => migratePglite(db, { migrationsFolder }),
-    close: () => client.close(),
-  }
-}
-
-/**
- * Drizzle over a node-postgres pool; migrations run on one client under MIGRATION_LOCK, taken from
- * `sessions` when given (a session lock does not hold through a pooler in transaction mode).
- */
 export function postgresConnection(
   pool: pg.Pool,
-  migrationsFolder: string,
+  config: ConnectionConfig,
   log: DataLog,
-  sessions: pg.Pool = pool,
 ): Connection {
   // An idle client failing must not crash the process.
-  for (const each of new Set([pool, sessions])) {
-    each.on('error', (err) => log.error({ err }, 'idle Postgres client failed'))
-  }
-  const db = drizzlePg({ client: pool, schema })
+  pool.on('error', (err) => log.error({ err }, 'idle Postgres client failed'))
   return {
-    db: db as unknown as Database,
-    driver: 'postgres',
-    migrate: async () => {
-      const client = await sessions.connect()
-      let release: Error | undefined
-      try {
-        await client.query('select pg_advisory_lock($1)', [MIGRATION_LOCK])
-        try {
-          await migratePg(drizzlePg({ client, schema }), { migrationsFolder })
-        } finally {
-          try {
-            await client.query('select pg_advisory_unlock($1)', [MIGRATION_LOCK])
-          } catch (err) {
-            release = err as Error
-          }
-        }
-      } finally {
-        client.release(release)
-      }
-    },
-    close: async () => {
-      await pool.end()
-      if (sessions !== pool) await sessions.end()
-    },
+    db: drizzle({ client: pool, schema }) as unknown as Database,
+    openJobs: (jobsLog) => pgBossJobs(config.databaseUrl, jobsLog),
+    openTaskFeed: (feedLog) =>
+      postgresTaskFeed(config.databaseDirectUrl ?? config.databaseUrl, feedLog),
+    close: () => pool.end(),
   }
 }

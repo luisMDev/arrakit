@@ -1,12 +1,12 @@
 {
-  "id": "ce9ddd11-fb41-4c21-9c85-b5535e54469c",
-  "prevId": "fd994cdb-41b3-438c-8d21-aa7e555643c3",
+  "id": "7c105a5b-a759-41cd-ac36-0188df611a8e",
+  "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.accounts": {
+    "better_auth.accounts": {
       "name": "accounts",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -111,6 +111,7 @@
           "name": "accounts_user_id_users_id_fk",
           "tableFrom": "accounts",
           "tableTo": "users",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "user_id"
           ],
@@ -127,9 +128,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.sessions": {
+    "better_auth.sessions": {
       "name": "sessions",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -216,6 +217,7 @@
           "name": "sessions_user_id_users_id_fk",
           "tableFrom": "sessions",
           "tableTo": "users",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "user_id"
           ],
@@ -266,9 +268,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.users": {
+    "better_auth.users": {
       "name": "users",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -352,14 +354,14 @@
       "checkConstraints": {
         "users_language_check": {
           "name": "users_language_check",
-          "value": "\"users\".\"language\" in ('en', 'es')"
+          "value": "\"better_auth\".\"users\".\"language\" in ('en', 'es')"
         }
       },
       "isRLSEnabled": false
     },
-    "public.verifications": {
+    "better_auth.verifications": {
       "name": "verifications",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -533,6 +535,7 @@
           "name": "artifact_versions_published_by_users_id_fk",
           "tableFrom": "artifact_versions",
           "tableTo": "users",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "published_by"
           ],
@@ -675,6 +678,7 @@
           "name": "artifacts_created_by_users_id_fk",
           "tableFrom": "artifacts",
           "tableTo": "users",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "created_by"
           ],
@@ -867,6 +871,7 @@
           "name": "files_uploaded_by_users_id_fk",
           "tableFrom": "files",
           "tableTo": "users",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "uploaded_by"
           ],
@@ -892,9 +897,9 @@
       },
       "isRLSEnabled": false
     },
-    "public.jwks": {
+    "better_auth.jwks": {
       "name": "jwks",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -947,9 +952,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.oauth_access_tokens": {
+    "better_auth.oauth_access_tokens": {
       "name": "oauth_access_tokens",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -1124,6 +1129,7 @@
           "name": "oauth_access_tokens_client_id_oauth_clients_client_id_fk",
           "tableFrom": "oauth_access_tokens",
           "tableTo": "oauth_clients",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "client_id"
           ],
@@ -1137,6 +1143,7 @@
           "name": "oauth_access_tokens_session_id_sessions_id_fk",
           "tableFrom": "oauth_access_tokens",
           "tableTo": "sessions",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "session_id"
           ],
@@ -1150,6 +1157,7 @@
           "name": "oauth_access_tokens_user_id_users_id_fk",
           "tableFrom": "oauth_access_tokens",
           "tableTo": "users",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "user_id"
           ],
@@ -1163,6 +1171,7 @@
           "name": "oauth_access_tokens_refresh_id_oauth_refresh_tokens_id_fk",
           "tableFrom": "oauth_access_tokens",
           "tableTo": "oauth_refresh_tokens",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "refresh_id"
           ],
@@ -1187,9 +1196,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.oauth_client_assertions": {
+    "better_auth.oauth_client_assertions": {
       "name": "oauth_client_assertions",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -1212,9 +1221,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.oauth_client_resources": {
+    "better_auth.oauth_client_resources": {
       "name": "oauth_client_resources",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -1305,6 +1314,7 @@
           "name": "oauth_client_resources_client_id_oauth_clients_client_id_fk",
           "tableFrom": "oauth_client_resources",
           "tableTo": "oauth_clients",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "client_id"
           ],
@@ -1318,6 +1328,7 @@
           "name": "oauth_client_resources_resource_id_oauth_resources_identifier_fk",
           "tableFrom": "oauth_client_resources",
           "tableTo": "oauth_resources",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "resource_id"
           ],
@@ -1334,9 +1345,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.oauth_clients": {
+    "better_auth.oauth_clients": {
       "name": "oauth_clients",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -1580,6 +1591,7 @@
           "name": "oauth_clients_user_id_users_id_fk",
           "tableFrom": "oauth_clients",
           "tableTo": "users",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "user_id"
           ],
@@ -1604,9 +1616,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.oauth_consents": {
+    "better_auth.oauth_consents": {
       "name": "oauth_consents",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -1700,6 +1712,7 @@
           "name": "oauth_consents_client_id_oauth_clients_client_id_fk",
           "tableFrom": "oauth_consents",
           "tableTo": "oauth_clients",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "client_id"
           ],
@@ -1713,6 +1726,7 @@
           "name": "oauth_consents_user_id_users_id_fk",
           "tableFrom": "oauth_consents",
           "tableTo": "users",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "user_id"
           ],
@@ -1729,9 +1743,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.oauth_refresh_tokens": {
+    "better_auth.oauth_refresh_tokens": {
       "name": "oauth_refresh_tokens",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -1909,6 +1923,7 @@
           "name": "oauth_refresh_tokens_client_id_oauth_clients_client_id_fk",
           "tableFrom": "oauth_refresh_tokens",
           "tableTo": "oauth_clients",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "client_id"
           ],
@@ -1922,6 +1937,7 @@
           "name": "oauth_refresh_tokens_session_id_sessions_id_fk",
           "tableFrom": "oauth_refresh_tokens",
           "tableTo": "sessions",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "session_id"
           ],
@@ -1935,6 +1951,7 @@
           "name": "oauth_refresh_tokens_user_id_users_id_fk",
           "tableFrom": "oauth_refresh_tokens",
           "tableTo": "users",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "user_id"
           ],
@@ -1959,9 +1976,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.oauth_resources": {
+    "better_auth.oauth_resources": {
       "name": "oauth_resources",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -2191,6 +2208,7 @@
           "name": "invitations_inviter_id_users_id_fk",
           "tableFrom": "invitations",
           "tableTo": "users",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "inviter_id"
           ],
@@ -2285,6 +2303,7 @@
           "name": "members_user_id_users_id_fk",
           "tableFrom": "members",
           "tableTo": "users",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "user_id"
           ],
@@ -2564,6 +2583,7 @@
           "name": "team_members_user_id_users_id_fk",
           "tableFrom": "team_members",
           "tableTo": "users",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "user_id"
           ],
@@ -2886,6 +2906,7 @@
           "name": "tasks_requested_by_users_id_fk",
           "tableFrom": "tasks",
           "tableTo": "users",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "requested_by"
           ],
@@ -3202,6 +3223,7 @@
           "name": "workspaces_created_by_users_id_fk",
           "tableFrom": "workspaces",
           "tableTo": "users",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "created_by"
           ],
@@ -3220,7 +3242,9 @@
     }
   },
   "enums": {},
-  "schemas": {},
+  "schemas": {
+    "better_auth": "better_auth"
+  },
   "sequences": {},
   "roles": {},
   "policies": {},

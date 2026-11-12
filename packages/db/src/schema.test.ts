@@ -1,5 +1,5 @@
 import { getTableColumns, getTableName, isTable } from 'drizzle-orm'
-import type { PgTable } from 'drizzle-orm/pg-core'
+import { type PgTable, getTableConfig } from 'drizzle-orm/pg-core'
 import { describe, expect, it } from 'vitest'
 
 import * as schema from './schema/index'
@@ -28,6 +28,26 @@ describe('schema tenancy rule', () => {
     for (const name of ['user_profiles', 'auth_events', 'user', 'organization']) {
       expect(exceptions).not.toContain(name)
     }
+  })
+
+  it('keeps the identity and OAuth tables, and only them, in the better_auth schema', () => {
+    const inBetterAuth = tables
+      .filter((table) => getTableConfig(table).schema === 'better_auth')
+      .map(getTableName)
+    expect(inBetterAuth.sort()).toEqual([
+      'accounts',
+      'jwks',
+      'oauth_access_tokens',
+      'oauth_client_assertions',
+      'oauth_client_resources',
+      'oauth_clients',
+      'oauth_consents',
+      'oauth_refresh_tokens',
+      'oauth_resources',
+      'sessions',
+      'users',
+      'verifications',
+    ])
   })
 
   it('declares the OAuth provider tables', () => {

@@ -1,9 +1,9 @@
-import { boolean, index, integer, jsonb, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, jsonb, text, uniqueIndex } from 'drizzle-orm/pg-core'
 
-import { sessions, users } from './auth'
+import { betterAuthSchema, sessions, users } from './auth'
 import { at } from './columns'
 
-export const jwks = pgTable('jwks', {
+export const jwks = betterAuthSchema.table('jwks', {
   id: text('id').primaryKey(),
   publicKey: text('public_key').notNull(),
   privateKey: text('private_key').notNull(),
@@ -13,7 +13,7 @@ export const jwks = pgTable('jwks', {
   crv: text('crv'),
 })
 
-export const oauthClients = pgTable(
+export const oauthClients = betterAuthSchema.table(
   'oauth_clients',
   {
     id: text('id').primaryKey(),
@@ -56,7 +56,7 @@ export const oauthClients = pgTable(
   (t) => [index('oauth_clients_user_id_idx').on(t.userId)],
 )
 
-export const oauthResources = pgTable('oauth_resources', {
+export const oauthResources = betterAuthSchema.table('oauth_resources', {
   id: text('id').primaryKey(),
   identifier: text('identifier').notNull().unique('oauth_resources_identifier_unique'),
   name: text('name').notNull(),
@@ -74,7 +74,7 @@ export const oauthResources = pgTable('oauth_resources', {
   metadata: jsonb('metadata'),
 })
 
-export const oauthClientResources = pgTable(
+export const oauthClientResources = betterAuthSchema.table(
   'oauth_client_resources',
   {
     id: text('id').primaryKey(),
@@ -94,7 +94,7 @@ export const oauthClientResources = pgTable(
   ],
 )
 
-export const oauthRefreshTokens = pgTable(
+export const oauthRefreshTokens = betterAuthSchema.table(
   'oauth_refresh_tokens',
   {
     id: text('id').primaryKey(),
@@ -128,7 +128,7 @@ export const oauthRefreshTokens = pgTable(
   ],
 )
 
-export const oauthAccessTokens = pgTable(
+export const oauthAccessTokens = betterAuthSchema.table(
   'oauth_access_tokens',
   {
     id: text('id').primaryKey(),
@@ -158,7 +158,7 @@ export const oauthAccessTokens = pgTable(
   ],
 )
 
-export const oauthConsents = pgTable(
+export const oauthConsents = betterAuthSchema.table(
   'oauth_consents',
   {
     id: text('id').primaryKey(),
@@ -179,7 +179,7 @@ export const oauthConsents = pgTable(
   ],
 )
 
-export const oauthClientAssertions = pgTable('oauth_client_assertions', {
+export const oauthClientAssertions = betterAuthSchema.table('oauth_client_assertions', {
   id: text('id').primaryKey(),
   expiresAt: at('expires_at').notNull(),
 })

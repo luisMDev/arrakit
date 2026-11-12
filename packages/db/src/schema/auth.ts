@@ -1,13 +1,16 @@
 import { type AccountLanguage } from '@arrakit/address'
 import { sql } from 'drizzle-orm'
-import { boolean, check, index, pgTable, text, uuid } from 'drizzle-orm/pg-core'
+import { boolean, check, index, pgSchema, text, uuid } from 'drizzle-orm/pg-core'
 
 import { at, createdAt, updatedAt } from './columns'
 import { organizations, teams } from './organizations'
 
 export { ACCOUNT_LANGUAGES, type AccountLanguage } from '@arrakit/address'
 
-export const users = pgTable(
+/** Better Auth's identity and OAuth tables: never exposed through the Data API, never granted. */
+export const betterAuthSchema = pgSchema('better_auth')
+
+export const users = betterAuthSchema.table(
   'users',
   {
     id: text('id').primaryKey(),
@@ -24,7 +27,7 @@ export const users = pgTable(
   (t) => [check('users_language_check', sql`${t.language} in ('en', 'es')`)],
 )
 
-export const sessions = pgTable(
+export const sessions = betterAuthSchema.table(
   'sessions',
   {
     id: text('id').primaryKey(),
@@ -45,7 +48,7 @@ export const sessions = pgTable(
   (t) => [index('sessions_user_id_idx').on(t.userId)],
 )
 
-export const accounts = pgTable(
+export const accounts = betterAuthSchema.table(
   'accounts',
   {
     id: text('id').primaryKey(),
@@ -67,7 +70,7 @@ export const accounts = pgTable(
   (t) => [index('accounts_user_id_idx').on(t.userId)],
 )
 
-export const verifications = pgTable(
+export const verifications = betterAuthSchema.table(
   'verifications',
   {
     id: text('id').primaryKey(),

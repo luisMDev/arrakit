@@ -352,7 +352,7 @@ describe('organization tasks', () => {
   it('goes with its organization, and keeps tasks whose requester is gone', async () => {
     const f = await organizationOf('pine')
     const row = await f.tasks.start(f.task())
-    await rawSql(data)('DELETE FROM users WHERE id = $1', [f.owner])
+    await rawSql(data)('DELETE FROM better_auth.users WHERE id = $1', [f.owner])
     expect(await f.tasks.get(row.id)).toMatchObject({ requestedBy: null, requesterName: null })
 
     await rawSql(data)('DELETE FROM organizations WHERE id = $1', [f.organizationId])

@@ -1,5 +1,4 @@
 import { sql } from 'drizzle-orm'
-import { fromPglite } from 'pg-boss'
 
 import { authDatabase } from './auth-database'
 import type { DataConfig } from './config'
@@ -11,13 +10,13 @@ import { invitationsData } from './data/invitations'
 import { membershipData } from './data/membership'
 import { organizationsData } from './data/organizations'
 import { tasksData } from './data/tasks'
-import { pgBossJobs } from './jobs/pg-boss'
 import type { JobsRuntime } from './jobs/types'
+import { assertMigrated } from './migrations'
 import { forOrganization } from './organization/index'
 import { memoryStorage } from './storage/memory'
 import { s3Storage } from './storage/s3'
 import type { Storage } from './storage/types'
-import { TASK_CHANNEL, type TaskFeed, pgliteTaskFeed, postgresTaskFeed } from './tasks/feed'
+import { TASK_CHANNEL, type TaskFeed } from './tasks/feed'
 
 export interface OpenDataOptions {
   /** Replace the storage implementation (tests). */
@@ -76,14 +75,8 @@ export async function health(ctx: DataContext, taskFeed: TaskFeed): Promise<Heal
   return { status: ok ? 'ok' : 'error', postgres, storage, queue, taskFeed: feed }
 }
 
-function buildData(
-  ctx: DataContext,
-  close: () => Promise<void>,
-  driver: 'postgres' | 'pglite',
-  taskFeed: TaskFeed,
-) {
+function buildData(ctx: DataContext, close: () => Promise<void>, taskFeed: TaskFeed) {
   return {
-    driver,
     ...membershipData(ctx),
     ...organizationsData(ctx),
     ...invitationsData(ctx),
@@ -116,23 +109,25 @@ export type Data = ScopedData & {
   storage: Storage
 }
 
-/** pg-boss on the same database: the Postgres URL, or the PGlite instance Drizzle uses. */
-function pgBossOn(connection: Connection, config: DataConfig, log: DataLog): Promise<JobsRuntime> {
-  if (connection.pglite) {
-    return pgBossJobs({ db: fromPglite(connection.pglite), backend: 'pglite' }, log)
-  }
-  return pgBossJobs(config.databaseUrl!, log)
-}
-
+/** Opens the data layer on Postgres, refusing a database whose migrations are behind. */
 export async function openData(config: DataConfig, options: OpenDataOptions = {}): Promise<Data> {
-  const log = options.log ?? consoleLog
-  const connection = await connect(config, log)
+  const connection = connect(config, options.log ?? consoleLog)
   try {
-    await connection.migrate()
+    await assertMigrated(connection.db)
   } catch (err) {
     await connection.close()
     throw err
   }
+  return openDataOn(connection, config, options)
+}
+
+/** The data layer over an open, migrated database. */
+export async function openDataOn(
+  connection: Connection,
+  config: Pick<DataConfig, 's3'>,
+  options: OpenDataOptions = {},
+): Promise<Data> {
+  const log = options.log ?? consoleLog
 
   const bucket = !options.storage && config.s3 ? s3Storage(config.s3) : undefined
   const storage = options.storage ?? bucket ?? memoryStorage()
@@ -149,16 +144,14 @@ export async function openData(config: DataConfig, options: OpenDataOptions = {}
 
   let jobs: JobsRuntime
   try {
-    jobs = options.jobs ?? (await pgBossOn(connection, config, log))
+    jobs = options.jobs ?? (await connection.openJobs(log))
   } catch (err) {
     await storage.close()
     await connection.close()
     throw err
   }
 
-  const taskFeed = connection.pglite
-    ? pgliteTaskFeed(connection.pglite, log)
-    : postgresTaskFeed((config.databaseDirectUrl ?? config.databaseUrl)!, log)
+  const taskFeed = connection.openTaskFeed(log)
 
   let closing: Promise<void> | undefined
   const close = () => {
@@ -177,7 +170,6 @@ export async function openData(config: DataConfig, options: OpenDataOptions = {}
   const data = buildData(
     { db: connection.db, jobs, storage, now: options.now ?? (() => new Date()), log },
     close,
-    connection.driver,
     taskFeed,
   )
   return { ...data, db: connection.db, storage }

@@ -25,24 +25,21 @@ const R2_REQUIRED = [
 ] as const
 
 /**
- * DATABASE_URL is optional (absent -> PGlite at PGLITE_DIR, default `.data/pglite`) and required
- * in production. R2_* are all-or-none, in production too (absent -> in-memory storage). Empty
- * strings count as missing; every missing name is reported in one error `[data] missing env: A, B`.
+ * DATABASE_URL is required. R2_* are all-or-none, in production too (absent -> in-memory
+ * storage). Empty strings count as missing; every missing name is reported in one error
+ * `[data] missing env: A, B`.
  */
 export function loadDataConfig(env: Env): DataConfig {
   const value = (name: string) => env[name] || undefined
-  const production = env.NODE_ENV === 'production'
   const missing: string[] = []
-  if (production && !value('DATABASE_URL')) missing.push('DATABASE_URL')
+  if (!value('DATABASE_URL')) missing.push('DATABASE_URL')
   const r2Set = R2_REQUIRED.filter((name) => value(name))
   if (r2Set.length > 0) missing.push(...R2_REQUIRED.filter((name) => !value(name)))
   if (missing.length > 0) throw new Error(`[data] missing env: ${missing.join(', ')}`)
 
   return {
-    databaseUrl: value('DATABASE_URL'),
+    databaseUrl: env.DATABASE_URL!,
     databaseDirectUrl: value('DATABASE_DIRECT_URL'),
-    pgliteDir: value('PGLITE_DIR') ?? '.data/pglite',
-    pgliteReset: value('PGLITE_RESET') === '1',
     s3:
       r2Set.length > 0
         ? {

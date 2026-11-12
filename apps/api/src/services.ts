@@ -68,7 +68,7 @@ function betterAuthLogger(log: Logger): NonNullable<AuthDeps['logger']> {
 
 /**
  * Boot order: env and auth config, error reporter, mailer,
- * data (migrations).
+ * data (refused when its migrations are behind).
  */
 export async function depsFromEnv(
   rawEnv: Record<string, string | undefined>,

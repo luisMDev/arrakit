@@ -1,19 +1,15 @@
 import { randomUUID } from 'node:crypto'
 
-import { PGlite } from '@electric-sql/pglite'
 import { eq } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/pglite'
-import { migrate } from 'drizzle-orm/pglite/migrator'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { type Database, defaultMigrationsFolder } from '../connection'
 import { memoryJobs } from '../jobs/memory'
 import { consoleLog } from '../context'
 import { type Data, openData } from '../open-data'
 import { toOrganizationId } from '../organization-id'
-import * as schema from '../schema/index'
 import { organizations } from '../schema/index'
 import { memoryStorage } from '../storage/memory'
+import { type TestDatabase, openTestDatabase } from '../test-database'
 import { usageScope } from './usage'
 
 /**
@@ -23,24 +19,20 @@ import { usageScope } from './usage'
  */
 describe('usage row lock (emitted SQL)', () => {
   const queries: string[] = []
-  let client: PGlite
-  let db: Database
+  let database: TestDatabase
 
   beforeAll(async () => {
-    client = new PGlite()
-    const logged = drizzle({ client, schema, logger: { logQuery: (query) => queries.push(query) } })
-    await migrate(logged, { migrationsFolder: defaultMigrationsFolder() })
-    db = logged as unknown as Database
+    database = await openTestDatabase({ logger: { logQuery: (query) => queries.push(query) } })
   })
-  afterAll(() => client.close())
+  afterAll(() => database.client.close())
 
   async function scope() {
-    const [org] = await db
+    const [org] = await database.db
       .insert(organizations)
       .values({ name: 'Locked', slug: `locked-${randomUUID()}`, plan: 'free' })
       .returning()
     const ctx = {
-      db,
+      db: database.db,
       jobs: memoryJobs(),
       storage: memoryStorage(),
       now: () => new Date(),
@@ -95,7 +87,7 @@ describe.skipIf(!postgresUrl)('usage under real Postgres concurrency', () => {
 
   beforeAll(async () => {
     data = await openData(
-      { databaseUrl: postgresUrl },
+      { databaseUrl: postgresUrl! },
       { storage: memoryStorage(), jobs: memoryJobs() },
     )
   })

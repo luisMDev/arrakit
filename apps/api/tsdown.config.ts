@@ -11,6 +11,4 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   deps: { alwaysBundle: [/^@arrakit\//] },
-  // @arrakit/db applies these migrations on boot; the bundle looks for ./drizzle beside main.mjs.
-  copy: [{ from: '../../packages/db/drizzle', to: 'dist' }],
 })
