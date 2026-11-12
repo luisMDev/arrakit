@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { Plan } from '@arrakit/plans'
+import { sql } from 'drizzle-orm'
 import { fromPglite } from 'pg-boss'
 
 import type { Connection } from './connection'
@@ -8,12 +9,12 @@ import { type MemoryJobs, memoryJobs } from './jobs/memory'
 import { pgBossJobs } from './jobs/pg-boss'
 import { type Data, type OpenDataOptions, openDataOn } from './open-data'
 import type { OrganizationRow } from './organization/index'
-import type { MemberClaims } from './organization/scoped'
+import { type Claims, type MemberClaims, scopedTo } from './organization/scoped'
 import { members, organizations, users } from './schema/index'
 import { type MemoryStorage, memoryStorage } from './storage/memory'
-import { pgliteTaskFeed } from './tasks/feed'
 import { openTestDatabase } from './test-database'
 
+export { memoryJobs } from './jobs/memory'
 export {
   type Claims,
   type MemberClaims,
@@ -33,7 +34,6 @@ async function testConnection(): Promise<Connection> {
   return {
     db,
     openJobs: (log) => pgBossJobs({ db: fromPglite(client), backend: 'pglite' }, log),
-    openTaskFeed: (log) => pgliteTaskFeed(client, log),
     close: () => client.close(),
   }
 }
@@ -108,4 +108,21 @@ export function memberClaims(
   permissions: readonly string[] = [],
 ): MemberClaims {
   return { sub: userId, role: 'authenticated', org_id: organizationId, permissions, actor: 'user' }
+}
+
+/**
+ * How many Realtime messages a join to `topic` with `claims` (a token's payload) may read, checked
+ * as Realtime does: under `authenticated` with the claims and `realtime.topic` set. Zero: refused.
+ */
+export function realtimeJoinSees(data: Data, claims: object, topic: string): Promise<number> {
+  return scopedTo(
+    data.db,
+    claims as Claims,
+  )(async (tx) => {
+    await tx.execute(sql`select set_config('realtime.topic', ${topic}, true)`)
+    const { rows } = (await tx.execute(
+      sql`select count(*)::int as n from realtime.messages`,
+    )) as unknown as { rows: { n: number }[] }
+    return rows[0]!.n
+  })
 }

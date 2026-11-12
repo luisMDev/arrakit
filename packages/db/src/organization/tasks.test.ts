@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { TASK_EVENTS } from '../tasks/events'
+import { TASK_SIGNAL_EVENT, taskTopics } from '../tasks/signals'
 import {
   type QueuedTestData,
   type TestData,
@@ -52,6 +53,15 @@ describe('organization tasks', () => {
 
   const publishedSince = (start: number) => data.jobs.published.slice(start)
 
+  const signalsOf = async (organizationId: string) =>
+    (
+      await rawSql(data)(
+        `select topic, event, payload ->> 'taskId' as "taskId" from realtime.messages
+         where starts_with(topic, $1) order by inserted_at, topic`,
+        [`org:${organizationId}:`],
+      )
+    ).rows
+
   it('starts a queued task and queues its job with the task id', async () => {
     const f = await organizationOf('alder')
     const row = await f.tasks.start(
@@ -91,6 +101,62 @@ describe('organization tasks', () => {
     send.mockRestore()
 
     expect((await f.tasks.list({ status: 'active', limit: 10 })).tasks).toEqual([])
+    expect(await signalsOf(f.organizationId)).toEqual([])
+  })
+
+  it('signals every change to the organization topic and to the requester topic', async () => {
+    const f = await organizationOf('sequoia')
+    const both = (taskId: string) => [
+      { topic: taskTopics.organization(f.organizationId), event: TASK_SIGNAL_EVENT, taskId },
+      {
+        topic: taskTopics.requester(f.organizationId, f.owner),
+        event: TASK_SIGNAL_EVENT,
+        taskId,
+      },
+    ]
+    const signalled = async (change: () => Promise<unknown>) => {
+      const before = (await signalsOf(f.organizationId)).length
+      await change()
+      return (await signalsOf(f.organizationId)).slice(before)
+    }
+
+    let id = ''
+    const started = await signalled(async () => {
+      id = (await f.tasks.start(f.task())).id
+    })
+    expect(started).toEqual(both(id))
+    expect(await signalled(() => f.tasks.begin(id, 0))).toEqual(both(id))
+    expect(await signalled(() => f.tasks.progress(id, 1, 3))).toEqual(both(id))
+    expect(await signalled(() => f.tasks.retrying(id, 'unexpected'))).toEqual(both(id))
+    await f.tasks.begin(id, 1)
+    expect(await signalled(() => f.tasks.succeed(id))).toEqual(both(id))
+
+    const failing = await f.tasks.start(f.task())
+    expect(await signalled(() => f.tasks.fail(failing.id, 'stalled'))).toEqual(both(failing.id))
+  })
+
+  it('signals only the organization topic for a task with no requester, and nothing idle', async () => {
+    const f = await organizationOf('tamarack')
+    const before = (await signalsOf(f.organizationId)).length
+    const row = await f.tasks.start(f.task({ requestedBy: null }))
+    expect((await signalsOf(f.organizationId)).slice(before)).toEqual([
+      {
+        topic: taskTopics.organization(f.organizationId),
+        event: TASK_SIGNAL_EVENT,
+        taskId: row.id,
+      },
+    ])
+
+    await f.tasks.begin(row.id, 0)
+    const running = (await signalsOf(f.organizationId)).length
+    expect(await f.tasks.heartbeat(row.id)).toBe(true)
+    await f.tasks.succeed(row.id)
+    const finished = (await signalsOf(f.organizationId)).length
+    expect(finished).toBe(running + 1)
+    expect(await f.tasks.succeed(row.id)).toBeUndefined()
+    expect(await f.tasks.progress(row.id, 1)).toBeUndefined()
+    expect(await f.tasks.heartbeat(row.id)).toBe(false)
+    expect((await signalsOf(f.organizationId)).length).toBe(finished)
   })
 
   it('refuses a workspace of another organization and keeps organizations apart', async () => {

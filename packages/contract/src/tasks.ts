@@ -1,4 +1,3 @@
-import { eventIterator } from '@orpc/contract'
 import { z } from 'zod'
 
 import { base } from './common'
@@ -47,15 +46,12 @@ export const taskListInputSchema = taskScopeSchema.extend({
 export const taskPageSchema = z.object({ tasks: z.array(taskSchema), next: z.string().nullable() })
 export type TaskPage = z.infer<typeof taskPageSchema>
 
-/**
- * `task`: a task as it is now, sent whenever it changes. `resync`: changes may have been missed,
- * so read the lists again.
- */
-export const taskChangeSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('task'), task: taskSchema }),
-  z.object({ type: z.literal('resync') }),
-])
-export type TaskChange = z.infer<typeof taskChangeSchema>
+/** The Realtime broadcast event a task change is signalled with. */
+export const TASK_SIGNAL_EVENT = 'task.changed'
+
+/** What a task signal carries: read the task through `get` to see how it is now. */
+export const taskSignalSchema = z.object({ taskId: z.uuid() })
+export type TaskSignal = z.infer<typeof taskSignalSchema>
 
 /**
  * Background work of the organization. Everyone sees the tasks they started; `task:read` sees
@@ -65,9 +61,4 @@ export type TaskChange = z.infer<typeof taskChangeSchema>
 export const tasksContract = {
   list: base.input(taskListInputSchema).output(taskPageSchema),
   get: base.input(z.object({ id: z.uuid() })).output(taskSchema),
-  /**
-   * Streams changes to the tasks `list` answers, until the client leaves or the server ends it.
-   * It starts with a resync once listening: read the lists then, so no change falls in between.
-   */
-  watch: base.input(taskScopeSchema).output(eventIterator(taskChangeSchema)),
 }

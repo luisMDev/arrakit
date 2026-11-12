@@ -12,6 +12,7 @@ import {
   SidebarMenuItem,
 } from '#/components/ui/sidebar'
 import { Spinner } from '#/components/ui/spinner'
+import { useCurrentUser } from '#/lib/current-user'
 import { notify } from '#/lib/notify'
 
 import { errorOf, taskTitle } from './task-copy'
@@ -29,6 +30,7 @@ export function TasksIndicator() {
   const { t } = useTranslation()
   const matchRoute = useMatchRoute()
   const [open, setOpen] = useState(false)
+  const { user } = useCurrentUser()
   const active = useQuery(activeTasksQuery()).data?.tasks ?? []
   const inSettingsTasks = useMatch({
     from: '/app/settings',
@@ -51,7 +53,10 @@ export function TasksIndicator() {
     },
     [t],
   )
-  useTaskWatch(active.length > 0 || onTaskScreen, announce)
+  useTaskWatch(
+    active.length > 0 || onTaskScreen ? (user?.organization?.id ?? null) : null,
+    announce,
+  )
 
   if (active.length === 0) return null
   const label = t('tasks.indicator.label', { count: active.length })

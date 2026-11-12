@@ -16,7 +16,6 @@ describe('loadDataConfig', () => {
   it('reads Postgres, with in-memory storage when no bucket is set', () => {
     expect(loadDataConfig(DATABASE)).toEqual({
       databaseUrl: 'postgres://localhost/arrakit',
-      databaseDirectUrl: undefined,
       s3: undefined,
     })
   })
@@ -27,18 +26,6 @@ describe('loadDataConfig', () => {
     expect(() => loadDataConfig({ NODE_ENV: 'production' })).toThrow(
       '[data] missing env: DATABASE_URL',
     )
-  })
-
-  it('reads a direct Postgres URL for sessions, absent unless set', () => {
-    expect(
-      loadDataConfig({ DATABASE_URL: 'postgres://pooler/a' }).databaseDirectUrl,
-    ).toBeUndefined()
-    expect(
-      loadDataConfig({
-        DATABASE_URL: 'postgres://pooler/a',
-        DATABASE_DIRECT_URL: 'postgres://db/a',
-      }).databaseDirectUrl,
-    ).toBe('postgres://db/a')
   })
 
   it('reads a complete R2 set, region defaulting to auto', () => {

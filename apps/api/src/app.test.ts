@@ -18,7 +18,6 @@ describe('api app', () => {
       postgres: 'up',
       storage: 'up',
       queue: 'up',
-      taskFeed: 'up',
     })
   })
 
@@ -27,8 +26,7 @@ describe('api app', () => {
       status: 'error',
       postgres: 'up',
       storage: 'up',
-      queue: 'up',
-      taskFeed: 'down',
+      queue: 'down',
     } as const
     vi.spyOn(t.data, 'health').mockResolvedValueOnce(down)
     const res = await t.request('/health')

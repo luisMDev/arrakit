@@ -1,10 +1,10 @@
-import type { TaskChange } from '@arrakit/contract'
+import { TASK_SIGNAL_EVENT, taskSignalSchema } from '@arrakit/contract'
 import type { NewTask } from '@arrakit/db'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { BAD_CURSOR, NO_SUCH_TASK } from '../tasks/tasks'
 import { type TestApp, createTestApp } from '../testing/app'
-import { joinAs, ownerOf } from '../testing/people'
+import { joinAs, ownerOf, sqlOf } from '../testing/people'
 
 describe('tasks', () => {
   let t: TestApp
@@ -135,59 +135,19 @@ describe('tasks', () => {
     })
   })
 
-  describe('watch', () => {
-    const watching = async (headers: Headers, input: { workspaceId?: string } = {}) => {
-      const controller = new AbortController()
-      const stream = await t.client(headers).tasks.watch(input, { signal: controller.signal })
-      const next = async (): Promise<TaskChange> => {
-        const { value, done } = await stream.next()
-        if (done) throw new Error('the stream ended')
-        return value
-      }
-      expect(await next()).toEqual({ type: 'resync' })
-      return { next, stream, stop: () => controller.abort() }
+  it('signals task changes as the contract declares them', async () => {
+    const f = await organization()
+    const row = await f.start(f.member.userId)
+    await f.scope.tasks.begin(row.id, 0)
+
+    const { rows } = await sqlOf(t)(
+      'select event, payload from realtime.messages where starts_with(topic, $1)',
+      [`org:${f.owner.organizationId}:`],
+    )
+    expect(rows).toHaveLength(4)
+    for (const { event, payload } of rows) {
+      expect(event).toBe(TASK_SIGNAL_EVENT)
+      expect(taskSignalSchema.parse(payload)).toEqual({ taskId: row.id })
     }
-
-    it('starts with a resync, then sends each change to a task as it commits', async () => {
-      const f = await organization()
-      const watch = await watching(f.owner.headers)
-      const task = await f.start(f.owner.userId)
-      expect(await watch.next()).toMatchObject({
-        type: 'task',
-        task: { id: task.id, status: 'queued' },
-      })
-      await f.scope.tasks.begin(task.id, 0)
-      await f.scope.tasks.progress(task.id, 1, 2)
-      expect(await watch.next()).toMatchObject({ task: { status: 'running' } })
-      expect(await watch.next()).toMatchObject({ task: { progress: { done: 1, total: 2 } } })
-      watch.stop()
-    })
-
-    it('sends only the tasks the watcher may see', async () => {
-      const f = await organization()
-      const other = await organization()
-      const watch = await watching(f.member.headers)
-      await f.start(f.owner.userId)
-      await other.start(other.member.userId)
-      const mine = await f.start(f.member.userId)
-      expect(await watch.next()).toMatchObject({ type: 'task', task: { id: mine.id } })
-      watch.stop()
-    })
-
-    it('keeps to the workspace watched', async () => {
-      const f = await organization()
-      const watch = await watching(f.owner.headers, { workspaceId: f.workspace.id })
-      await f.start(f.owner.userId)
-      const inWorkspace = await f.start(f.owner.userId, { workspaceId: f.workspace.id })
-      expect(await watch.next()).toMatchObject({ task: { id: inWorkspace.id } })
-      watch.stop()
-    })
-
-    it('ends every stream when the server stops watching', async () => {
-      const f = await organization()
-      const watch = await watching(f.owner.headers)
-      t.deps.taskWatches.close()
-      await expect(watch.stream.next()).resolves.toMatchObject({ done: true })
-    })
   })
 })

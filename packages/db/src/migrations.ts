@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 
-import journal from '../../../supabase/migrations/meta/_journal.json'
+import journal from '../../../supabase/migrations/meta/_journal.json' with { type: 'json' }
 import type { Database } from './connection'
 
 const FIX = 'run `pnpm db:migrate`'

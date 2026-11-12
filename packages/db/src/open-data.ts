@@ -17,7 +17,6 @@ import { type MemberClaims, systemClaims } from './organization/scoped'
 import { memoryStorage } from './storage/memory'
 import { s3Storage } from './storage/s3'
 import type { Storage } from './storage/types'
-import { TASK_CHANNEL, type TaskFeed } from './tasks/feed'
 
 export interface OpenDataOptions {
   /** Replace the storage implementation (tests). */
@@ -35,8 +34,6 @@ export interface HealthReport {
   postgres: ProbeState
   storage: ProbeState
   queue: ProbeState
-  /** Whether task changes reach the task feed (live task updates). */
-  taskFeed: ProbeState
 }
 
 const PROBE_TIMEOUT_MS = 3000
@@ -61,19 +58,14 @@ async function probe(
   }
 }
 
-/** Sends a test notice through the connection task changes are written on. */
-const probeTaskFeed = (ctx: DataContext, taskFeed: TaskFeed) =>
-  taskFeed.probe((payload) => ctx.db.execute(sql`select pg_notify(${TASK_CHANNEL}, ${payload})`))
-
-export async function health(ctx: DataContext, taskFeed: TaskFeed): Promise<HealthReport> {
-  const [postgres, storage, queue, feed] = await Promise.all([
+async function health(ctx: DataContext): Promise<HealthReport> {
+  const [postgres, storage, queue] = await Promise.all([
     probe(ctx, 'postgres', () => ctx.db.execute(sql`select 1`)),
     probe(ctx, 'storage', (signal) => ctx.storage.probe(signal)),
     probe(ctx, 'queue', (signal) => ctx.jobs.probe(signal)),
-    probe(ctx, 'taskFeed', () => probeTaskFeed(ctx, taskFeed)),
   ])
-  const ok = postgres === 'up' && storage === 'up' && queue === 'up' && feed === 'up'
-  return { status: ok ? 'ok' : 'error', postgres, storage, queue, taskFeed: feed }
+  const ok = postgres === 'up' && storage === 'up' && queue === 'up'
+  return { status: ok ? 'ok' : 'error', postgres, storage, queue }
 }
 
 /**
@@ -90,7 +82,7 @@ const privilegedData = (ctx: DataContext) => ({
   ...tasksData(ctx),
 })
 
-function buildData(ctx: DataContext, close: () => Promise<void>, taskFeed: TaskFeed) {
+function buildData(ctx: DataContext, close: () => Promise<void>) {
   return {
     ...privilegedData(ctx),
     /** The scope of a person: every operation runs under RLS with their claims. */
@@ -101,14 +93,8 @@ function buildData(ctx: DataContext, close: () => Promise<void>, taskFeed: TaskF
      */
     asSystem: (organizationId: string) => forOrganization(ctx, systemClaims(organizationId)),
     jobs: ctx.jobs,
-    /** Changes to tasks as they commit. */
-    taskFeed: {
-      subscribe: taskFeed.subscribe,
-      /** Rejects with what to fix when task changes do not reach the feed. */
-      probe: () => probeTaskFeed(ctx, taskFeed),
-    },
     authDatabase: authDatabase(ctx.db),
-    health: () => health(ctx, taskFeed),
+    health: () => health(ctx),
     close,
   }
 }
@@ -168,13 +154,10 @@ export async function openDataOn(
     throw err
   }
 
-  const taskFeed = connection.openTaskFeed(log)
-
   let closing: Promise<void> | undefined
   const close = () => {
     closing ??= (async () => {
       try {
-        await taskFeed.close()
         await jobs.stop()
       } finally {
         await storage.close()
@@ -187,7 +170,6 @@ export async function openDataOn(
   const data = buildData(
     { db: connection.db, jobs, storage, now: options.now ?? (() => new Date()), log },
     close,
-    taskFeed,
   )
   return { ...data, db: connection.db, storage }
 }

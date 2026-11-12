@@ -12,9 +12,6 @@ const log = createLogger(loadLogEnv(process.env))
 async function main() {
   const deps = await depsFromEnv(process.env, log)
   await registerWorkers(deps)
-  deps.data.taskFeed.probe().catch((err: unknown) => {
-    log.error({ err }, 'task feed receives no notices; live task updates will lag')
-  })
   const mcp = mcpHandler(log)
   const app = createApp(deps, mcp)
   const server = serve({ fetch: app.fetch, port: deps.env.PORT }, (info) => {
@@ -25,7 +22,6 @@ async function main() {
   const shutdown = () => {
     if (stopping) return
     stopping = true
-    deps.taskWatches.close()
     const stopped = new Promise<void>((resolve) => server.close(() => resolve()))
     // Streams still open on the MCP handler would keep server.close() waiting.
     const closed = Promise.allSettled([mcp.close()])

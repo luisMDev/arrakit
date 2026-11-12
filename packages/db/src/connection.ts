@@ -6,7 +6,6 @@ import type { DataLog } from './context'
 import { pgBossJobs } from './jobs/pg-boss'
 import type { JobsRuntime } from './jobs/types'
 import * as schema from './schema/index'
-import { type TaskFeed, postgresTaskFeed } from './tasks/feed'
 
 type Schema = typeof schema
 
@@ -16,11 +15,6 @@ export type Database = PgDatabase<PgQueryResultHKT, Schema>
 export interface ConnectionConfig {
   /** Postgres, reached directly or through a pooler in transaction mode. */
   databaseUrl: string
-  /**
-   * The same Postgres on a connection that keeps its session, which LISTEN needs. Defaults to
-   * `databaseUrl`; set it when that one goes through a pooler in transaction mode.
-   */
-  databaseDirectUrl?: string
 }
 
 /** An open database and what runs on it. */
@@ -28,8 +22,6 @@ export interface Connection {
   db: Database
   /** pg-boss in its own schema of this database. */
   openJobs(log: DataLog): Promise<JobsRuntime>
-  /** Task changes as they commit on this database. */
-  openTaskFeed(log: DataLog): TaskFeed
   close(): Promise<void>
 }
 
@@ -57,8 +49,6 @@ export function postgresConnection(
   return {
     db: drizzle({ client: pool, schema }) as unknown as Database,
     openJobs: (jobsLog) => pgBossJobs(config.databaseUrl, jobsLog),
-    openTaskFeed: (feedLog) =>
-      postgresTaskFeed(config.databaseDirectUrl ?? config.databaseUrl, feedLog),
     close: () => pool.end(),
   }
 }

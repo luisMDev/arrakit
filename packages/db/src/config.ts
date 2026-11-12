@@ -39,7 +39,6 @@ export function loadDataConfig(env: Env): DataConfig {
 
   return {
     databaseUrl: env.DATABASE_URL!,
-    databaseDirectUrl: value('DATABASE_DIRECT_URL'),
     s3:
       r2Set.length > 0
         ? {

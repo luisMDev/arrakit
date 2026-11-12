@@ -1,6 +1,12 @@
-import { expect, test } from '@playwright/test'
+import { randomUUID } from 'node:crypto'
 
+import type { RealtimeAccess } from '@arrakit/contract'
+import { expect, test } from '@playwright/test'
+import { createClient } from '@supabase/supabase-js'
+
+import { WEB_ORIGIN } from './origins'
 import { rpc, signedInOwner } from './session'
+import { drivingTasks } from './task-driver'
 
 test('finds all the background work in Settings, and each workspace keeps its own', async ({
   page,
@@ -34,40 +40,74 @@ test('finds all the background work in Settings, and each workspace keeps its ow
   await expect(page.getByText('Nothing is running right now.')).toBeVisible()
 })
 
-test('streams task changes through the web origin as they happen, not when the stream ends', async ({
-  page,
-}) => {
-  await signedInOwner(page, { organization: 'Aspen Partners' })
+test('shows background work as it happens', async ({ page }) => {
+  const { organizationId } = await signedInOwner(page, { organization: 'Aspen Partners' })
+  const joined = page.waitForEvent('websocket', (socket) =>
+    socket.url().includes('/realtime/v1/websocket'),
+  )
   await page.goto('/app/settings?section=tasks')
+  await joined
+  await expect(page.getByText('Nothing is running right now.')).toBeVisible()
+  const session = await page.request.get('/api/auth/get-session')
+  const { user } = (await session.json()) as { user: { id: string } }
 
-  const first = await page.evaluate(async () => {
-    const started = performance.now()
-    const controller = new AbortController()
-    const res = await fetch('/api/rpc/tasks/watch', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ json: {} }),
-      signal: controller.signal,
+  await drivingTasks(organizationId, async (tasks) => {
+    const task = await tasks.start({
+      queue: 'e2e-tasks',
+      kind: 'e2e.unknown',
+      workspaceId: null,
+      label: 'Deals',
+      requestedBy: user.id,
+      maxAttempts: 1,
+      input: {},
     })
-    const reader = res.body!.getReader()
-    const decoder = new TextDecoder()
-    let text = ''
-    while (!text.includes('"resync"')) {
-      const { value, done } = await reader.read()
-      if (done) break
-      text += decoder.decode(value)
-    }
-    controller.abort()
-    return {
-      status: res.status,
-      type: res.headers.get('content-type'),
-      text,
-      ms: performance.now() - started,
-    }
-  })
+    const row = page.locator(`[data-task="${task.id}"]`)
+    await expect(row.getByText('Queued')).toBeVisible()
 
-  expect(first.status).toBe(200)
-  expect(first.type).toContain('text/event-stream')
-  expect(first.text).toContain('{"json":{"type":"resync"}}')
-  expect(first.ms).toBeLessThan(5_000)
+    await tasks.begin(task.id, 0)
+    await tasks.progress(task.id, 1, 2)
+    await expect(
+      row.getByRole('progressbar', { name: 'Background task · Deals: 50% done' }),
+    ).toBeVisible()
+
+    await tasks.succeed(task.id)
+    await expect(page.getByText('Background task · Deals is done.')).toBeVisible()
+    await expect(row).toHaveCount(0)
+    await page.getByRole('tab', { name: 'Finished' }).click()
+    await expect(row).toBeVisible()
+  })
+})
+
+test('joins only the task channel of its own organization', async ({ page, browser }) => {
+  const { organizationId } = await signedInOwner(page, { organization: 'Birch Partners' })
+  const other = await browser.newContext({ baseURL: WEB_ORIGIN })
+  const otherPage = await other.newPage()
+  const { organizationId: otherOrganizationId } = await signedInOwner(otherPage, {
+    organization: 'Cedar Partners',
+  })
+  await other.close()
+
+  const access = await rpc<RealtimeAccess | null>(page, 'realtime/access')
+  expect(access).not.toBeNull()
+  const supabase = createClient(access!.url, access!.publishableKey, {
+    accessToken: async () => access!.token,
+  })
+  await supabase.realtime.setAuth()
+  const joining = async (topic: string) => {
+    const channel = supabase.channel(topic, { config: { private: true } })
+    const status = await new Promise<string>((resolve) =>
+      channel.subscribe((state) => resolve(`${state}`)),
+    )
+    if (status !== 'SUBSCRIBED') await supabase.removeChannel(channel)
+    return status
+  }
+
+  try {
+    expect(access!.topics.tasks).toBe(`org:${organizationId}:tasks`)
+    expect(await joining(access!.topics.tasks)).toBe('SUBSCRIBED')
+    expect(await joining(`org:${otherOrganizationId}:tasks`)).toBe('CHANNEL_ERROR')
+    expect(await joining(`org:${organizationId}:user:${randomUUID()}:tasks`)).toBe('CHANNEL_ERROR')
+  } finally {
+    await supabase.removeAllChannels()
+  }
 })

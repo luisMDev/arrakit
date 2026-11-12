@@ -40,4 +40,31 @@ describe('the test database', () => {
     )
     expect(tables).toEqual([{ name: 'better_auth.users' }, { name: 'public.workspaces' }])
   })
+
+  it('stands in for Realtime: send writes one private broadcast and sets the topic', async () => {
+    const seen = await database.client.transaction(async (tx) => {
+      await tx.query(
+        `select realtime.send('{"taskId": "t-1"}'::jsonb, 'task.changed', 'org:1:tasks')`,
+      )
+      const topic = (await tx.query<{ topic: string }>('select realtime.topic() as topic')).rows
+      const messages = (
+        await tx.query<Record<string, unknown>>(
+          'select id, topic, extension, payload, event, private from realtime.messages',
+        )
+      ).rows
+      return { topic, messages }
+    })
+    expect(seen.topic).toEqual([{ topic: 'org:1:tasks' }])
+    expect(seen.messages).toEqual([
+      {
+        id: expect.any(String),
+        topic: 'org:1:tasks',
+        extension: 'broadcast',
+        payload: { taskId: 't-1', id: seen.messages[0]!.id },
+        event: 'task.changed',
+        private: true,
+      },
+    ])
+    expect(await rows('select realtime.topic() as topic')).toEqual([{ topic: null }])
+  })
 })

@@ -387,7 +387,6 @@ export function createMcpServer(caller: ConnectorCaller, log: Logger): McpServer
           userId: caller.userId,
           permissions,
           scope: caller.scope,
-          organizationId: caller.organization.id,
         })
         const page = await tasks.list({ status, workspaceId, limit: 50 })
         return {

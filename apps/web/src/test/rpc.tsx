@@ -101,43 +101,6 @@ export function answer(path: string, ...answers: Reply[]) {
   )
 }
 
-export interface AnsweredStream {
-  /** Sends one value of the stream. */
-  send(value: unknown): void
-  /** Ends the stream as the API does when its procedure returns. */
-  end(): void
-}
-
-/**
- * Answers the event stream `/api/rpc/<path>` (an oRPC event iterator): each call opens a new
- * stream, in the order of the returned list, that the test writes to.
- */
-export function answerStream(path: string) {
-  const streams: AnsweredStream[] = []
-  const encoder = new TextEncoder()
-  api.use(
-    http.all(`*/api/rpc/${path}`, () => {
-      let controller!: ReadableStreamDefaultController<Uint8Array>
-      const body = new ReadableStream<Uint8Array>({
-        start: (c) => {
-          controller = c
-        },
-      })
-      const write = (event: string, data: unknown) =>
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
-      streams.push({
-        send: (value) => write('message', { json: value }),
-        end: () => {
-          write('done', {})
-          controller.close()
-        },
-      })
-      return new HttpResponse(body, { headers: { 'content-type': 'text/event-stream' } })
-    }),
-  )
-  return streams
-}
-
 export interface StoredUpload {
   contentType: string | null
   bytes: number

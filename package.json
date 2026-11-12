@@ -6,7 +6,7 @@
   "description": "Arrakit: a SaaS base on pnpm + Turborepo, React + TanStack Start, Hono + oRPC, Drizzle and Better Auth.",
   "scripts": {
     "dev": "pnpm supabase:start && turbo run dev //#rustfs",
-    "supabase:start": "node scripts/supabase-keys.ts && supabase start && supabase migration up",
+    "supabase:start": "node scripts/supabase-keys.ts && supabase start && supabase migration up && node scripts/supabase-keys.ts env",
     "supabase:stop": "supabase stop",
     "db:migrate": "supabase migration up",
     "db:reset": "supabase db reset",

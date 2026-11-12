@@ -1,5 +1,6 @@
 import type { Auth } from '@arrakit/auth'
 import {
+  type MemberClaims,
   type Permissions,
   allows,
   claimsFor,
@@ -81,6 +82,8 @@ export interface MemberContext extends SessionContext {
   /** Better Auth's role string (`owner`, `admin`, `member`, custom roles, joined by `,`). */
   role: string
   permissions: Permissions
+  /** What RLS reads for this member; the browser's Supabase token carries the same object. */
+  claims: MemberClaims
   /**
    * The member's own scope, under RLS with the claims of `permissions`: the only way to reach
    * this organization's data.
@@ -132,14 +135,14 @@ export function requireMember(wanted: Permissions = {}) {
     if (!allows(permissions, wanted)) {
       throw new ORPCError('FORBIDDEN', { message: NOT_PERMITTED })
     }
-    const scope = data.forOrganization(
-      claimsFor({ userId: context.user.id, organizationId, permissions }),
-    )
+    const claims = claimsFor({ userId: context.user.id, organizationId, permissions })
+    const scope = data.forOrganization(claims)
     return next({
       context: {
         activeOrganization: membership.organization,
         role: membership.role,
         permissions,
+        claims,
         scope,
       },
     })

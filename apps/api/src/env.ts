@@ -25,15 +25,26 @@ const envSchema = z.object({
   /** Defaults to NODE_ENV. */
   SENTRY_ENVIRONMENT: optional,
   SENTRY_RELEASE: optional,
+  /** The Supabase project the browser reaches for Realtime; goes with SUPABASE_PUBLISHABLE_KEY. */
+  SUPABASE_URL: z.url().optional(),
+  /** Handed to browsers, so never a secret or service_role key. */
+  SUPABASE_PUBLISHABLE_KEY: optional,
 })
 
 /** An empty variable (`KEY=` in a .env file) counts as unset. */
 const set = (env: Record<string, string | undefined>) =>
   Object.fromEntries(Object.entries(env).filter(([, value]) => value !== ''))
 
+export interface SupabaseProject {
+  url: string
+  publishableKey: string
+}
+
 export type ApiEnv = z.infer<typeof envSchema> & {
   /** Origin of the web app: WEB_URL, else BETTER_AUTH_URL. */
   webUrl: string
+  /** Null when SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are unset. */
+  supabase: SupabaseProject | null
 }
 
 const logSchema = envSchema.pick({ NODE_ENV: true, LOG_LEVEL: true, LOG_FORMAT: true })
@@ -58,5 +69,32 @@ export function loadApiEnv(env: Record<string, string | undefined>): ApiEnv {
     throw new Error('[api] STRIPE_FAKE=1 is not allowed in production')
   }
   const web = parsed.WEB_URL ?? parsed.BETTER_AUTH_URL ?? 'http://localhost:5200'
-  return { ...parsed, webUrl: new URL(web).origin }
+  return { ...parsed, webUrl: new URL(web).origin, supabase: supabaseProject(parsed) }
+}
+
+function supabaseProject({
+  SUPABASE_URL: url,
+  SUPABASE_PUBLISHABLE_KEY: publishableKey,
+}: z.infer<typeof envSchema>): SupabaseProject | null {
+  if (url === undefined && publishableKey === undefined) return null
+  if (url === undefined || publishableKey === undefined) {
+    throw new Error('[api] SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY go together')
+  }
+  if (isSecretKey(publishableKey)) {
+    throw new Error('[api] SUPABASE_PUBLISHABLE_KEY must be a publishable key')
+  }
+  return { url, publishableKey }
+}
+
+/** A secret API key, or a legacy JWT key carrying the service_role. */
+function isSecretKey(key: string): boolean {
+  if (key.startsWith('sb_secret_')) return true
+  const [, payload, signature] = key.split('.')
+  if (payload === undefined || signature === undefined) return false
+  try {
+    const claims: unknown = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
+    return (claims as { role?: unknown } | null)?.role === 'service_role'
+  } catch {
+    return false
+  }
 }

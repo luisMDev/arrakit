@@ -13,7 +13,7 @@ import {
   workspaces,
 } from '../schema/index'
 import { TASK_EVENTS, type TaskEvent, type TaskEventPayloads } from '../tasks/events'
-import { TASK_CHANNEL, type TaskNotice } from '../tasks/feed'
+import { TASK_SIGNAL_EVENT, type TaskSignal, taskTopics } from '../tasks/signals'
 import { NO_SUCH_WORKSPACE } from './files'
 
 export type TaskRow = typeof tasks.$inferSelect
@@ -104,14 +104,22 @@ export function tasksScope(ctx: ScopeContext, organizationId: OrganizationId) {
     payload: TaskEventPayloads[E],
   ) => ctx.jobs.publish(event, payload, { tx })
 
-  /** Tells the task feed, once `tx` commits, that the task changed. */
-  async function notify(tx: Database, taskId: string) {
-    const notice: TaskNotice = { organizationId, taskId }
-    await tx.execute(sql`select pg_notify(${TASK_CHANNEL}, ${JSON.stringify(notice)})`)
+  /**
+   * Tells the task's Realtime topics (the organization's, and its requester's when it has one),
+   * once `tx` commits, that the task changed.
+   */
+  async function notify(tx: Database, task: Pick<TaskRow, 'id' | 'requestedBy'>) {
+    const signal = JSON.stringify({ taskId: task.id } satisfies TaskSignal)
+    const topics = [taskTopics.organization(organizationId)]
+    if (task.requestedBy) topics.push(taskTopics.requester(organizationId, task.requestedBy))
+    const broadcasts = topics.map(
+      (topic) => sql`app.broadcast(${topic}, ${TASK_SIGNAL_EVENT}, ${signal}::jsonb)`,
+    )
+    await tx.execute(sql`select ${sql.join(broadcasts, sql`, `)}`)
   }
 
   /**
-   * Moves a task in one of `from`, notifying the feed, and answers it as it is now; undefined when
+   * Moves a task in one of `from`, signalling the change, and answers it as it is now; undefined when
    * it was in none, or when `attempt` is given and is no longer the task's latest.
    */
   async function move(
@@ -126,7 +134,7 @@ export function tasksScope(ctx: ScopeContext, organizationId: OrganizationId) {
       .set({ ...values, updatedAt: ctx.now() })
       .where(and(byId(id), inStatus(from), latest(attempt)))
       .returning()
-    if (row) await notify(tx, id)
+    if (row) await notify(tx, row)
     return row
   }
 
@@ -220,7 +228,7 @@ export function tasksScope(ctx: ScopeContext, organizationId: OrganizationId) {
           .returning()
         const job: TaskJob = { taskId: row!.id, organizationId, input: task.input }
         await ctx.jobs.send(task.queue, job, { tx })
-        await notify(tx, row!.id)
+        await notify(tx, row!)
         return row!
       }),
 

@@ -5,6 +5,7 @@ import { artifactsContract } from './artifacts'
 import { billingContract } from './billing'
 import { filesContract } from './files'
 import { base, moneySchema, planSchema } from './common'
+import { realtimeContract } from './realtime'
 import { tasksContract } from './tasks'
 import { usageContract } from './usage'
 import { workspacesContract } from './workspaces'
@@ -45,6 +46,7 @@ export const contract = {
   workspaces: workspacesContract,
   files: filesContract,
   tasks: tasksContract,
+  realtime: realtimeContract,
   artifacts: artifactsContract,
 }
 
@@ -75,17 +77,19 @@ export {
 } from './files'
 export {
   TASK_PAGE_MAX,
-  type TaskChange,
+  TASK_SIGNAL_EVENT,
   type TaskPage,
+  type TaskSignal,
   type TaskStatus,
   type TaskView,
-  taskChangeSchema,
   taskListInputSchema,
   taskPageSchema,
   taskSchema,
   taskScopeSchema,
+  taskSignalSchema,
   taskStatusSchema,
 } from './tasks'
+export { type RealtimeAccess, realtimeAccessSchema } from './realtime'
 export {
   type Artifact,
   type ArtifactContent,

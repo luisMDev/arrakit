@@ -5,6 +5,7 @@ import { meRouter } from './routers/account'
 import { artifactsRouter } from './routers/artifacts'
 import { billingRouter } from './routers/billing'
 import { filesRouter } from './routers/files'
+import { realtimeRouter } from './routers/realtime'
 import { tasksRouter } from './routers/tasks'
 import { usageRouter } from './routers/usage'
 import { workspacesRouter } from './routers/workspaces'
@@ -28,5 +29,6 @@ export const router = pub.router({
   workspaces: workspacesRouter,
   files: filesRouter,
   tasks: tasksRouter,
+  realtime: realtimeRouter,
   artifacts: artifactsRouter,
 })

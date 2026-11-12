@@ -1,15 +1,19 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { SidebarProvider } from '#/components/ui/sidebar'
 import { TooltipProvider } from '#/components/ui/tooltip'
-import { answer, answerStream, renderAt, setupTestApi } from '#/test/rpc'
+import { setupFakeRealtime } from '#/test/realtime'
+import { answer, renderAt, setupTestApi } from '#/test/rpc'
 
 import { TasksIndicator } from './tasks-indicator'
 import { pageOf, taskOf } from './fixtures'
 
+vi.mock('#/lib/realtime', async () => (await import('#/test/realtime')).fakeRealtime)
+
 setupTestApi()
+const joins = setupFakeRealtime()
 
 function openApp() {
   return renderAt(
@@ -23,13 +27,13 @@ function openApp() {
 }
 
 describe('Tasks indicator', () => {
-  it('stays out of the way while nothing runs, and opens no stream', async () => {
+  it('stays out of the way while nothing runs, and joins no channel', async () => {
     const lists = answer('tasks/list', pageOf([]))
-    const streams = answerStream('tasks/watch')
     openApp()
     await waitFor(() => expect(lists).toHaveLength(1))
+    await new Promise((resolve) => setTimeout(resolve, 20))
     expect(screen.queryByRole('button', { name: /in progress/ })).toBeNull()
-    expect(streams).toHaveLength(0)
+    expect(joins).toHaveLength(0)
   })
 
   it('counts the tasks in progress and shows how far along the first ones are', async () => {
@@ -40,7 +44,6 @@ describe('Tasks indicator', () => {
         taskOf({ label: 'Leads' }),
       ]),
     )
-    answerStream('tasks/watch')
     openApp()
 
     const button = await screen.findByRole('button', { name: '2 tasks in progress' })
@@ -61,17 +64,17 @@ describe('Tasks indicator', () => {
     const theirs = taskOf({ label: 'Leads', status: 'running', requestedByYou: false })
     const failing = taskOf({ label: 'Pipeline', status: 'running' })
     answer('tasks/list', pageOf([mine, theirs, failing]))
-    const streams = answerStream('tasks/watch')
+    const now = new Map([
+      [theirs.id, { ...theirs, status: 'succeeded' }],
+      [mine.id, { ...mine, status: 'succeeded' }],
+      [failing.id, { ...failing, status: 'failed', errorCode: 'stalled' }],
+    ])
+    answer('tasks/get', (input: unknown) => now.get((input as { id: string }).id))
     openApp()
     await screen.findByRole('button', { name: '3 tasks in progress' })
-    await waitFor(() => expect(streams).toHaveLength(1))
+    await waitFor(() => expect(joins).toHaveLength(1))
 
-    streams[0]!.send({ type: 'task', task: { ...theirs, status: 'succeeded' } })
-    streams[0]!.send({ type: 'task', task: { ...mine, status: 'succeeded' } })
-    streams[0]!.send({
-      type: 'task',
-      task: { ...failing, status: 'failed', errorCode: 'stalled' },
-    })
+    for (const task of [theirs, mine, failing]) joins[0]!.message({ taskId: task.id })
 
     expect(await screen.findByText('Background task · Deals is done.')).toBeInTheDocument()
     expect(await screen.findByText('Background task · Pipeline failed.')).toBeInTheDocument()

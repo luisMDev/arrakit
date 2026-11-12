@@ -1,8 +1,15 @@
-import { TASK_PAGE_MAX, type TaskPage, type TaskView } from '@arrakit/contract'
+import {
+  TASK_PAGE_MAX,
+  TASK_SIGNAL_EVENT,
+  type TaskPage,
+  type TaskView,
+  taskSignalSchema,
+} from '@arrakit/contract'
 import { type QueryClient, type QueryKey, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 
 import { client, orpc } from '#/lib/orpc'
+import { joinChannel } from '#/lib/realtime'
 
 import { isActive } from './task-copy'
 
@@ -68,24 +75,13 @@ export function applyTaskChange(queryClient: QueryClient, task: TaskView): boole
   return wasListed && !active
 }
 
-/** Waits before opening the stream again, after each failure in a row. */
+/** Waits before joining the task channel again, after each failure in a row. */
 export const RETRY_MS = [1_000, 2_000, 5_000, 10_000, 30_000]
-/** Failed streams in a row after which the lists are also read on a timer, until one works. */
+/** Failed joins in a row after which the lists are also read on a timer, until one works. */
 export const FALLBACK_AFTER_FAILURES = 3
 export const FALLBACK_REFRESH_MS = 20_000
 
 const jittered = (ms: number) => ms / 2 + Math.random() * (ms / 2)
-
-const sleep = (ms: number, signal: AbortSignal) =>
-  new Promise<void>((resolve) => {
-    const done = () => {
-      clearTimeout(timer)
-      signal.removeEventListener('abort', done)
-      resolve()
-    }
-    const timer = setTimeout(done, ms)
-    signal.addEventListener('abort', done, { once: true })
-  })
 
 function subscribeVisibility(onChange: () => void) {
   document.addEventListener('visibilitychange', onChange)
@@ -100,13 +96,15 @@ const usePageVisible = () =>
   )
 
 /**
- * Keeps the cached task lists current from the API's task stream while `enabled` and the page is
- * visible. A dropped stream is opened again, waiting longer each time it fails; after
- * FALLBACK_AFTER_FAILURES failures in a row the lists are also read every FALLBACK_REFRESH_MS.
- * `onFinished` hears of each listed task that finishes.
+ * Keeps the cached task lists of `organizationId` current while it is given and the page is
+ * visible, from the task signals on its private Realtime channel: the lists are read again once
+ * the channel is joined, and each signalled task is read through the API, one at a time in the
+ * order the signals came. A dropped channel is joined again, waiting longer each time it fails;
+ * after FALLBACK_AFTER_FAILURES failures in a row the lists are also read every
+ * FALLBACK_REFRESH_MS. `onFinished` hears of each listed task that finishes.
  */
 export function useTaskWatch(
-  enabled: boolean,
+  organizationId: string | null,
   onFinished?: (task: TaskView) => void,
   { retryMs = RETRY_MS, fallbackRefreshMs = FALLBACK_REFRESH_MS } = {},
 ) {
@@ -118,45 +116,59 @@ export function useTaskWatch(
   }, [onFinished])
 
   useEffect(() => {
-    if (!enabled || !visible) return
-    const controller = new AbortController()
-    const { signal } = controller
+    if (!organizationId || !visible) return
+    let stopped = false
     let failures = 0
+    let channel: { close(): void } | undefined
+    let retry: ReturnType<typeof setTimeout> | undefined
     let fallback: ReturnType<typeof setInterval> | undefined
     const stopFallback = () => {
       clearInterval(fallback)
       fallback = undefined
     }
 
-    async function watch() {
-      while (!signal.aborted) {
-        try {
-          const stream = await client.tasks.watch({}, { signal })
-          for await (const change of stream) {
-            if (change.type === 'resync') {
-              failures = 0
-              stopFallback()
-              void refreshTasks(queryClient)
-            } else if (applyTaskChange(queryClient, change.task)) {
-              finished.current?.(change.task)
-            }
-          }
-          await sleep(jittered(retryMs[0]!), signal)
-        } catch {
-          if (signal.aborted) return
+    const waiting: string[] = []
+    let reading = false
+    async function readWaiting() {
+      if (reading) return
+      reading = true
+      while (!stopped && waiting.length > 0) {
+        const id = waiting.shift()!
+        const task = await client.tasks.get({ id }).catch(() => undefined)
+        if (!stopped && task && applyTaskChange(queryClient, task)) finished.current?.(task)
+      }
+      reading = false
+    }
+
+    function join() {
+      channel = joinChannel((topics) => topics.tasks, TASK_SIGNAL_EVENT, {
+        subscribed() {
+          failures = 0
+          stopFallback()
+          void refreshTasks(queryClient)
+        },
+        message(payload) {
+          const signal = taskSignalSchema.safeParse(payload)
+          if (!signal.success || waiting.includes(signal.data.taskId)) return
+          waiting.push(signal.data.taskId)
+          void readWaiting()
+        },
+        down() {
           failures += 1
           if (failures >= FALLBACK_AFTER_FAILURES && !fallback) {
             fallback = setInterval(() => void refreshTasks(queryClient), fallbackRefreshMs)
           }
           const wait = retryMs[Math.min(failures, retryMs.length) - 1]!
-          await sleep(jittered(wait), signal)
-        }
-      }
+          retry = setTimeout(join, jittered(wait))
+        },
+      })
     }
-    void watch()
+    join()
     return () => {
-      controller.abort()
+      stopped = true
+      channel?.close()
+      clearTimeout(retry)
       stopFallback()
     }
-  }, [enabled, visible, queryClient, retryMs, fallbackRefreshMs])
+  }, [organizationId, visible, queryClient, retryMs, fallbackRefreshMs])
 }

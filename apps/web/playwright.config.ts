@@ -3,13 +3,13 @@ import { defineConfig, devices } from '@playwright/test'
 import {
   API_ORIGIN,
   API_PORT,
-  DATABASE_DIRECT_URL,
   DATABASE_URL,
   MAILPIT_ORIGIN,
   RUSTFS_ORIGIN,
   RUSTFS_PORT,
   WEB_ORIGIN,
   WEB_PORT,
+  stackEnv,
 } from './e2e/origins'
 
 // End-to-end tests boot RustFS (local S3), the API (Hono, fake Stripe, files to RustFS) and the web
@@ -43,10 +43,10 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
       env: {
+        ...stackEnv(),
         NODE_ENV: 'test',
         PORT: String(API_PORT),
         DATABASE_URL,
-        DATABASE_DIRECT_URL,
         STRIPE_FAKE: '1',
         BETTER_AUTH_SECRET: 'e2e-secret-e2e-secret-e2e-secret-0000',
         BETTER_AUTH_URL: WEB_ORIGIN,
