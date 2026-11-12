@@ -33,8 +33,10 @@ billing, prepaid credits, transactional email and an MCP server, in a pnpm + Tur
   and stored bytes count against `storage_gb`. Uploads, renames and deletions publish durable
   events that background subscribers react to. `pnpm dev` starts a local RustFS bucket.
 - **Jobs** with pg-boss on the same Postgres.
-  Tracked jobs are **tasks** people follow in each workspace and in Settings: status, retries and progress, streamed to
-  the web as they change, with `task.succeeded` and `task.failed` events to react to.
+  Tracked jobs are **tasks** people follow in each workspace and in Settings: status, retries and
+  progress, live as they change, with `task.succeeded` and `task.failed` events to react to. Each
+  change is signalled through a private Supabase Realtime channel and the web reads the task from
+  the API; the signal carries only the task's id.
 - **Tenancy** enforced by Postgres: every table has row level security on, and every
   organization query and file key goes through `forOrganization(claims)` (a member, with the
   claims `claimsFor` builds from their permissions) or `asSystem(organizationId)` (server work) in
@@ -97,19 +99,29 @@ cp apps/web/.env.example apps/web/.env
 pnpm dev        # local Supabase stack, api :5000, web :5200 (/api proxied), landing :5321
 ```
 
-`pnpm dev` starts the local Supabase stack (Postgres, its pooler, Studio at http://127.0.0.1:54323
-and a Mailpit inbox) and applies the migrations in `supabase/migrations`; `.env.example` points
-`DATABASE_URL` at it. `pnpm supabase:stop` stops it and `pnpm db:reset` recreates its database (restart the API after
-a reset: pg-boss creates its schema on boot).
+`pnpm dev` starts the local Supabase stack (Postgres, its pooler, Realtime, Studio at
+http://127.0.0.1:54323 and a Mailpit inbox) and applies the migrations in `supabase/migrations`;
+`.env.example` points `DATABASE_URL` at it. `pnpm supabase:stop` stops it and `pnpm db:reset`
+recreates its database (restart the API after a reset: pg-boss creates its schema on boot).
+Starting the stack also writes the git-ignored `apps/api/.env.stack`: a Better Auth signing key
+made for this clone (`BETTER_AUTH_JWT_KEY`) and where the stack's Realtime answers
+(`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`). The key's public half is listed in the git-ignored
+`supabase/signing_keys.json`, so the stack trusts the tokens the API signs; when that file
+changes (the first start, or after deleting it) the stack is stopped and started once. `pnpm dev`
+loads `.env` and then `.env.stack`, and the e2e API loads `.env.stack` too; the key does not live
+in the database, so it survives `pnpm db:reset`.
 Without `RESEND_API_KEY` mail goes to Mailpit (`MAILPIT_URL`), or to the console when that is
 unset, with `STRIPE_FAKE=1` Stripe is faked, and the `R2_*` keys of `.env.example` point at the
 local RustFS (without them uploads are kept in memory). In production set `DATABASE_URL`,
 `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`/`WEB_URL` (the web origin), `RESEND_API_KEY` and
 `MAIL_FROM`, the `STRIPE_*` keys and the `R2_*` bucket, whose CORS rule must allow PUT and GET from
 the web origin. Migrations are applied with the Supabase CLI, not on boot: the API refuses to
-start on a database that is behind. When `DATABASE_URL` goes through a pooler in transaction mode,
-set `DATABASE_DIRECT_URL` to the direct host: the task feed's `LISTEN` needs a session. The web
-reads `API_ORIGIN`, `VITE_APP_NAME` and `VITE_SITE_URL`.
+start on a database that is behind. For live task updates set `SUPABASE_URL` and
+`SUPABASE_PUBLISHABLE_KEY` (without them the web reads the task lists on a timer); the browser
+learns both from the API. Supabase must trust Better Auth's signing key: a Custom OIDC
+third-party auth integration with the issuer `<web origin>/api/auth` (the hosted checklist comes
+with the last phase of the Supabase migration). The web reads `API_ORIGIN`, `VITE_APP_NAME` and
+`VITE_SITE_URL`.
 
 With real Stripe keys, create the products and prices once:
 `pnpm --filter @arrakit/api stripe:prices`. The OpenAPI document of the API is written by

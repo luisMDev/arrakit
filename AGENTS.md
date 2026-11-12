@@ -15,25 +15,26 @@ For the same reason, keep this file to rules: no file inventories, helper lists 
 
 ## Stack
 
-| Area     | Choice                                                                                         |
-| -------- | ---------------------------------------------------------------------------------------------- |
-| Monorepo | pnpm workspaces + Turborepo                                                                    |
-| Web app  | React + TanStack Start (file-based routing, TanStack Router + TanStack Query), Nitro           |
-| UI       | Tailwind CSS + shadcn/ui (default theme, Radix primitives, lucide icons), sonner               |
-| i18n     | i18next + react-i18next, `en` (bundled, fallback) and `es` (lazy)                              |
-| API      | Hono on Node + oRPC (contract-first) + Zod                                                     |
-| DB       | Supabase Postgres + Drizzle ORM (drizzle-kit writes migrations, the Supabase CLI applies them) |
-| Auth     | Better Auth (magic link, social providers, organization plugin, OAuth provider + JWT)          |
-| Payments | Stripe, with a fake gateway in dev and tests                                                   |
-| Email    | Resend in production; the local stack's Mailpit in dev and e2e; recording mailer in tests      |
-| Jobs     | pg-boss on the same Postgres (on PGlite in tests)                                              |
-| Logs     | Pino (JSON lines), request id per request; Sentry                                              |
-| Files    | S3-compatible storage, presigned uploads; RustFS in dev and e2e; in-memory in tests            |
-| MCP      | `@modelcontextprotocol/server` (stateless Streamable HTTP) behind Better Auth OAuth            |
-| Landing  | Astro (static) + Tailwind                                                                      |
-| Tests    | Vitest, React Testing Library, Better Auth `testUtils` plugin, PGlite, msw, Playwright         |
-| Lint/fmt | ESLint flat config (typescript-eslint) + Prettier                                              |
-| Types    | TypeScript 6 (typescript-eslint does not support 7 yet; do not upgrade)                        |
+| Area     | Choice                                                                                          |
+| -------- | ----------------------------------------------------------------------------------------------- |
+| Monorepo | pnpm workspaces + Turborepo                                                                     |
+| Web app  | React + TanStack Start (file-based routing, TanStack Router + TanStack Query), Nitro            |
+| UI       | Tailwind CSS + shadcn/ui (default theme, Radix primitives, lucide icons), sonner                |
+| i18n     | i18next + react-i18next, `en` (bundled, fallback) and `es` (lazy)                               |
+| API      | Hono on Node + oRPC (contract-first) + Zod                                                      |
+| DB       | Supabase Postgres + Drizzle ORM (drizzle-kit writes migrations, the Supabase CLI applies them)  |
+| Auth     | Better Auth (magic link, social providers, organization plugin, OAuth provider + JWT)           |
+| Payments | Stripe, with a fake gateway in dev and tests                                                    |
+| Email    | Resend in production; the local stack's Mailpit in dev and e2e; recording mailer in tests       |
+| Jobs     | pg-boss on the same Postgres (on PGlite in tests)                                               |
+| Realtime | Supabase Realtime private Broadcast signals; browser token from Better Auth's JWT plugin, ES256 |
+| Logs     | Pino (JSON lines), request id per request; Sentry                                               |
+| Files    | S3-compatible storage, presigned uploads; RustFS in dev and e2e; in-memory in tests             |
+| MCP      | `@modelcontextprotocol/server` (stateless Streamable HTTP) behind Better Auth OAuth             |
+| Landing  | Astro (static) + Tailwind                                                                       |
+| Tests    | Vitest, React Testing Library, Better Auth `testUtils` plugin, PGlite, msw, Playwright          |
+| Lint/fmt | ESLint flat config (typescript-eslint) + Prettier                                               |
+| Types    | TypeScript 6 (typescript-eslint does not support 7 yet; do not upgrade)                         |
 
 Exact versions live in the `package.json` files.
 
@@ -140,6 +141,12 @@ Run from the repo root; the scripts in `package.json` are the full list.
   key is defined twice (tests).
 - **Contract first**: add the procedure to `packages/contract`, implement it in apps/api, consume
   it in apps/web through the oRPC TanStack Query utils.
+- **Telling browsers something changed**: broadcast a signal (ids only, never rows) from the
+  writing transaction through the data layer with `app.broadcast`, so it is sent only on commit.
+  Each topic shape gets its `select` policy on `realtime.messages` in a custom migration (no
+  insert policy: clients never send), and the API names the topics a caller may join. The web
+  reads what changed again through oRPC, so visibility rules stay in the API.
+  `@supabase/supabase-js` is imported only by the web's realtime module (lint).
 - **Toasts** go only through the web's `notify` helper; importing `sonner` anywhere else is a lint
   error. The query client reports and toasts failed queries and mutations once, so screens do not
   toast API errors themselves.
@@ -163,6 +170,9 @@ Run from the repo root; the scripts in `package.json` are the full list.
   middleware answers first.
 - Both servers send security headers; OAuth and MCP paths stay readable cross-origin, and proxied
   responses keep the API's headers.
+- The browser also opens a websocket to the Supabase origin (Realtime). It learns that origin, the
+  publishable key and a short-lived token from `realtime.access`, never from build-time
+  configuration; a future `connect-src` must allow it over https and wss.
 - Mail in dev and e2e goes to the local Supabase stack's Mailpit when `RESEND_API_KEY` is unset.
 - Files in dev and e2e go to a local RustFS (`pnpm rustfs`, started by `pnpm dev`). Browsers upload
   and download straight to the bucket through presigned URLs, never through the API, so a
@@ -173,7 +183,8 @@ Run from the repo root; the scripts in `package.json` are the full list.
 - **Vitest** everywhere: node environment for packages and api, jsdom for web.
 - **Database**: in-memory PGlite per test file, through `@arrakit/db/testing`, which first creates
   what a Supabase database already has and then applies the same migrations. RLS, roles and
-  pg-boss are the real thing there. Unit and integration tests need no Docker; `pnpm dev` and
+  pg-boss are the real thing there; Realtime is a stand-in (`realtime.messages`, `send`, `topic`)
+  in that prelude. Unit and integration tests need no Docker; `pnpm dev` and
   `pnpm test:e2e` do, for the local Supabase stack.
 - **Auth**: Better Auth's `testUtils` plugin, enabled only in tests. (`@better-auth/test-utils` on
   npm is for adapter conformance, not for this.)
@@ -182,7 +193,8 @@ Run from the repo root; the scripts in `package.json` are the full list.
   writing a new helper.
 - **E2E**: Playwright boots the API on the local Supabase stack with fake Stripe and RustFS, plus
   the web dev server. The database and the inbox are the ones `pnpm dev` uses and are not reset:
-  tests make their own people and organizations. Embedded Checkout cannot load with the fake gateway's client secret, so e2e asserts
+  tests make their own people and organizations. No procedure starts a task, so the task specs
+  move tasks through the data layer on the stack and watch the screen follow. Embedded Checkout cannot load with the fake gateway's client secret, so e2e asserts
   reaching the checkout page and drives payments through the fake webhook.
 
 ## Make it yours

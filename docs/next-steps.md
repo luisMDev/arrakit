@@ -6,7 +6,8 @@ Production
 
 - No rate limiting shared across instances (Better Auth configures neither `rateLimit` nor
   `secondaryStorage`), and no audit log. The web has no full CSP (no `script-src`/`connect-src`;
-  it would need nonces in TanStack Start and testing against Stripe).
+  it would need nonces in TanStack Start and testing against Stripe, and its `connect-src` must
+  allow the Supabase origin over https and wss for Realtime).
 - No admin panel, customer API keys, seed data or data export (GDPR).
 
 Frontend
@@ -41,8 +42,9 @@ Backend
   stays in the bucket (logged), and RustFS has no release for Intel Macs (install it on PATH).
 - Tasks: no tracked job exists yet, so no journey starts one end to end. Tasks cannot be
   cancelled, there is no limit on concurrent tasks per organization, and `result` has no shape
-  the web shows (a download link, for one). The task feed is one LISTEN connection per API
-  instance; a notice sent while it is down is lost and the next stream resyncs. Scale-to-zero
-  computes (Neon) end the LISTEN when they suspend.
+  the web shows (a download link, for one). Realtime signals are not kept for a browser that is
+  away: joining a channel reads the lists again. A permission change reaches Realtime when the
+  token is next refreshed (at most 10 minutes). `realtime.send` turns its errors into a warning,
+  so a lost signal is not reported.
 - Hard to remove: credits, MCP/OAuth (`createApp` in `apps/api/src/app.ts` always mounts the MCP
   routes; no setting turns them off) and, above all, multi-organization mode.
