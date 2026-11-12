@@ -113,17 +113,14 @@ changes (the first start, or after deleting it) the stack is stopped and started
 loads `.env` and then `.env.stack`, and the e2e API loads `.env.stack` too; the key does not live
 in the database, so it survives `pnpm db:reset`.
 Without `RESEND_API_KEY` mail goes to Mailpit (`MAILPIT_URL`), or to the console when that is
-unset, and with `STRIPE_FAKE=1` Stripe is faked. In production set `DATABASE_URL`,
-`BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`/`WEB_URL` (the web origin), `RESEND_API_KEY` and
-`MAIL_FROM`, the `STRIPE_*` keys, and `SUPABASE_URL` with `SUPABASE_SECRET_KEY` (server only) for
-files. The bucket and its limits come from `supabase/config.toml` through
-`supabase seed buckets`. Migrations are applied with the Supabase CLI, not on boot: the API refuses to
-start on a database that is behind. For live task updates set `SUPABASE_URL` and
-`SUPABASE_PUBLISHABLE_KEY` (without them the web reads the task lists on a timer); the browser
-learns both from the API. Supabase must trust Better Auth's signing key: a Custom OIDC
-third-party auth integration with the issuer `<web origin>/api/auth` (the hosted checklist comes
-with the last phase of the Supabase migration). The web reads `API_ORIGIN`, `VITE_APP_NAME` and
-`VITE_SITE_URL`.
+unset, and with `STRIPE_FAKE=1` Stripe is faked. Migrations are applied with the Supabase CLI, not
+on boot: the API refuses to start on a database that is behind. Without `SUPABASE_URL` and
+`SUPABASE_PUBLISHABLE_KEY` the web reads the task lists on a timer instead of live; the browser
+learns both from the API.
+
+A running stack does not read `supabase/config.toml` again: after editing it, stop and start the
+stack (`pnpm supabase:stop`, then `pnpm supabase:start`). Buckets are the exception:
+`pnpm exec supabase seed buckets` applies their limits to a running stack.
 
 With real Stripe keys, create the products and prices once:
 `pnpm --filter @arrakit/api stripe:prices`. The OpenAPI document of the API is written by
@@ -136,13 +133,74 @@ pnpm typecheck
 pnpm lint
 pnpm test       # Vitest: unit, API integration on PGlite, React Testing Library
 pnpm test:e2e   # Playwright: boots the api (local Supabase stack, fake Stripe) and the web
+pnpm test:stack # against the running local stack: trust, isolation, jobs, bucket limits, advisors
+pnpm db:advisors
 pnpm format:check
 ```
 
-`pnpm --filter @arrakit/<pkg> test` runs one workspace. Tests that need a real Postgres run when
-`DATABASE_URL` is set and are skipped otherwise; the Storage tests run against the local stack
-when `SUPABASE_URL`, `SUPABASE_SECRET_KEY` and `SUPABASE_PUBLISHABLE_KEY` are set (all three are
-in `apps/api/.env.stack`).
+`pnpm --filter @arrakit/<pkg> test` runs one workspace. `pnpm test` needs no Docker and never reads
+`DATABASE_URL` or the `SUPABASE_*` variables; the `*.stack.test.ts` files run only through
+`pnpm test:stack`. That suite checks what PGlite and the fakes cannot: that the stack accepts the
+tokens Better Auth signs and refuses other keys and other organizations' channels, that a commit
+reaches a Realtime client, organization operations and a job round trip through the pooler, and
+the bucket limits; then it runs the advisors. It never starts the stack: when the stack is not
+running it says so and exits 0. `pnpm db:advisors` runs the Supabase database advisors on the
+local stack and fails on any finding except those on pg-boss's `pgboss` schema and unused indexes
+(which need usage statistics a development database lacks).
+
+## Deploy on a hosted Supabase project
+
+None of this list has been run against a hosted project yet. What is proven is the local stack and
+`pnpm test:stack`; the first hosted run of the Custom OIDC trust (steps 9 to 12) is part of the
+list. Dashboard names are the ones Supabase's documentation uses today.
+
+1. Create the project on Postgres 17, the `major_version` in `supabase/config.toml`.
+2. `pnpm exec supabase login`, then `pnpm exec supabase link --project-ref <ref>`.
+3. Before the first push, check in the SQL editor that
+   `select to_regclass('realtime.messages'), to_regprocedure('realtime.send(jsonb,text,text,boolean)')`
+   answers two non-null values: a migration adds a policy and a function on them.
+4. `pnpm exec supabase db push --remote --dry-run`, then the same without `--dry-run`, then
+   `pnpm exec supabase migration list --remote`. On every deploy, push before starting the new
+   API: it refuses a database that is behind.
+5. `pnpm exec supabase seed buckets --remote` creates the private `files` bucket with its
+   50,000,000-byte limit and its type list from `supabase/config.toml`. In the Storage settings the
+   global file size limit must be at least 50 MB, and the S3 connection stays off.
+6. Integrations > Data API: turn "Enable Data API" off, and in its settings turn "Automatically
+   expose new tables" off.
+7. Authentication > Sign In / Providers: turn off new sign-ups, anonymous sign-ins and every
+   provider, email included. Supabase Auth cannot be disabled, so it must issue nothing, and no
+   custom access token hook may add `org_id`, `permissions` or `actor`.
+8. The API's environment: `NODE_ENV=production`, `DATABASE_URL` is the transaction pooler
+   connection string (the app needs no direct connection), `SUPABASE_URL`,
+   `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` (server only), `BETTER_AUTH_SECRET`,
+   `BETTER_AUTH_URL`/`WEB_URL` (the https web origin), `RESEND_API_KEY`, `MAIL_FROM` and the
+   `STRIPE_*` keys. `NODE_ENV` defaults to `development`, which logs through `pino-pretty` (a dev
+   dependency) and skips the production guards: the refusal of `STRIPE_FAKE=1`, the required
+   `RESEND_API_KEY` and the placeholder `BETTER_AUTH_SECRET` check. Logs are JSON whenever
+   `NODE_ENV` is not `development`, unless `LOG_FORMAT` says otherwise. Leave `BETTER_AUTH_JWT_KEY`
+   unset, so Better Auth mints and stores its own ES256 key. The web server runs with
+   `NODE_ENV=production` too and reads `API_ORIGIN`, `VITE_APP_NAME` and `VITE_SITE_URL`.
+9. With the app deployed, `https://<web origin>/api/auth/.well-known/openid-configuration` must
+   name the issuer `<web origin>/api/auth`, and `/api/auth/jwks` must list one ES256 key.
+10. Authentication > Sign In / Providers > Third-Party Auth > Add provider > Custom OIDC, with the
+    issuer URL `<web origin>/api/auth`. Only the dashboard or the Management API set it up (there
+    is no CLI or `config.toml` option), the issuer must be HTTPS, third-party monthly active users
+    beyond the plan's quota are billed, and a rotated key is picked up within about 30 minutes.
+11. Realtime > Settings: turn "Allow public access to channels" off. Changing it disconnects the
+    clients that are connected.
+12. Confirm the trust: sign in to the deployed app, open Settings > Tasks and check in the
+    browser's network panel that the `realtime/v1/websocket` connection stays open and the channel
+    join is answered ok. A refused join falls back silently to reading on a timer, so check the
+    socket, not the screen.
+13. `pnpm exec supabase db advisors --remote`: expect only what `pnpm db:advisors` accepts locally
+    (the `pgboss` schema and unused indexes).
+14. Decide the Spend Cap. Three costs to weigh: compute is always on and
+    billed per project and per branch, Storage downloads are billed beyond the plan's quota, and
+    so are third-party monthly active users. With the cap on, an exceeded quota stops that service
+    until the next cycle; with it off, the excess is billed.
+
+Do not run `supabase config push` as it is: it would push this repository's local values
+(`site_url`, ports) to the project. `pnpm exec supabase config diff` shows what it would change.
 
 ## Make it yours
 

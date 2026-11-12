@@ -71,7 +71,7 @@ permissions were checked only in the API. The unified model:
 - Every table has RLS enabled. Tenant tables get an isolation policy
   (`organization_id = (select app.org_id())`, both `using` and `with check`) plus permission gates
   on writes. Better Auth's identity and OAuth tables move to a `better_auth` schema with RLS on
-  and no policy, so only the privileged connection (the Better Auth adapter, workers) reaches them.
+  and a restrictive policy that rejects everyone, so only the privileged connection (the Better Auth adapter, workers) reaches them.
   The one exception is `users`: member and team lists join it, so it gets a `select` policy
   limited to people who share the caller's organization, and a column-level grant (id, name, email,
   image).
@@ -278,8 +278,8 @@ next phases:
   another member's topics answer `CHANNEL_ERROR`.
 - No health probe replaces `taskFeed`: the API only writes rows and holds no Realtime connection.
 - The PGlite prelude stands in for Realtime with the platform's `realtime.send` and
-  `realtime.topic` over a plain `realtime.messages`; a catalog test gated on `DATABASE_URL`
-  compares it with the stack.
+  `realtime.topic` over a plain `realtime.messages`; a catalog test in the stack suite compares
+  it with the stack.
 
 ### Phase 3. Storage on Supabase Storage
 
@@ -331,33 +331,46 @@ gone. Points that turned out differently from the plan and matter to the next ph
 
 ### Phase 4. Hosted project, hardening, cleanup
 
-Outcome: a documented path to a hosted project, and no leftovers.
+Landed. `pnpm test:stack` turns the checks of "Verified on the local stack" into tests against the
+running local stack and runs the advisors after them; the advisors report nothing on `public`,
+`better_auth` and `app` beyond statistics-based lints; the leftovers of the earlier phases are
+gone; and the README carries the checklist for a hosted project. Points that turned out
+differently from the plan:
 
-- Stack suite (`pnpm test:stack`): the checks from "Verified on the local stack" as tests (token
-  accepted, tenant isolation over the wire, channel refusal, a job round trip through the pooler,
-  storage limits).
-- Hosted checklist in the README: create the project, `supabase link`, `supabase db push --remote`,
-  add a Custom OIDC integration under Third-Party Auth with the Better Auth issuer
-  (`<web origin>/api/auth`) and confirm a token is accepted (the first run of that path outside
-  the emulator), disable sign-ups and providers in
-  Supabase Auth, switch Realtime to private channels only, switch off the Data API, set the bucket
-  limits. `DATABASE_URL` is the transaction pooler; the app needs no direct connection.
-- Run the database advisors (`supabase db advisors`) and fix what they report; add it to the
-  checks a change runs.
-- Left by phase 2: run Custom OIDC on the hosted project with `BETTER_AUTH_JWT_KEY` unset (the
-  plugin-minted key, read from `/api/auth/jwks`); turn Realtime public channel access off;
-  make sure `realtime.messages` and `realtime.send` exist before `supabase db push` applies the
-  realtime migration; cover database -> Realtime -> client and the keys-file trust in the stack
-  suite; decide whether policies check the `iss` claim once Better Auth's issuer is known.
-- Left by phase 3: seed the bucket on the hosted project (`supabase seed buckets --remote`) and
-  check that the project's global file size limit is at least 50 MB; fold packages/db's Storage
-  stack test (limits included) into `pnpm test:stack`; decide whether to turn off the S3 protocol
-  endpoint (`[storage.s3_protocol]`) nothing uses; a sweep for objects without a row; request
-  timeouts for Storage calls.
-- Remove the PGlite runtime path and its env variables, the Neon notes and the
-  data-only lint entries that no longer apply. Update `README.md`, `AGENTS.md`, both
-  `.env.example` files, the Turborepo env pass-through, `scripts/init.ts` (the stack's
-  `project_id`) and `docs/next-steps.md`. Delete this file.
+- The suite is `*.stack.test.ts` files in packages/db (driver-level checks) and apps/api (anything
+  that needs a token Better Auth signs), excluded from the default Vitest configs and run by a
+  second config per workspace. A root runner asks `supabase status` whether the stack runs,
+  prints one message and exits 0 when it does not, and otherwise hands the suite the pooler URL
+  and `apps/api/.env.stack`. The env-gated tests moved into stack files, so `pnpm test` reads no
+  database or Supabase variable; the whole pg-boss suite runs once on PGlite and once through the
+  pooler.
+- The Data API is off, so trust and isolation over the wire are checked through Realtime and
+  Storage: a Better Auth token joins its own topics, a commit reaches only its organization's
+  subscriber, and other organizations' and members' topics, unlisted keys, a forged listed `kid`,
+  a token signed by the stack's own key and the publishable key alone are refused.
+- The advisors cannot be a plain `--fail-on`: pg-boss's six functions warn about a mutable
+  `search_path` and `unused_index` needs usage statistics. `pnpm db:advisors` accepts those two
+  (the `pgboss` schema, the `unused_index` lint) and fails on anything else.
+- Twelve foreign keys of `public` and `better_auth` gained an index (a catalog test keeps new keys
+  indexed), and the eleven `better_auth` tables without a policy gained an explicit restrictive
+  rejection policy, `noAccess`. On a deployed database with large tables those `CREATE INDEX`
+  statements would block writes while they build; there is no deployed data.
+- Policies do not check `iss`. Every policy requires the top-level `org_id` claim, which a token
+  signed by the stack's own key and a Better Auth token without member claims both lack (the
+  suite pins both), the server path sets claims with no issuer, and an issuer in SQL would differ
+  per environment. A restrictive `iss` policy is needed once a second issuer is trusted or any
+  Supabase Auth sign-in is enabled.
+- The S3 protocol endpoint is off locally (`[storage.s3_protocol] enabled = false`); the stack
+  restarted normally and the suite and the file journeys pass with it off.
+- The PGlite runtime path was already gone; only dependency entries were left (PGlite out of the
+  API's dependencies and a dev dependency of packages/db), plus a broken `db:studio` script and a
+  stale lint ignore.
+- `pnpm init:project` already rewrote `project_id`; its tests now prove it and it warns to stop
+  the old stack by its old id. Tests pin the OIDC discovery document and the JWKS a Custom OIDC
+  integration reads.
+- The hosted checklist is in the README and has not been executed. The sweep for objects without
+  a row and the Storage request timeouts moved to `docs/next-steps.md`, with the other known gaps
+  of this document.
 
 ## Risks
 

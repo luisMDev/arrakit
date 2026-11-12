@@ -15,26 +15,26 @@ For the same reason, keep this file to rules: no file inventories, helper lists 
 
 ## Stack
 
-| Area     | Choice                                                                                          |
-| -------- | ----------------------------------------------------------------------------------------------- |
-| Monorepo | pnpm workspaces + Turborepo                                                                     |
-| Web app  | React + TanStack Start (file-based routing, TanStack Router + TanStack Query), Nitro            |
-| UI       | Tailwind CSS + shadcn/ui (default theme, Radix primitives, lucide icons), sonner                |
-| i18n     | i18next + react-i18next, `en` (bundled, fallback) and `es` (lazy)                               |
-| API      | Hono on Node + oRPC (contract-first) + Zod                                                      |
-| DB       | Supabase Postgres + Drizzle ORM (drizzle-kit writes migrations, the Supabase CLI applies them)  |
-| Auth     | Better Auth (magic link, social providers, organization plugin, OAuth provider + JWT)           |
-| Payments | Stripe, with a fake gateway in dev and tests                                                    |
-| Email    | Resend in production; the local stack's Mailpit in dev and e2e; recording mailer in tests       |
-| Jobs     | pg-boss on the same Postgres (on PGlite in tests)                                               |
-| Realtime | Supabase Realtime private Broadcast signals; browser token from Better Auth's JWT plugin, ES256 |
-| Logs     | Pino (JSON lines), request id per request; Sentry                                               |
-| Files    | Supabase Storage, a private bucket with signed upload and download URLs; in-memory in tests     |
-| MCP      | `@modelcontextprotocol/server` (stateless Streamable HTTP) behind Better Auth OAuth             |
-| Landing  | Astro (static) + Tailwind                                                                       |
-| Tests    | Vitest, React Testing Library, Better Auth `testUtils` plugin, PGlite, msw, Playwright          |
-| Lint/fmt | ESLint flat config (typescript-eslint) + Prettier                                               |
-| Types    | TypeScript 6 (typescript-eslint does not support 7 yet; do not upgrade)                         |
+| Area     | Choice                                                                                              |
+| -------- | --------------------------------------------------------------------------------------------------- |
+| Monorepo | pnpm workspaces + Turborepo                                                                         |
+| Web app  | React + TanStack Start (file-based routing, TanStack Router + TanStack Query), Nitro                |
+| UI       | Tailwind CSS + shadcn/ui (default theme, Radix primitives, lucide icons), sonner                    |
+| i18n     | i18next + react-i18next, `en` (bundled, fallback) and `es` (lazy)                                   |
+| API      | Hono on Node + oRPC (contract-first) + Zod                                                          |
+| DB       | Supabase Postgres + Drizzle ORM (drizzle-kit writes migrations, the Supabase CLI applies them)      |
+| Auth     | Better Auth (magic link, social providers, organization plugin, OAuth provider + JWT)               |
+| Payments | Stripe, with a fake gateway in dev and tests                                                        |
+| Email    | Resend in production; the local stack's Mailpit in dev and e2e; recording mailer in tests           |
+| Jobs     | pg-boss on the same Postgres (on PGlite in tests)                                                   |
+| Realtime | Supabase Realtime private Broadcast signals; browser token from Better Auth's JWT plugin, ES256     |
+| Logs     | Pino (JSON lines), request id per request; Sentry                                                   |
+| Files    | Supabase Storage, a private bucket with signed upload and download URLs; in-memory in tests         |
+| MCP      | `@modelcontextprotocol/server` (stateless Streamable HTTP) behind Better Auth OAuth                 |
+| Landing  | Astro (static) + Tailwind                                                                           |
+| Tests    | Vitest, React Testing Library, Better Auth `testUtils` plugin, PGlite, msw, Playwright, stack suite |
+| Lint/fmt | ESLint flat config (typescript-eslint) + Prettier                                                   |
+| Types    | TypeScript 6 (typescript-eslint does not support 7 yet; do not upgrade)                             |
 
 Exact versions live in the `package.json` files.
 
@@ -90,19 +90,21 @@ is truly missing, stop and report it.
 
 Run from the repo root; the scripts in `package.json` are the full list.
 
-| Command                                      | What it does                                                 |
-| -------------------------------------------- | ------------------------------------------------------------ |
-| `pnpm install`                               | Install                                                      |
-| `pnpm dev`                                   | Local Supabase stack, then api + web + landing               |
-| `pnpm supabase:start` / `pnpm supabase:stop` | Start (migrate, seed the bucket) or stop the local stack     |
-| `pnpm db:migrate` / `pnpm db:reset`          | Apply pending migrations, or recreate the local database     |
-| `pnpm typecheck` / `pnpm lint` / `pnpm test` | Turborepo across all workspaces                              |
-| `pnpm build`                                 | Build web, api and landing                                   |
-| `pnpm test:e2e`                              | Playwright against api + web on the local Supabase stack     |
-| `pnpm --filter @arrakit/<pkg> <script>`      | One workspace's script                                       |
-| `pnpm --filter @arrakit/db db:generate`      | Write a migration from the schema into `supabase/migrations` |
-| `pnpm format`                                | Prettier                                                     |
-| `pnpm init:project --name "<Product>"`       | Rename product name, slug and npm scope                      |
+| Command                                      | What it does                                                  |
+| -------------------------------------------- | ------------------------------------------------------------- |
+| `pnpm install`                               | Install                                                       |
+| `pnpm dev`                                   | Local Supabase stack, then api + web + landing                |
+| `pnpm supabase:start` / `pnpm supabase:stop` | Start (migrate, seed the bucket) or stop the local stack      |
+| `pnpm db:migrate` / `pnpm db:reset`          | Apply pending migrations, or recreate the local database      |
+| `pnpm typecheck` / `pnpm lint` / `pnpm test` | Turborepo across all workspaces                               |
+| `pnpm build`                                 | Build web, api and landing                                    |
+| `pnpm test:e2e`                              | Playwright against api + web on the local Supabase stack      |
+| `pnpm test:stack`                            | Stack suite and advisors against the running local stack      |
+| `pnpm db:advisors`                           | Database advisors on the local stack, failing on new findings |
+| `pnpm --filter @arrakit/<pkg> <script>`      | One workspace's script                                        |
+| `pnpm --filter @arrakit/db db:generate`      | Write a migration from the schema into `supabase/migrations`  |
+| `pnpm format`                                | Prettier                                                      |
+| `pnpm init:project --name "<Product>"`       | Rename product name, slug and npm scope                       |
 
 ## Conventions
 
@@ -117,9 +119,18 @@ Run from the repo root; the scripts in `package.json` are the full list.
   database that is behind. Hand-written SQL goes in a `db:generate --custom` migration, so it
   enters the journal the API reads. In a hand-written migration every statement ends with a
   `--> statement-breakpoint` line (the PGlite migrator fails otherwise). Never edit an applied
-  migration; write a new one.
+  migration; write a new one. After a schema change run `pnpm db:advisors` (part of
+  `pnpm test:stack`). Every foreign key gets an index that starts with its columns (a test
+  enforces it). Findings on the `pgboss` schema, which pg-boss owns, and `unused_index` are
+  accepted; anything else is fixed.
 - **Better Auth's identity and OAuth tables** live in the `better_auth` schema (a test enforces
-  which); raw SQL names them with the schema.
+  which); raw SQL names them with the schema. They have RLS on and the schema's `noAccess`
+  policy, except `users` (a test enforces it).
+- **Token claims**: policies never check `iss`. They require the top-level `org_id` claim, which
+  only tokens signed for a member carry. Before trusting a second issuer or enabling any Supabase
+  Auth sign-in, add a restrictive policy on `iss`.
+- **`supabase/config.toml`**: a running stack does not read it again; stop and start the stack
+  after an edit (`supabase seed buckets` applies bucket changes to a running stack).
 - **Tenancy**: every table, except the named exceptions in the schema, has
   `organization_id uuid not null references organizations(id) on delete cascade`. Every table has
   row level security on, and tenant tables declare their policies with the schema's policy
@@ -146,7 +157,7 @@ Run from the repo root; the scripts in `package.json` are the full list.
   Each topic shape gets its `select` policy on `realtime.messages` in a custom migration (no
   insert policy: clients never send), and the API names the topics a caller may join. The web
   reads what changed again through oRPC, so visibility rules stay in the API.
-  `@supabase/supabase-js` is imported only by the web's realtime module (lint).
+  `@supabase/supabase-js` is imported only by the web's realtime module and by tests (lint).
 - **Toasts** go only through the web's `notify` helper; importing `sonner` anywhere else is a lint
   error. The query client reports and toasts failed queries and mutations once, so screens do not
   toast API errors themselves.
@@ -173,6 +184,10 @@ Run from the repo root; the scripts in `package.json` are the full list.
 - The browser also opens a websocket to the Supabase origin (Realtime). It learns that origin, the
   publishable key and a short-lived token from `realtime.access`, never from build-time
   configuration; a future `connect-src` must allow it over https and wss.
+- A hosted project trusts Better Auth through a Custom OIDC integration with the issuer
+  `<web origin>/api/auth`; the API serves the discovery document and the keys under `/api/auth`
+  (tests pin both). Realtime public channel access cannot be turned off locally, so nothing may
+  ever be broadcast on a public channel.
 - Mail in dev and e2e goes to the local Supabase stack's Mailpit when `RESEND_API_KEY` is unset.
 - Files live in the private Supabase Storage bucket `files`, declared with its limits in
   `supabase/config.toml`. Browsers upload and download straight to Storage through URLs the API
@@ -186,10 +201,16 @@ Run from the repo root; the scripts in `package.json` are the full list.
 - **Database**: in-memory PGlite per test file, through `@arrakit/db/testing`, which first creates
   what a Supabase database already has and then applies the same migrations. RLS, roles and
   pg-boss are the real thing there; Realtime is a stand-in (`realtime.messages`, `send`, `topic`)
-  in that prelude. Unit and integration tests need no Docker; `pnpm dev` and
-  `pnpm test:e2e` do, for the local Supabase stack.
-- **Storage** is in memory in unit and API tests. The driver's test against the real service runs
-  only when `SUPABASE_URL`, `SUPABASE_SECRET_KEY` and `SUPABASE_PUBLISHABLE_KEY` are set.
+  in that prelude. Unit and integration tests need no Docker; `pnpm dev`,
+  `pnpm test:e2e` and `pnpm test:stack` do, for the local Supabase stack.
+- **Storage** is in memory in unit and API tests.
+- **Stack suite**: `*.stack.test.ts` files in packages/db and apps/api run only through
+  `pnpm test:stack`, against the running local stack, which the command never starts (it skips
+  when the stack is down). They share the stack with `pnpm dev` and e2e, so they make their own
+  organizations, users, queues and objects, remove the rows and objects they made, and never
+  assume an empty database. Run it when a change touches
+  migrations, policies, claims or token signing, the jobs adapter, Realtime topics, the storage
+  driver, `supabase/config.toml` or a Supabase package version.
 - **Auth**: Better Auth's `testUtils` plugin, enabled only in tests. (`@better-auth/test-utils` on
   npm is for adapter conformance, not for this.)
 - **Shared kits**: the API, the web and the e2e suite each have a testing kit (in-process app,
@@ -197,10 +218,10 @@ Run from the repo root; the scripts in `package.json` are the full list.
   writing a new helper.
 - **E2E**: Playwright boots the API on the local Supabase stack with fake Stripe, plus the web
   dev server. The database, the inbox and the `files` bucket are the ones `pnpm dev` uses and are
-  not reset:
-  tests make their own people and organizations. No procedure starts a task, so the task specs
-  move tasks through the data layer on the stack and watch the screen follow. Embedded Checkout cannot load with the fake gateway's client secret, so e2e asserts
-  reaching the checkout page and drives payments through the fake webhook.
+  not reset: tests make their own people and organizations. No procedure starts a task, so the
+  task specs move tasks through the data layer on the stack and watch the screen follow. Embedded
+  Checkout cannot load with the fake gateway's client secret, so e2e asserts reaching the checkout
+  page and drives payments through the fake webhook.
 
 ## Make it yours
 
