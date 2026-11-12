@@ -20,6 +20,7 @@ const FILES: Record<string, string> = {
     "import { createArrakitAuthClient } from '@arrakit/auth/client'\n",
   'apps/web/src/notes.md': 'Nothing to rename here.\n',
   'scripts/init/fixture.ts': "export const SAMPLE = '@arrakit/db'\n",
+  'supabase/config.toml': 'project_id = "arrakit"\n',
   '.gitignore': 'ignored.txt\n',
   'ignored.txt': 'arrakit\n',
   'untracked.txt': 'Arrakit\n',
@@ -68,6 +69,7 @@ describe('runInit', () => {
         { path: 'package.json', count: 2 },
         { path: 'apps/web/src/lib/auth-client.ts', count: 2 },
         { path: 'untracked.txt', count: 1 },
+        { path: 'supabase/config.toml', count: 1 },
       ]),
     )
     expect(read('package.json')).toBe(FILES['package.json'])
@@ -82,6 +84,7 @@ describe('runInit', () => {
       'packages/auth/src/config.ts',
       'packages/db/package.json',
       'packages/emails/src/index.ts',
+      'supabase/config.toml',
       'untracked.txt',
     ])
     expect(read('package.json')).toBe(
@@ -91,6 +94,7 @@ describe('runInit', () => {
       "import { createAcmeCloudAuthClient } from '@acme/auth/client'\n",
     )
     expect(read('packages/auth/src/config.ts')).toBe("export const COOKIE_PREFIX = 'acme-cloud'\n")
+    expect(read('supabase/config.toml')).toBe('project_id = "acme-cloud"\n')
     expect(read('untracked.txt')).toBe('Acme Cloud\n')
     expect(read('ignored.txt')).toBe(FILES['ignored.txt'])
     expect(read('scripts/init/fixture.ts')).toBe(FILES['scripts/init/fixture.ts'])
@@ -124,8 +128,20 @@ describe('main', () => {
     expect(read('apps/web/src/lib/auth-client.ts')).toBe(
       "import { createNimbusAuthClient } from '@nimbus/auth/client'\n",
     )
-    expect(vi.mocked(console.log).mock.calls.flat().join('\n')).toMatch(
-      /nimbus_pro_monthly[\s\S]*nimbus\.session_token/,
-    )
+    expect(read('supabase/config.toml')).toBe('project_id = "nimbus"\n')
+    const logged = vi.mocked(console.log).mock.calls.flat().join('\n')
+    expect(logged).toMatch(/nimbus_pro_monthly[\s\S]*nimbus\.session_token/)
+    expect(logged).toMatch(/supabase stop --project-id acme-cloud/)
+  })
+})
+
+describe('the repository itself', () => {
+  const root = new URL('../', import.meta.url)
+
+  it('names the local Supabase stack after the root package', () => {
+    const config = readFileSync(new URL('supabase/config.toml', root), 'utf8')
+    const pkg = JSON.parse(readFileSync(new URL('package.json', root), 'utf8')) as { name: string }
+
+    expect(config.match(/^project_id = "([^"]+)"$/m)?.[1]).toBe(pkg.name)
   })
 })

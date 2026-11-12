@@ -35,11 +35,14 @@ function describe(from: Identity, to: Identity): string {
   ].join('\n')
 }
 
-const WARNINGS = (to: Identity) => `
+const WARNINGS = (from: Identity, to: Identity) => `
 Before you go on:
   - Stripe prices are found by lookup key (${to.slug}_pro_monthly, ...). Prices created under the
     old slug are no longer found: run the API's Stripe prices script again.
   - The session cookie is now named ${to.slug}.session_token, so existing sessions are signed out.
+  - The local Supabase stack is named after the slug. Stop the old one with
+    \`pnpm exec supabase stop --project-id ${from.slug}\` before starting again; the renamed
+    project starts with an empty database.
 
 Next: pnpm install && pnpm typecheck && pnpm test`
 
@@ -101,7 +104,7 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
     console.log(
       `\n${dryRun ? 'Would rewrite' : 'Rewrote'} ${total} occurrences in ${changes.length} files.`,
     )
-    if (!dryRun && changes.length > 0) console.log(WARNINGS(to))
+    if (!dryRun && changes.length > 0) console.log(WARNINGS(from, to))
     return 0
   } finally {
     prompt?.close()
