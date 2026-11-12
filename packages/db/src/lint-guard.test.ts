@@ -150,6 +150,8 @@ describe('the module guards', () => {
     'apps/web/src/lib/realtime.ts',
     'packages/db/src/guard-probe.ts',
     'apps/web/e2e/guard-probe.ts',
+    'apps/api/src/stack/guard-probe.stack.test.ts',
+    'apps/api/src/testing/guard-probe.ts',
   ])('let the Supabase client through in %s', async (file) => {
     expect(await lint(file, `${SUPABASE.join('\n')}\nexport {}\n`)).toEqual([])
   })

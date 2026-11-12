@@ -15,6 +15,7 @@ import { type MemoryStorage, memoryStorage } from './storage/memory'
 import { openTestDatabase } from './test-database'
 
 export { memoryJobs } from './jobs/memory'
+export { FILES_BUCKET } from './storage/supabase'
 export {
   type Claims,
   type MemberClaims,
@@ -125,4 +126,24 @@ export function realtimeJoinSees(data: Data, claims: object, topic: string): Pro
     )) as unknown as { rows: { n: number }[] }
     return rows[0]!.n
   })
+}
+
+const STACK_VARIABLES = [
+  'DATABASE_URL',
+  'SUPABASE_URL',
+  'SUPABASE_PUBLISHABLE_KEY',
+  'SUPABASE_SECRET_KEY',
+  'BETTER_AUTH_JWT_KEY',
+] as const
+
+export type StackEnv = Record<(typeof STACK_VARIABLES)[number], string>
+
+/** Where the local Supabase stack answers, as `pnpm test:stack` hands it to the stack suite. */
+export function stackEnv(env: Record<string, string | undefined> = process.env): StackEnv {
+  const missing = STACK_VARIABLES.filter((name) => !env[name])
+  if (missing.length > 0)
+    throw new Error(
+      `[stack] missing ${missing.join(', ')}: run \`pnpm test:stack\` from the repository root`,
+    )
+  return Object.fromEntries(STACK_VARIABLES.map((name) => [name, env[name]!])) as StackEnv
 }

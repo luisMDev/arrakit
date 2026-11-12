@@ -214,9 +214,6 @@ importers:
       '@better-auth/oauth-provider':
         specifier: ^1.7.14
         version: 1.7.14(00ab3aefbbdf9d7e3c9e01d576eaa4b8)
-      '@electric-sql/pglite':
-        specifier: ^0.5.13
-        version: 0.5.13
       '@hono/node-server':
         specifier: ^2.1.5
         version: 2.1.5(hono@4.13.14)
@@ -269,6 +266,9 @@ importers:
       '@arrakit/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
+      '@supabase/supabase-js':
+        specifier: 2.119.0
+        version: 2.119.0(@opentelemetry/api@1.10.0)
       '@types/node':
         specifier: ^24.19.2
         version: 24.19.2
@@ -555,9 +555,6 @@ importers:
       '@arrakit/plans':
         specifier: workspace:*
         version: link:../plans
-      '@electric-sql/pglite':
-        specifier: ^0.5.13
-        version: 0.5.13
       '@supabase/storage-js':
         specifier: 2.119.0
         version: 2.119.0
@@ -580,6 +577,9 @@ importers:
       '@arrakit/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
+      '@electric-sql/pglite':
+        specifier: ^0.5.13
+        version: 0.5.13
       '@types/node':
         specifier: ^24.19.2
         version: 24.19.2

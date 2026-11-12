@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:stack": "vitest run --config vitest.stack.config.ts",
     "stripe:prices": "node --env-file-if-exists=.env --import tsx scripts/stripe-prices.ts"
   },
   "dependencies": {
@@ -21,7 +22,6 @@
     "@arrakit/plans": "workspace:*",
     "@better-auth/core": "^1.7.14",
     "@better-auth/oauth-provider": "^1.7.14",
-    "@electric-sql/pglite": "^0.5.13",
     "@hono/node-server": "^2.1.5",
     "@modelcontextprotocol/server": "^2.4.0",
     "@orpc/client": "^1.16.1",
@@ -41,6 +41,7 @@
   "devDependencies": {
     "@arrakit/eslint-config": "workspace:*",
     "@arrakit/tsconfig": "workspace:*",
+    "@supabase/supabase-js": "2.119.0",
     "@types/node": "^24.19.2",
     "pino-pretty": "^13.2.0",
     "tsdown": "^0.23.3",

@@ -12,13 +12,12 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "db:generate": "drizzle-kit generate",
-    "db:studio": "drizzle-kit studio"
+    "test:stack": "vitest run --config vitest.stack.config.ts",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@arrakit/address": "workspace:*",
     "@arrakit/plans": "workspace:*",
-    "@electric-sql/pglite": "^0.5.13",
     "@supabase/storage-js": "2.119.0",
     "better-auth": "^1.7.14",
     "drizzle-orm": "^0.45.4",
@@ -28,6 +27,7 @@
   "devDependencies": {
     "@arrakit/eslint-config": "workspace:*",
     "@arrakit/tsconfig": "workspace:*",
+    "@electric-sql/pglite": "^0.5.13",
     "@types/node": "^24.19.2",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11"

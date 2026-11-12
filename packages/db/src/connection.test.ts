@@ -1,9 +1,7 @@
-import { sql } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 
-import { connect, postgresConnection } from './connection'
+import { postgresConnection } from './connection'
 import { consoleLog } from './context'
-import { assertMigrated } from './migrations'
 
 const config = { databaseUrl: 'postgres://app@pooler/app' }
 
@@ -27,13 +25,4 @@ describe('postgresConnection (node-postgres pool)', () => {
     await postgresConnection(pool as never, config, consoleLog).close()
     expect(pool.end).toHaveBeenCalled()
   })
-})
-
-describe.runIf(process.env.DATABASE_URL)('connect() on real Postgres (DATABASE_URL)', () => {
-  it('reaches a database the Supabase CLI has migrated', async () => {
-    const connection = connect({ databaseUrl: process.env.DATABASE_URL! }, consoleLog)
-    await connection.db.execute(sql`select 1`)
-    await expect(assertMigrated(connection.db)).resolves.toBeUndefined()
-    await connection.close()
-  }, 60_000)
 })

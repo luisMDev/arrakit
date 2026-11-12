@@ -10,6 +10,7 @@
     "supabase:stop": "supabase stop",
     "db:migrate": "supabase migration up",
     "db:reset": "supabase db reset && supabase seed buckets",
+    "db:advisors": "node scripts/db-advisors.ts",
     "init:project": "node scripts/init.ts",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck //#typecheck:scripts",
@@ -18,6 +19,7 @@
     "test": "turbo run test //#test:scripts",
     "test:scripts": "vitest run --dir scripts",
     "test:e2e": "pnpm supabase:start && turbo run test:e2e",
+    "test:stack": "node scripts/test-stack.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

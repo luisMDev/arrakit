@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs'
 
 import { FILE_POLICIES } from '@arrakit/plans'
-import { StorageClient } from '@supabase/storage-js'
 import { describe, expect, it } from 'vitest'
 
 import { FILES_BUCKET } from './supabase'
@@ -38,22 +37,3 @@ describe('the files bucket in supabase/config.toml', () => {
     expect((JSON.parse(list!) as string[]).sort()).toEqual(planTypes)
   })
 })
-
-const { SUPABASE_URL, SUPABASE_SECRET_KEY, SUPABASE_PUBLISHABLE_KEY } = process.env
-
-describe.runIf(SUPABASE_URL && SUPABASE_SECRET_KEY && SUPABASE_PUBLISHABLE_KEY)(
-  'the files bucket on the local stack',
-  () => {
-    it('was seeded from config.toml', async () => {
-      const client = new StorageClient(`${SUPABASE_URL}/storage/v1`, {
-        apikey: SUPABASE_SECRET_KEY!,
-        Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
-      })
-      const { data, error } = await client.getBucket(FILES_BUCKET)
-      expect(error).toBeNull()
-      expect(data?.public).toBe(false)
-      expect(data?.file_size_limit).toBe(widestLimit)
-      expect([...(data?.allowed_mime_types ?? [])].sort()).toEqual(planTypes)
-    })
-  },
-)
