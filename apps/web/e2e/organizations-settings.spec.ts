@@ -13,7 +13,7 @@ test('an owner manages the organization from Settings and deletes it', async ({ 
   await expect(page).toHaveTitle('Arrakit · Settings')
   await expect(page.getByRole('heading', { level: 2, name: 'Account' })).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Your name' })).toHaveValue('Lucía Gómez')
-  await expect(page.getByText(email)).toBeVisible()
+  await expect(page.getByRole('main').getByText(email)).toBeVisible()
   await expect(page.getByText('A link by email')).toBeVisible()
   await expect(page.getByText(/You own this organization/)).toBeVisible()
 
