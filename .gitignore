@@ -12,7 +12,7 @@ coverage
 .env.*
 !.env.example
 .DS_Store
-# Local PGlite data and local file storage
+# Local file storage and downloaded binaries
 .data
 # Playwright
 test-results

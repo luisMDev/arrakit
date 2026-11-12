@@ -1,6 +1,6 @@
 pnpm-lock.yaml
 **/routeTree.gen.ts
-**/drizzle/meta/**
+supabase/migrations/meta
 .output
 dist
 .astro

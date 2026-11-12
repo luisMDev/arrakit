@@ -5,8 +5,11 @@
   "type": "module",
   "description": "Arrakit: a SaaS base on pnpm + Turborepo, React + TanStack Start, Hono + oRPC, Drizzle and Better Auth.",
   "scripts": {
-    "dev": "turbo run dev //#mailpit //#rustfs",
-    "mailpit": "scripts/mailpit.sh --listen localhost:5025 --smtp localhost:5026",
+    "dev": "pnpm supabase:start && turbo run dev //#rustfs",
+    "supabase:start": "node scripts/supabase-keys.ts && supabase start && supabase migration up",
+    "supabase:stop": "supabase stop",
+    "db:migrate": "supabase migration up",
+    "db:reset": "supabase db reset",
     "rustfs": "scripts/rustfs.sh --address 127.0.0.1:5030 --console-address 127.0.0.1:5031 .data/rustfs",
     "init:project": "node scripts/init.ts",
     "build": "turbo run build",
@@ -15,7 +18,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test //#test:scripts",
     "test:scripts": "vitest run --dir scripts",
-    "test:e2e": "turbo run test:e2e",
+    "test:e2e": "pnpm supabase:start && turbo run test:e2e",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
