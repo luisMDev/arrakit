@@ -14,7 +14,8 @@ the last phase lands; the code and its tests are the record after that.
   issues nothing.
 - One permission model. The Better Auth access-control matrix in `@arrakit/auth/permissions` is the
   single source; it is turned into claims once, and the same claims are enforced by the API
-  middleware, by RLS on every table, by Realtime channel policies and by Storage policies.
+  middleware, by RLS on every table and by Realtime channel policies. Storage has no policy:
+  every file access goes through a URL the API signs after its checks.
 - Everything runs against the local Supabase stack (`supabase start`), in dev and in e2e.
 
 ## What the research found
@@ -111,9 +112,10 @@ and pg-boss 12.38:
   role for its own statement and restores it: the job exists only if the transaction commits, and
   RLS is back in force for the next statement. Broadcasting needs a `security definer` wrapper.
 - Storage: a signed upload URL takes a plain `PUT` with the file as body; the token lasts 2 hours
-  and is not configurable. Bucket-level `file_size_limit` and `allowed_mime_types` are enforced on
-  that upload (413 and 415). `info()` returns size and content type; signed download URLs carry the
-  attachment name.
+  and is not configurable, and signing for an existing object fails unless upsert is asked.
+  Bucket-level `file_size_limit` and `allowed_mime_types` are enforced on that upload (an HTTP
+  400 whose body carries statusCode 413 or 415). `info()` returns size and content type; a signed
+  download URL carries the attachment name, set on the URL (the client's option encodes it twice).
 - The bundled Mailpit answers its HTTP API on port 54324, which is what the API's dev mailer uses.
 - PGlite (the test database) enforces RLS with roles and per-transaction claims.
 
@@ -281,26 +283,51 @@ next phases:
 
 ### Phase 3. Storage on Supabase Storage
 
-Outcome: files live in a private Supabase bucket; RustFS and the S3 SDK are removed.
+Landed. Files live in the private `files` bucket of Supabase Storage: the API reserves the row,
+signs an upload URL the browser `PUT`s to, checks the stored object at completion and signs
+download URLs, all through a driver in `packages/db` that holds the secret key. The object layout
+(`<org_id>/...`) and the upload contract (`{ url, headers, expiresAt }`) did not change, so the
+web did not either. RustFS, the `R2_*` variables, the S3 driver and the `@aws-sdk` packages are
+gone. Points that turned out differently from the plan and matter to the next phase:
 
-- `packages/db/src/storage/supabase.ts` implements `Storage` with the secret key: signed upload
-  URL, signed download URL with the download name, `info` for head, server-side upload for the MCP
-  tool, remove, and a paginated list for prefix removal. The object layout (`<org_id>/...`) and the
-  upload contract (`{ url, headers, expiresAt }`) do not change, so the web keeps its plain `PUT`.
-- Limits: a signed upload URL does not bind size or type, so the bucket carries the widest plan
-  limit and `completeUpload` checks the stored size and type against the plan and deletes an object
-  that breaks it. Upload links last 2 hours instead of 15 minutes; the pending-file expiry job
-  already covers abandoned uploads.
-- `storage.objects` keeps deny-by-default (no policy): every access goes through a URL the API
-  signed after its checks. Organization-scoped policies were verified and can be added when a
-  feature needs direct client access.
-- Env: `SUPABASE_SECRET_KEY` (next to the `SUPABASE_URL` phase 2 added) replaces the `R2_*`
-  variables; `scripts/supabase-keys.ts` can write the local secret key into `apps/api/.env.stack`
-  the same way it writes the publishable key. Remove `scripts/rustfs.sh`, its Turborepo task and
-  the e2e server entry.
-
-Tests: `memoryStorage()` stays for unit tests; the S3 integration test becomes a stack test; the
-e2e file journeys run unchanged.
+- The driver (`packages/db/src/storage/supabase.ts`) uses `@supabase/storage-js` (pinned exactly),
+  not `@supabase/supabase-js`, with the secret key. It is on the data-only lint list, so only
+  `packages/db` imports it; apps/api lists it as a dependency only so its bundle keeps it external.
+- The bucket name is fixed (`files`), not configured. Its limit and type list live in
+  `supabase/config.toml`, the limit in bytes (the CLI reads a unit such as `50MB` as mebibytes),
+  and a test keeps them equal to the plans. `supabase seed buckets` applies them on
+  `pnpm supabase:start` and after `pnpm db:reset` (the reset itself also recreates declared
+  buckets); the API does not configure the bucket at boot.
+- `SUPABASE_SECRET_KEY` is read only by `packages/db` (`loadDataConfig`) and requires
+  `SUPABASE_URL`; without it storage is in memory, in production too. It never enters the API's
+  env, and `scripts/supabase-keys.ts` writes the local value into `apps/api/.env.stack`.
+- Upload links last a fixed two hours (`UPLOAD_URL_SECONDS`, checked against the real token by the
+  stack test) and cannot be revoked. A link refuses a second upload while its object exists, but
+  uploads again once the object is removed, and it can store anything up to the bucket limit. So a
+  row is never freed early by a mismatch, and every delete that may leave a live link queues a
+  second purge for when links lapse (`LATE_UPLOAD_SECONDS`, the link's two hours plus one,
+  exported by `@arrakit/db`): deleting a file reserved within that window purges its object again
+  then, deleting a workspace purges its folder again, and deleting an organization purges its
+  prefix again. A pending file expires after the same window, so the row outlives the link.
+- A signed URL binds neither size nor type: the bucket enforces the widest limit and the type
+  list, and `completeUpload` compares the stored size and type with the reserved row (which the
+  plan accepted). On a difference it removes the object and keeps the row pending (still counted
+  against storage), so the same link can upload the right bytes and the row expires otherwise.
+  `requestUpload` frees its reservation when signing fails, since signing is now a network call
+  and no link exists.
+- The driver sets the `download` parameter on the signed download URL itself: the client's own
+  option encodes the name twice, which breaks names outside ASCII. Signing a download checks that
+  the object exists, so a ready row whose bytes are missing answers 500.
+- Listing uses the flat `listV2` call with cursor pagination and refuses any key outside the
+  prefix asked for; removal goes in batches of 100. Listing and removing succeed silently in a
+  missing bucket, so the health probe reads the bucket (`getBucket`), which also proves the key is
+  a secret one. `head` answers "missing" only for `NoSuchKey`, so a missing bucket is never taken
+  for a missing upload.
+- `storage.objects` has no policy. A member's Realtime token is a valid Storage credential and
+  reaches nothing (an e2e test lists, reads, writes and removes with one, and the stack test does
+  the same with the publishable key), so any policy added later must be tenant scoped.
+- No migration and no prelude change. Storage answers any origin, so the bucket needs no CORS rule
+  and the web no header change.
 
 ### Phase 4. Hosted project, hardening, cleanup
 
@@ -322,7 +349,12 @@ Outcome: a documented path to a hosted project, and no leftovers.
   make sure `realtime.messages` and `realtime.send` exist before `supabase db push` applies the
   realtime migration; cover database -> Realtime -> client and the keys-file trust in the stack
   suite; decide whether policies check the `iss` claim once Better Auth's issuer is known.
-- Remove `@aws-sdk/*`, the PGlite runtime path and its env variables, the Neon notes and the
+- Left by phase 3: seed the bucket on the hosted project (`supabase seed buckets --remote`) and
+  check that the project's global file size limit is at least 50 MB; fold packages/db's Storage
+  stack test (limits included) into `pnpm test:stack`; decide whether to turn off the S3 protocol
+  endpoint (`[storage.s3_protocol]`) nothing uses; a sweep for objects without a row; request
+  timeouts for Storage calls.
+- Remove the PGlite runtime path and its env variables, the Neon notes and the
   data-only lint entries that no longer apply. Update `README.md`, `AGENTS.md`, both
   `.env.example` files, the Turborepo env pass-through, `scripts/init.ts` (the stack's
   `project_id`) and `docs/next-steps.md`. Delete this file.

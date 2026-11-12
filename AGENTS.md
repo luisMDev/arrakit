@@ -29,7 +29,7 @@ For the same reason, keep this file to rules: no file inventories, helper lists 
 | Jobs     | pg-boss on the same Postgres (on PGlite in tests)                                               |
 | Realtime | Supabase Realtime private Broadcast signals; browser token from Better Auth's JWT plugin, ES256 |
 | Logs     | Pino (JSON lines), request id per request; Sentry                                               |
-| Files    | S3-compatible storage, presigned uploads; RustFS in dev and e2e; in-memory in tests             |
+| Files    | Supabase Storage, a private bucket with signed upload and download URLs; in-memory in tests     |
 | MCP      | `@modelcontextprotocol/server` (stateless Streamable HTTP) behind Better Auth OAuth             |
 | Landing  | Astro (static) + Tailwind                                                                       |
 | Tests    | Vitest, React Testing Library, Better Auth `testUtils` plugin, PGlite, msw, Playwright          |
@@ -64,7 +64,7 @@ docs/next-steps.md  Known gaps and the prioritised backlog
 ### Package boundaries (enforced by lint)
 
 - **Only `packages/db`** imports the database, queue and storage drivers (Drizzle, pg, pg-boss,
-  PGlite, the S3 SDK). Everyone else, apps/api included, goes through `@arrakit/db`.
+  PGlite, the Supabase Storage client). Everyone else, apps/api included, goes through `@arrakit/db`.
 - `packages/contract` is the only place where procedure inputs and outputs are declared; the API
   implements it and the web consumes it through the typed oRPC client.
 - `plans`, `address` and `emails` are pure (no I/O, no framework), usable from web and api.
@@ -93,8 +93,8 @@ Run from the repo root; the scripts in `package.json` are the full list.
 | Command                                      | What it does                                                 |
 | -------------------------------------------- | ------------------------------------------------------------ |
 | `pnpm install`                               | Install                                                      |
-| `pnpm dev`                                   | Local Supabase stack, then api + web + landing (and RustFS)  |
-| `pnpm supabase:start` / `pnpm supabase:stop` | Start (and migrate) or stop the local Supabase stack         |
+| `pnpm dev`                                   | Local Supabase stack, then api + web + landing               |
+| `pnpm supabase:start` / `pnpm supabase:stop` | Start (migrate, seed the bucket) or stop the local stack     |
 | `pnpm db:migrate` / `pnpm db:reset`          | Apply pending migrations, or recreate the local database     |
 | `pnpm typecheck` / `pnpm lint` / `pnpm test` | Turborepo across all workspaces                              |
 | `pnpm build`                                 | Build web, api and landing                                   |
@@ -174,9 +174,11 @@ Run from the repo root; the scripts in `package.json` are the full list.
   publishable key and a short-lived token from `realtime.access`, never from build-time
   configuration; a future `connect-src` must allow it over https and wss.
 - Mail in dev and e2e goes to the local Supabase stack's Mailpit when `RESEND_API_KEY` is unset.
-- Files in dev and e2e go to a local RustFS (`pnpm rustfs`, started by `pnpm dev`). Browsers upload
-  and download straight to the bucket through presigned URLs, never through the API, so a
-  production bucket needs a CORS rule allowing PUT and GET from the web origin.
+- Files live in the private Supabase Storage bucket `files`, declared with its limits in
+  `supabase/config.toml`. Browsers upload and download straight to Storage through URLs the API
+  signs after its checks, never through the API. The bucket has no policy, so a token alone
+  (a member's Realtime token included) reaches nothing; the secret key is read only by
+  `packages/db`. Storage answers any origin, so no CORS rule is needed.
 
 ## Testing
 
@@ -186,13 +188,16 @@ Run from the repo root; the scripts in `package.json` are the full list.
   pg-boss are the real thing there; Realtime is a stand-in (`realtime.messages`, `send`, `topic`)
   in that prelude. Unit and integration tests need no Docker; `pnpm dev` and
   `pnpm test:e2e` do, for the local Supabase stack.
+- **Storage** is in memory in unit and API tests. The driver's test against the real service runs
+  only when `SUPABASE_URL`, `SUPABASE_SECRET_KEY` and `SUPABASE_PUBLISHABLE_KEY` are set.
 - **Auth**: Better Auth's `testUtils` plugin, enabled only in tests. (`@better-auth/test-utils` on
   npm is for adapter conformance, not for this.)
 - **Shared kits**: the API, the web and the e2e suite each have a testing kit (in-process app,
   people helpers, msw answers, render helpers, Mailpit readers). Read it and reuse it before
   writing a new helper.
-- **E2E**: Playwright boots the API on the local Supabase stack with fake Stripe and RustFS, plus
-  the web dev server. The database and the inbox are the ones `pnpm dev` uses and are not reset:
+- **E2E**: Playwright boots the API on the local Supabase stack with fake Stripe, plus the web
+  dev server. The database, the inbox and the `files` bucket are the ones `pnpm dev` uses and are
+  not reset:
   tests make their own people and organizations. No procedure starts a task, so the task specs
   move tasks through the data layer on the stack and watch the screen follow. Embedded Checkout cannot load with the fake gateway's client secret, so e2e asserts
   reaching the checkout page and drives payments through the fake webhook.
@@ -211,7 +216,8 @@ Run from the repo root; the scripts in `package.json` are the full list.
   list. File events are published in the same transaction as the change, and each subscriber
   gets its own retried queue; do not call follow-up work from the files router.
 - File types and size limits per plan: `packages/plans` (the API enforces them, the web
-  pre-checks them).
+  pre-checks them). The bucket in `supabase/config.toml` carries the widest limit and every type,
+  and a test keeps the two equal.
 - Background work people follow as tasks: declare it with `defineTrackedJob` in the API's
   tracked job list, start it with `startTask` (the task and its job commit together), report
   progress from the handler and throw `TaskError` for a failure retrying cannot fix. Give its kind

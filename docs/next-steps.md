@@ -39,7 +39,13 @@ Backend
 - Files: no folders, no moving between the organization and a workspace, no previews and no
   malware scanning (a file subscriber is the place for it). Every plan has the same file policy.
   The type is checked by extension; the bytes are not inspected. An object whose delete fails
-  stays in the bucket (logged), and RustFS has no release for Intel Macs (install it on PATH).
+  stays in the bucket (logged). An upload link binds neither size nor type, so until it lapses a
+  pending file can hold up to the bucket limit (50 MB) while only its announced size counts
+  against storage, and nothing limits how many uploads a member reserves: storage use can exceed
+  the plan by up to 50 MB per pending file for three hours (a cap on pending uploads per member,
+  or counting a pending file at the policy's limit, is the fix). A pending upload, and one whose
+  bytes did not match, holds its storage reservation for those three hours. Uploads are a single
+  PUT (no resumable upload), so a dropped connection starts over.
 - Tasks: no tracked job exists yet, so no journey starts one end to end. Tasks cannot be
   cancelled, there is no limit on concurrent tasks per organization, and `result` has no shape
   the web shows (a download link, for one). Realtime signals are not kept for a browser that is
