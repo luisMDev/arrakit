@@ -125,7 +125,8 @@ Run from the repo root; the scripts in `package.json` are the full list.
   accepted; anything else is fixed.
 - **Better Auth's identity and OAuth tables** live in the `better_auth` schema (a test enforces
   which); raw SQL names them with the schema. They have RLS on and the schema's `noAccess`
-  policy, except `users` (a test enforces it).
+  policy, except `users`, which has a same-organization `select` policy behind `serverOnly`
+  (a test enforces it).
 - **Token claims**: policies never check `iss`. They require the top-level `org_id` claim, which
   only tokens signed for a member carry. Before trusting a second issuer or enabling any Supabase
   Auth sign-in, add a restrictive policy on `iss`.
@@ -139,7 +140,10 @@ Run from the repo root; the scripts in `package.json` are the full list.
   webhooks, auth hooks); each operation of either scope runs in its own transaction as the
   `authenticated` role with those claims. The other functions of the data layer are privileged
   and cross organizations by design. Explicit organization filters stay in every query: RLS is
-  the guard underneath, not a replacement.
+  the guard underneath, not a replacement. The scoped executor also sets `app.via = 'server'`,
+  and every table a token could reach carries the restrictive `serverOnly` policy, so a browser
+  token (same claims, no setting) reads and writes nothing even if the Data API is turned on
+  (tests enforce it).
 - **Permissions**: the access-control matrix in `@arrakit/auth/permissions` is the single source.
   `claimsFor` turns a member's permissions into the claims; the API middleware answers 403/404
   and the policies are the guard underneath (a policy refusal is a missing middleware check, not

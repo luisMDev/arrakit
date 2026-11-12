@@ -77,6 +77,11 @@ permissions were checked only in the API. The unified model:
   image).
 - The API middleware keeps its checks (they give the 403/404 the contract promises); RLS is the
   guard underneath, and the only guard on the surfaces the browser reaches directly.
+- The browser token carries the same claims as the server path, so claims alone cannot tell them
+  apart. The scoped executor also sets `app.via = 'server'` (local to the transaction), and every
+  table a token could reach (`public` and `better_auth.users`) has a restrictive `serverOnly`
+  policy requiring it: a token reads and writes nothing there, even with the Data API on. A check
+  constraint keeps every `consumption` ledger row negative.
 
 A token issued by Supabase Auth has no top-level `org_id` claim (a user cannot set top-level
 claims), so it matches no policy. Sign-ups are disabled anyway.
