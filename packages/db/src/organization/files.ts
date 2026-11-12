@@ -1,8 +1,8 @@
 import { storageGbFor } from '@arrakit/plans'
 import { type SQL, and, asc, eq, isNull, lt, sql } from 'drizzle-orm'
 
-import { type Database, transaction } from '../connection'
-import type { DataContext } from '../context'
+import type { Database } from '../connection'
+import type { ScopeContext } from '../context'
 import { DomainError, refusingDuplicates } from '../errors'
 import { FILE_EVENTS, type FileEvent, type FileEventPayloads } from '../files/events'
 import { STORAGE_PURGE_QUEUE } from '../jobs/types'
@@ -37,11 +37,10 @@ const nameTaken = (name: string) =>
 export const NO_SUCH_WORKSPACE = 'No such workspace in your organization.'
 
 export function filesScope(
-  ctx: DataContext,
+  ctx: ScopeContext,
   organizationId: OrganizationId,
   usage: OrganizationUsage,
 ) {
-  const { db } = ctx
   const inOrganization = eq(files.organizationId, organizationId)
   const byId = (id: string) => and(inOrganization, eq(files.id, id))
   const inScope = (workspaceId: string | null) =>
@@ -56,8 +55,8 @@ export function filesScope(
       eq(sql`lower(${files.name})`, name.toLowerCase()),
     )
 
-  const listed = (where: SQL | undefined) =>
-    db
+  const listed = (tx: Database, where: SQL | undefined) =>
+    tx
       .select({ file: files, uploaderName: users.name })
       .from(files)
       .leftJoin(users, eq(users.id, files.uploadedBy))
@@ -117,15 +116,20 @@ export function filesScope(
   return {
     /** Uploaded (ready) files of one scope, by name. */
     list: (workspaceId: string | null): Promise<ListedFile[]> =>
-      listed(and(inScope(workspaceId), eq(files.status, 'ready')))
-        .orderBy(asc(sql`lower(${files.name})`), asc(files.id))
-        .then((rows) => rows.map(withUploaderName)),
+      ctx.scoped(async (tx) => {
+        const rows = await listed(tx, and(inScope(workspaceId), eq(files.status, 'ready'))).orderBy(
+          asc(sql`lower(${files.name})`),
+          asc(files.id),
+        )
+        return rows.map(withUploaderName)
+      }),
 
     /** Any status; undefined when the organization has no such file. */
-    get: async (id: string): Promise<ListedFile | undefined> => {
-      const [row] = await listed(byId(id))
-      return row && withUploaderName(row)
-    },
+    get: (id: string): Promise<ListedFile | undefined> =>
+      ctx.scoped(async (tx) => {
+        const [row] = await listed(tx, byId(id))
+        return row && withUploaderName(row)
+      }),
 
     /**
      * A pending file whose bytes count against storage_gb until it is completed or expired.
@@ -151,7 +155,7 @@ export function filesScope(
     complete: (id: string): Promise<FileRow | undefined> =>
       refusingDuplicates(
         () =>
-          transaction(db, async (tx) => {
+          ctx.scoped(async (tx) => {
             const [row] = await tx
               .update(files)
               .set({ status: 'ready' })
@@ -167,7 +171,7 @@ export function filesScope(
     rename: (id: string, name: string): Promise<FileRow | undefined> =>
       refusingDuplicates(
         () =>
-          transaction(db, async (tx) => {
+          ctx.scoped(async (tx) => {
             const [before] = await tx
               .select()
               .from(files)

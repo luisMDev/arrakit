@@ -97,7 +97,7 @@ async function actorOf(ctx: HookContext, body: Body) {
 async function checkRoleChange(ctx: HookContext, data: Data, body: Body) {
   const found = await actorOf(ctx, body)
   if (!found) return
-  const rows = await data.forOrganization(found.organizationId).customRoles()
+  const rows = await data.customRoles(found.organizationId)
   const roleName = text(body.roleName).toLowerCase()
   const roleId = text(body.roleId)
   const row = rows.find((r) => (roleName ? r.role === roleName : roleId !== '' && r.id === roleId))
@@ -186,7 +186,7 @@ async function sendInvitation(deps: AuthDeps, links: InvitationLinks, invitation
     sent = false
   }
   try {
-    await deps.data.forOrganization(organizationId).members.markInvitationEmailSent(id, sent)
+    await deps.data.asSystem(organizationId).members.markInvitationEmailSent(id, sent)
   } catch (err) {
     log.error({ err, organizationId, invitationId: id }, 'invite email state not saved')
   }

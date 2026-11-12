@@ -2,7 +2,7 @@ import { type SQL, and, asc, eq } from 'drizzle-orm'
 
 import type { DataContext } from '../context'
 import { isUuid } from '../organization-id'
-import { members, organizations, sessions } from '../schema/index'
+import { members, organizationRoles, organizations, sessions } from '../schema/index'
 import type { OrganizationRow } from '../organization/index'
 
 export interface Membership {
@@ -53,5 +53,23 @@ export function membershipData(ctx: DataContext) {
      * cache may be stale); the earliest one when that organization is unset or no longer theirs.
      */
     activeMembership,
+    /**
+     * The organization's custom roles (Better Auth dynamic access control), by name; empty for an
+     * id that is no UUID. Read before a scope exists, because the scope's claims depend on them.
+     */
+    customRoles: async (
+      organizationId: string,
+    ): Promise<{ id: string; role: string; permission: string }[]> =>
+      isUuid(organizationId)
+        ? ctx.db
+            .select({
+              id: organizationRoles.id,
+              role: organizationRoles.role,
+              permission: organizationRoles.permission,
+            })
+            .from(organizationRoles)
+            .where(eq(organizationRoles.organizationId, organizationId.toLowerCase()))
+            .orderBy(asc(organizationRoles.role))
+        : [],
   }
 }

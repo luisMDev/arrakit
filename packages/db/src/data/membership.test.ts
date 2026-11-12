@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { sessions } from '../schema/index'
+import { organizationRoles, sessions } from '../schema/index'
 import {
   type TestData,
   insertMember,
@@ -62,5 +62,22 @@ describe('membership', () => {
     const lone = await insertUser(data, 'lone@elm.vc')
     expect(await data.memberOf(lone)).toBeNull()
     expect(await data.activeMembership(lone, await sessionIn(lone, null))).toBeNull()
+  })
+
+  it("reads an organization's custom roles by name, and nothing of another organization", async () => {
+    const own = await insertOrganization(data, { slug: 'fir' })
+    const other = await insertOrganization(data, { slug: 'gum' })
+    await data.db.insert(organizationRoles).values([
+      { organizationId: own.id, role: 'reviewer', permission: '{"file":["read"]}' },
+      { organizationId: own.id, role: 'finance', permission: '{"billing":["read"]}' },
+      { organizationId: other.id, role: 'auditor', permission: '{"usage":["read"]}' },
+    ])
+
+    expect(await data.customRoles(own.id.toUpperCase())).toEqual([
+      { id: expect.any(String), role: 'finance', permission: '{"billing":["read"]}' },
+      { id: expect.any(String), role: 'reviewer', permission: '{"file":["read"]}' },
+    ])
+    expect((await data.customRoles(other.id)).map((row) => row.role)).toEqual(['auditor'])
+    expect(await data.customRoles('not-a-uuid')).toEqual([])
   })
 })

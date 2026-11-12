@@ -31,7 +31,7 @@ export function organizationPlugin(deps: AuthDeps) {
   async function checkMemberChange(organizationId: string, actorId: string, change: Change) {
     const actor = await data.membershipIn(actorId, organizationId)
     if (!actor) return refuse(ACTOR_UNKNOWN)
-    const custom = customRoleMap(await data.forOrganization(organizationId).customRoles())
+    const custom = customRoleMap(await data.customRoles(organizationId))
     const refusal = memberChangeRefusal({
       actorRole: actor.role,
       actorPermissions: permissionsOf(actor.role, custom),
@@ -112,8 +112,7 @@ export function organizationPlugin(deps: AuthDeps) {
         })
         const seats = organizations.seats(organization)
         if (
-          (await data.forOrganization(organization.id).members.seatsTaken(invitation.email)) >=
-          seats.limit
+          (await data.asSystem(organization.id).members.seatsTaken(invitation.email)) >= seats.limit
         ) {
           throw new APIError('FORBIDDEN', { message: seats.full })
         }

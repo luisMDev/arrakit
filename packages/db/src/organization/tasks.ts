@@ -1,8 +1,8 @@
 import { type SQL, and, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core'
 
-import { type Database, transaction } from '../connection'
-import type { DataContext } from '../context'
+import type { Database } from '../connection'
+import type { ScopeContext } from '../context'
 import { DomainError } from '../errors'
 import type { OrganizationId } from '../organization-id'
 import {
@@ -65,14 +65,13 @@ export interface TaskPage {
 
 const count = (n: number) => Math.max(0, Math.trunc(n))
 
-export function tasksScope(ctx: DataContext, organizationId: OrganizationId) {
-  const { db } = ctx
+export function tasksScope(ctx: ScopeContext, organizationId: OrganizationId) {
   const inOrganization = eq(tasks.organizationId, organizationId)
   const byId = (id: string) => and(inOrganization, eq(tasks.id, id))
   const inStatus = (statuses: readonly TaskStatus[]) => inArray(tasks.status, [...statuses])
 
-  const listed = (where: SQL | undefined) =>
-    db
+  const listed = (tx: Database, where: SQL | undefined) =>
+    tx
       .select({ task: tasks, requesterName: users.name })
       .from(tasks)
       .leftJoin(users, eq(users.id, tasks.requestedBy))
@@ -137,26 +136,27 @@ export function tasksScope(ctx: DataContext, organizationId: OrganizationId) {
   function progress(id: string, done: number, total?: number, attempt?: number) {
     if (total === undefined) {
       const capped = sql`least(${count(done)}::int, coalesce(${tasks.progressTotal}, ${count(done)}::int))`
-      return move(db, id, ['running'], { progressDone: capped }, attempt)
+      return ctx.scoped((tx) => move(tx, id, ['running'], { progressDone: capped }, attempt))
     }
     const values = {
       progressDone: Math.min(count(done), count(total)),
       progressTotal: count(total),
     }
-    return move(db, id, ['running'], values, attempt)
+    return ctx.scoped((tx) => move(tx, id, ['running'], values, attempt))
   }
 
-  async function heartbeat(id: string, attempt?: number): Promise<boolean> {
-    const [row] = await db
-      .update(tasks)
-      .set({ updatedAt: ctx.now() })
-      .where(and(byId(id), eq(tasks.status, 'running'), latest(attempt)))
-      .returning({ id: tasks.id })
-    return row !== undefined
-  }
+  const heartbeat = (id: string, attempt?: number): Promise<boolean> =>
+    ctx.scoped(async (tx) => {
+      const [row] = await tx
+        .update(tasks)
+        .set({ updatedAt: ctx.now() })
+        .where(and(byId(id), eq(tasks.status, 'running'), latest(attempt)))
+        .returning({ id: tasks.id })
+      return row !== undefined
+    })
 
   const succeed = (id: string, result?: Record<string, unknown>, attempt?: number) =>
-    transaction(db, async (tx) => {
+    ctx.scoped(async (tx) => {
       const row = await move(
         tx,
         id,
@@ -175,10 +175,10 @@ export function tasksScope(ctx: DataContext, organizationId: OrganizationId) {
     })
 
   const retrying = (id: string, errorCode: string, attempt?: number) =>
-    move(db, id, ['running'], { status: 'queued', errorCode }, attempt)
+    ctx.scoped((tx) => move(tx, id, ['running'], { status: 'queued', errorCode }, attempt))
 
   const fail = (id: string, errorCode: string, attempt?: number) =>
-    transaction(db, async (tx) => {
+    ctx.scoped(async (tx) => {
       const values = { status: 'failed' as const, errorCode, finishedAt: ctx.now() }
       const row = await move(tx, id, ACTIVE_TASK_STATUSES, values, attempt)
       if (row) await publish(tx, TASK_EVENTS.failed, { ...eventOf(row), errorCode })
@@ -200,7 +200,7 @@ export function tasksScope(ctx: DataContext, organizationId: OrganizationId) {
      * NOT_FOUND for a workspace of another organization.
      */
     start: (task: NewTask): Promise<TaskRow> =>
-      transaction(db, async (tx) => {
+      ctx.scoped(async (tx) => {
         await assertWorkspace(tx, task.workspaceId)
         const now = ctx.now()
         const [row] = await tx
@@ -225,35 +225,37 @@ export function tasksScope(ctx: DataContext, organizationId: OrganizationId) {
       }),
 
     /** Undefined when the organization has no such task. */
-    get: async (id: string): Promise<ListedTask | undefined> => {
-      const [row] = await listed(byId(id))
-      return row && withRequesterName(row)
-    },
+    get: (id: string): Promise<ListedTask | undefined> =>
+      ctx.scoped(async (tx) => {
+        const [row] = await listed(tx, byId(id))
+        return row && withRequesterName(row)
+      }),
 
     /** Newest first, `limit` at a time. */
     list: async (options: TaskListOptions): Promise<TaskPage> => {
       const statuses = options.status === 'active' ? ACTIVE_TASK_STATUSES : FINISHED_TASK_STATUSES
       const { after, workspaceId, requestedBy } = options
-      const rows = await listed(
-        and(
-          inOrganization,
-          inStatus(statuses),
-          workspaceId === undefined
-            ? undefined
-            : workspaceId === null
-              ? isNull(tasks.workspaceId)
-              : eq(tasks.workspaceId, workspaceId),
-          requestedBy === undefined ? undefined : eq(tasks.requestedBy, requestedBy),
-          after
-            ? or(
-                lt(tasks.createdAt, after.createdAt),
-                and(eq(tasks.createdAt, after.createdAt), lt(tasks.id, after.id)),
-              )
-            : undefined,
-        ),
+      const where = and(
+        inOrganization,
+        inStatus(statuses),
+        workspaceId === undefined
+          ? undefined
+          : workspaceId === null
+            ? isNull(tasks.workspaceId)
+            : eq(tasks.workspaceId, workspaceId),
+        requestedBy === undefined ? undefined : eq(tasks.requestedBy, requestedBy),
+        after
+          ? or(
+              lt(tasks.createdAt, after.createdAt),
+              and(eq(tasks.createdAt, after.createdAt), lt(tasks.id, after.id)),
+            )
+          : undefined,
       )
-        .orderBy(desc(tasks.createdAt), desc(tasks.id))
-        .limit(options.limit + 1)
+      const rows = await ctx.scoped((tx) =>
+        listed(tx, where)
+          .orderBy(desc(tasks.createdAt), desc(tasks.id))
+          .limit(options.limit + 1),
+      )
       const page = rows.slice(0, options.limit).map(withRequesterName)
       const last = page.at(-1)
       return {
@@ -268,12 +270,14 @@ export function tasksScope(ctx: DataContext, organizationId: OrganizationId) {
      * died) becomes running. Undefined when the task is gone or finished, so it must not run.
      */
     begin: (id: string, retryCount: number): Promise<TaskRow | undefined> =>
-      move(db, id, ACTIVE_TASK_STATUSES, {
-        status: 'running',
-        attempts: count(retryCount) + 1,
-        startedAt: sql`coalesce(${tasks.startedAt}, ${ctx.now().toISOString()}::timestamptz)`,
-        errorCode: null,
-      }),
+      ctx.scoped((tx) =>
+        move(tx, id, ACTIVE_TASK_STATUSES, {
+          status: 'running',
+          attempts: count(retryCount) + 1,
+          startedAt: sql`coalesce(${tasks.startedAt}, ${ctx.now().toISOString()}::timestamptz)`,
+          errorCode: null,
+        }),
+      ),
 
     /**
      * Records how much of a running task is done, kept within `total` (the known total when

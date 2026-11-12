@@ -38,7 +38,7 @@ describe('task feed on PGlite', () => {
   const organization = async (tag: string) => {
     const owner = await insertUser(data, `owner@${tag}.vc`)
     const { id } = await insertOrganization(data, { slug: tag })
-    const tasks = data.forOrganization(id).tasks
+    const tasks = data.asSystem(id).tasks
     const start = () =>
       tasks.start({
         queue: 'export',

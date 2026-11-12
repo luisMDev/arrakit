@@ -32,7 +32,8 @@ type AuthData = Pick<
   | 'invitationFor'
   | 'revokeGrants'
   | 'clearForAccountDeletion'
-  | 'forOrganization'
+  | 'asSystem'
+  | 'customRoles'
 >
 
 /** What the organization plugin's rules need from the app beyond the data layer. */

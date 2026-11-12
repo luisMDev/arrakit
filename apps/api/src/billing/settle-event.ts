@@ -41,7 +41,7 @@ interface AppliedPlan {
   subscription: SubscriptionState
 }
 
-type Organizations = Pick<ScopedData, 'forOrganization'>
+type Organizations = Pick<ScopedData, 'asSystem'>
 
 export const stripeRefs = (subscription: SubscriptionState, plan: Plan): StripeRefs => ({
   customerId: subscription.customerId,
@@ -63,7 +63,7 @@ async function findOrganization(
   if (!organizationId) return ignored(log, `${what} names no organization`)
   let scope: OrganizationScope
   try {
-    scope = data.forOrganization(organizationId)
+    scope = data.asSystem(organizationId)
   } catch {
     return ignored(log, `${what} names no organization id`)
   }
@@ -258,7 +258,7 @@ export function settleBillingEvent(
       return
     const [customer, members] = await Promise.all([
       stripe.customer(subscription.customerId),
-      data.forOrganization(organization.id).members.list(),
+      data.asSystem(organization.id).members.list(),
     ])
     const email = downgradedEmail({
       organization: organization.name,

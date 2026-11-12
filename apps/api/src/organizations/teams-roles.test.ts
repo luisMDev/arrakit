@@ -105,9 +105,10 @@ describe('teams and custom roles (Better Auth organization plugin)', () => {
         organizationId,
       })
       await joined(t, owner, 'ana@elm.vc', 'finance')
-      expect(
-        (await t.data.forOrganization(organizationId).members.list()).map((m) => m.role),
-      ).toEqual(['owner', 'finance'])
+      expect((await t.data.asSystem(organizationId).members.list()).map((m) => m.role)).toEqual([
+        'owner',
+        'finance',
+      ])
     })
 
     it('lets an admin manage roles within their own permissions only', async () => {

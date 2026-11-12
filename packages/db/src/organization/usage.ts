@@ -16,8 +16,8 @@ import {
 } from '@arrakit/plans'
 import { and, desc, eq, ne, sql } from 'drizzle-orm'
 
-import { type Database, transaction } from '../connection'
-import type { DataContext } from '../context'
+import type { Database } from '../connection'
+import type { ScopeContext } from '../context'
 import { DomainError } from '../errors'
 import type { OrganizationId } from '../organization-id'
 import { creditLedger, usageLevels } from '../schema/index'
@@ -119,23 +119,23 @@ interface Locked extends Billing {
   tx: Database
 }
 
-export function usageScope(ctx: DataContext, organizationId: OrganizationId): OrganizationUsage {
+export function usageScope(ctx: ScopeContext, organizationId: OrganizationId): OrganizationUsage {
   const own = eq(creditLedger.organizationId, organizationId)
 
-  async function billingOf(db: Database, lock: boolean): Promise<Billing> {
-    const org = await organizationRow(db, organizationId, { lock })
+  async function billingOf(tx: Database, lock: boolean): Promise<Billing> {
+    const org = await organizationRow(tx, organizationId, { lock })
     if (!org) throw new Error(`[data] organization ${organizationId} is gone`)
     return { plan: org.plan, period: usagePeriod(org.usageAnchor ?? org.createdAt, ctx.now()) }
   }
 
   const locked = <R>(work: (locked: Locked) => Promise<R>): Promise<R> =>
-    transaction(ctx.db, async (tx) => work({ tx, ...(await billingOf(tx, true)) }))
+    ctx.scoped(async (tx) => work({ tx, ...(await billingOf(tx, true)) }))
 
-  function ledgerSums(db: Database, { period }: Billing) {
+  function ledgerSums(tx: Database, { period }: Billing) {
     const inPeriod = eq(creditLedger.periodStart, period.start)
     const sumWhere = (condition: ReturnType<typeof and>) =>
       sql<string>`coalesce(sum(${creditLedger.amount}) filter (where ${condition}), 0)`
-    return db
+    return tx
       .select({
         metric: creditLedger.metric,
         planUsed: sumWhere(
@@ -149,8 +149,8 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
       .groupBy(creditLedger.metric)
   }
 
-  function levelsOf(db: Database) {
-    return db
+  function levelsOf(tx: Database) {
+    return tx
       .select({ metric: usageLevels.metric, value: usageLevels.value })
       .from(usageLevels)
       .where(eq(usageLevels.organizationId, organizationId))
@@ -187,10 +187,12 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
     )
   }
 
-  async function currentUsage(): Promise<Map<Metric, MetricUsage>> {
-    const [billing, levels] = await Promise.all([billingOf(ctx.db, false), levelsOf(ctx.db)])
-    return usageFrom(billing, await ledgerSums(ctx.db, billing), levels)
-  }
+  const currentUsage = (): Promise<Map<Metric, MetricUsage>> =>
+    ctx.scoped(async (tx) => {
+      const billing = await billingOf(tx, false)
+      const levels = await levelsOf(tx)
+      return usageFrom(billing, await ledgerSums(tx, billing), levels)
+    })
 
   async function lockedUsage(l: Locked): Promise<Map<Metric, MetricUsage>> {
     const rows = await ledgerSums(l.tx, l)
@@ -200,10 +202,10 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
   async function addPurchased(
     rows: { metric: Metric; amount: number; reason: 'purchase' | 'adjustment'; cents: number }[],
     idempotencyKey: string,
-    db: Database,
+    tx: Database,
   ): Promise<boolean> {
     if (rows.length === 0) return false
-    const written = await db
+    const written = await tx
       .insert(creditLedger)
       .values(
         rows.map((row) => ({
@@ -331,15 +333,17 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
       wholeAtLeast(cents, 1, 'an amount of cents')
       const key = keyOf(idempotencyKey)
       const amounts = metricAmounts(cents)
-      return addPurchased(
-        METRIC_KEYS.map((metric) => ({
-          metric,
-          amount: amounts[metric],
-          reason: 'purchase' as const,
-          cents,
-        })),
-        key,
-        ctx.db,
+      return ctx.scoped((tx) =>
+        addPurchased(
+          METRIC_KEYS.map((metric) => ({
+            metric,
+            amount: amounts[metric],
+            reason: 'purchase' as const,
+            cents,
+          })),
+          key,
+          tx,
+        ),
       )
     },
 
@@ -370,17 +374,19 @@ export function usageScope(ctx: DataContext, organizationId: OrganizationId): Or
     },
 
     async topUps() {
-      const rows = await ctx.db
-        .select({
-          metric: creditLedger.metric,
-          amount: creditLedger.amount,
-          cents: creditLedger.cents,
-          key: creditLedger.idempotencyKey,
-          at: creditLedger.createdAt,
-        })
-        .from(creditLedger)
-        .where(and(own, eq(creditLedger.reason, 'purchase')))
-        .orderBy(desc(creditLedger.createdAt), creditLedger.idempotencyKey)
+      const rows = await ctx.scoped((tx) =>
+        tx
+          .select({
+            metric: creditLedger.metric,
+            amount: creditLedger.amount,
+            cents: creditLedger.cents,
+            key: creditLedger.idempotencyKey,
+            at: creditLedger.createdAt,
+          })
+          .from(creditLedger)
+          .where(and(own, eq(creditLedger.reason, 'purchase')))
+          .orderBy(desc(creditLedger.createdAt), creditLedger.idempotencyKey),
+      )
       const byKey = new Map<string, TopUp>()
       for (const row of rows) {
         let topUp = byKey.get(row.key)

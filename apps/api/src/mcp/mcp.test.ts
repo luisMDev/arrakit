@@ -569,7 +569,7 @@ describe('the MCP endpoint', () => {
     const listed = await callTool(tokens.access_token, 'list_workspaces')
     expect(listed?.structuredContent).toMatchObject({ workspaces: [{ name: 'Deals' }] })
     expect(listed?.content).toEqual([{ type: 'text', text: 'Deals' }])
-    const [stored] = await t.data.forOrganization(organization.id).workspaces.list()
+    const [stored] = await t.data.asSystem(organization.id).workspaces.list()
     expect(stored?.createdBy).toBe(userId)
   })
 
@@ -638,7 +638,7 @@ describe('the MCP endpoint', () => {
       expect(result?.isError).toBe(true)
       expect(result?.content).toEqual([{ type: 'text', text: NO_SUCH_WORKSPACE }])
     }
-    expect(await t.data.forOrganization(other.organization.id).workspaces.list()).toMatchObject([
+    expect(await t.data.asSystem(other.organization.id).workspaces.list()).toMatchObject([
       { id: elsewhereId, name: 'Elsewhere' },
     ])
 
@@ -651,7 +651,7 @@ describe('the MCP endpoint', () => {
       name: 'storage-purge',
       data: { organizationId: organization.id, folder: `workspaces/${id}/` },
     })
-    expect(await t.data.forOrganization(organization.id).workspaces.list()).toMatchObject([
+    expect(await t.data.asSystem(organization.id).workspaces.list()).toMatchObject([
       { name: 'Ops' },
     ])
     const again = await callTool(tokens.access_token, 'delete_workspace', { id })
@@ -694,7 +694,7 @@ describe('the MCP endpoint', () => {
       expect(result?.isError).toBe(true)
       expect(result?.content).toEqual([{ type: 'text', text: NOT_PERMITTED }])
     }
-    expect(await t.data.forOrganization(owner.organization.id).workspaces.list()).toMatchObject([
+    expect(await t.data.asSystem(owner.organization.id).workspaces.list()).toMatchObject([
       { id, name: 'Deals' },
     ])
   })
@@ -722,7 +722,7 @@ describe('the MCP endpoint', () => {
       expect(result?.isError).toBe(true)
       expect(result?.content).toEqual([{ type: 'text', text: NOT_PERMITTED }])
     }
-    expect(await t.data.forOrganization(owner.organization.id).workspaces.list()).toMatchObject([
+    expect(await t.data.asSystem(owner.organization.id).workspaces.list()).toMatchObject([
       { id, name: 'Deals' },
       { name: 'Ops' },
     ])
@@ -831,7 +831,7 @@ describe('the MCP endpoint', () => {
     )
     const other = await connectedOrganization('owner@aspen.vc', 'Aspen Ventures')
     const start = (organizationId: string, requestedBy: string | null, label: string) =>
-      t.data.forOrganization(organizationId).tasks.start({
+      t.data.asSystem(organizationId).tasks.start({
         queue: 'test-export',
         kind: 'workspace.export',
         workspaceId: null,
@@ -843,7 +843,7 @@ describe('the MCP endpoint', () => {
     const mine = await start(organization.id, userId, 'Deals')
     await start(organization.id, null, 'Nobody')
     await start(other.organization.id, other.userId, 'Elsewhere')
-    const tasks = t.data.forOrganization(organization.id).tasks
+    const tasks = t.data.asSystem(organization.id).tasks
     await tasks.begin(mine.id, 0)
     await tasks.progress(mine.id, 1, 4)
 

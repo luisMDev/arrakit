@@ -20,7 +20,7 @@ export function organizationDeps(
       return { limit: PLAN_OFFERS[plan].seats, full: seatLimitMessage(plan) }
     },
     async beforeDelete(organizationId) {
-      const organization = await data.forOrganization(organizationId).organization()
+      const organization = await data.asSystem(organizationId).organization()
       if (!organization?.stripeSubscriptionId) return
       await stripe.endNow(organization.stripeSubscriptionId)
     },

@@ -7,7 +7,33 @@ import { DEFAULT_EXPIRE_IN_SECONDS, type JobsRuntime, deadLetterOf } from './typ
 
 // Drizzle types execute()'s rows as unknown; pg-boss's adapter reads them as rows.
 type DrizzleTransaction = Parameters<typeof fromDrizzle>[0]
-const inTransaction = (tx: Database) => fromDrizzle(tx as DrizzleTransaction, sql)
+type TransactionAdapter = ReturnType<typeof fromDrizzle>
+
+/**
+ * Runs pg-boss's own statements in `tx` under the connection's own role, then restores the role
+ * `tx` had. A scoped transaction runs as `authenticated`, which has no privilege on the pgboss
+ * schema; the reset covers only `work`, so RLS applies again to the next statement.
+ */
+async function withOwnRole<R>(
+  tx: Database,
+  work: (adapter: TransactionAdapter) => Promise<R>,
+): Promise<R> {
+  const adapter = fromDrizzle(tx as DrizzleTransaction, sql)
+  const { rows } = await adapter.executeSql("select current_setting('role') as role", [])
+  const [{ role }] = rows as [{ role: string }]
+  if (role === 'none') return work(adapter)
+  await adapter.executeSql("select set_config('role', 'none', true)", [])
+  let result: R
+  try {
+    result = await work(adapter)
+  } catch (err) {
+    // A failed statement aborts the transaction (or savepoint), whose rollback restores the role.
+    await adapter.executeSql("select set_config('role', $1, true)", [role]).catch(() => {})
+    throw err
+  }
+  await adapter.executeSql("select set_config('role', $1, true)", [role])
+  return result
+}
 
 /**
  * pg-boss in its own `pgboss` schema. `source` is a Postgres URL, or pg-boss constructor options
@@ -40,7 +66,9 @@ export async function pgBossJobs(
       })
     },
     async send(name, data, { tx, ...options } = {}) {
-      const id = await boss.send(name, data, tx ? { ...options, db: inTransaction(tx) } : options)
+      const id = tx
+        ? await withOwnRole(tx, (db) => boss.send(name, data, { ...options, db }))
+        : await boss.send(name, data, options)
       if (!id && !options.singletonKey) {
         throw new Error(`[data] pg-boss did not queue a job on ${name}`)
       }
@@ -61,12 +89,13 @@ export async function pgBossJobs(
       if (!tx) return boss.publish(event, data)
       // boss.publish() reads the subscriptions on its own connection, which waits forever behind
       // an open transaction on PGlite's single one; read them and send through the transaction.
-      const db = inTransaction(tx)
-      const { rows } = await db.executeSql(
-        'SELECT name FROM pgboss.subscription WHERE event = $1 ORDER BY name',
-        [event],
-      )
-      for (const { name } of rows as { name: string }[]) await boss.send(name, data, { db })
+      await withOwnRole(tx, async (db) => {
+        const { rows } = await db.executeSql(
+          'SELECT name FROM pgboss.subscription WHERE event = $1 ORDER BY name',
+          [event],
+        )
+        for (const { name } of rows as { name: string }[]) await boss.send(name, data, { db })
+      })
     },
     async deadLetter(name, data) {
       await boss.send(deadLetterOf(name), data)

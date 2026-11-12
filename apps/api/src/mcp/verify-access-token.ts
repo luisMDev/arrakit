@@ -1,4 +1,5 @@
 import { ORGANIZATION_CLAIM, mcpResourceURL, oauthIssuer } from '@arrakit/auth'
+import { claimsFor } from '@arrakit/auth/permissions'
 import {
   type AuthInfo,
   OAuthError,
@@ -10,12 +11,6 @@ import { verifyJwsAccessToken } from 'better-auth/oauth2'
 import type { AppDeps } from '../deps'
 import { grantedTo } from '../orpc/context'
 import type { ConnectorCaller } from './server'
-
-/** Runs `load` on the first call only; later calls share its promise. */
-const once = <T>(load: () => Promise<T>): (() => Promise<T>) => {
-  let loaded: Promise<T> | undefined
-  return () => (loaded ??= load())
-}
 
 const refused = () => new OAuthError(OAuthErrorCode.InvalidToken, 'The access token is refused')
 
@@ -54,7 +49,11 @@ export function accessTokenVerifier(
       if (typeof userId !== 'string' || typeof organizationId !== 'string') throw refused()
       const membership = await deps.data.membershipIn(userId, organizationId)
       if (!membership) throw refused()
-      const organizationScope = deps.data.forOrganization(membership.organization.id)
+      const memberOrganizationId = membership.organization.id
+      const permissions = await grantedTo(membership.role, deps.data, memberOrganizationId)
+      const organizationScope = deps.data.forOrganization(
+        claimsFor({ userId, organizationId: memberOrganizationId, permissions }),
+      )
 
       return {
         token,
@@ -66,7 +65,7 @@ export function accessTokenVerifier(
           userId,
           organization: membership.organization,
           role: membership.role,
-          permissions: once(() => grantedTo(membership.role, organizationScope)),
+          permissions,
           scope: organizationScope,
         } satisfies ConnectorCaller,
       }

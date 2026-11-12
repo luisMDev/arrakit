@@ -13,6 +13,7 @@ import { tasksData } from './data/tasks'
 import type { JobsRuntime } from './jobs/types'
 import { assertMigrated } from './migrations'
 import { forOrganization } from './organization/index'
+import { type MemberClaims, systemClaims } from './organization/scoped'
 import { memoryStorage } from './storage/memory'
 import { s3Storage } from './storage/s3'
 import type { Storage } from './storage/types'
@@ -75,15 +76,30 @@ export async function health(ctx: DataContext, taskFeed: TaskFeed): Promise<Heal
   return { status: ok ? 'ok' : 'error', postgres, storage, queue, taskFeed: feed }
 }
 
+/**
+ * Lookups that cross organizations by design (memberships, custom roles, invitations, accounts,
+ * stalled tasks, pending files, organization lookups). They run as the connection's own role and
+ * bypass RLS.
+ */
+const privilegedData = (ctx: DataContext) => ({
+  ...membershipData(ctx),
+  ...organizationsData(ctx),
+  ...invitationsData(ctx),
+  ...accountData(ctx),
+  ...filesData(ctx),
+  ...tasksData(ctx),
+})
+
 function buildData(ctx: DataContext, close: () => Promise<void>, taskFeed: TaskFeed) {
   return {
-    ...membershipData(ctx),
-    ...organizationsData(ctx),
-    ...invitationsData(ctx),
-    ...accountData(ctx),
-    ...filesData(ctx),
-    ...tasksData(ctx),
-    forOrganization: (id: string) => forOrganization(ctx, id),
+    ...privilegedData(ctx),
+    /** The scope of a person: every operation runs under RLS with their claims. */
+    forOrganization: (claims: MemberClaims) => forOrganization(ctx, claims),
+    /**
+     * The scope of server work with no person behind it (workers, webhooks, auth hooks): every
+     * operation still runs under RLS, confined to this one organization.
+     */
+    asSystem: (organizationId: string) => forOrganization(ctx, systemClaims(organizationId)),
     jobs: ctx.jobs,
     /** Changes to tasks as they commit. */
     taskFeed: {
@@ -99,7 +115,8 @@ function buildData(ctx: DataContext, close: () => Promise<void>, taskFeed: TaskF
 
 /**
  * The data layer app code should be typed against: organization data only through
- * forOrganization(id), no raw database or bucket handle.
+ * forOrganization(claims) or asSystem(id), no raw database or bucket handle. Everything else on it
+ * is privileged and crosses organizations by design.
  */
 export type ScopedData = ReturnType<typeof buildData>
 

@@ -210,7 +210,7 @@ describe('me and account', () => {
       await expect(t.client(admin.headers).me.get()).rejects.toMatchObject({ status: 401 })
       await expect(t.client(phone).me.get()).rejects.toMatchObject({ status: 401 })
       expect(
-        (await t.data.forOrganization(owner.organizationId).members.list()).map((m) => m.email),
+        (await t.data.asSystem(owner.organizationId).members.list()).map((m) => m.email),
       ).toEqual(['owner@pine.vc'])
       expect((await authApi(t, new Headers()).post('delete-user')).status).toBe(401)
     })

@@ -32,7 +32,7 @@ describe('workspaces', () => {
       description: 'Campaigns',
       createdOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     })
-    const [stored] = await t.data.forOrganization(owner.organizationId).workspaces.list()
+    const [stored] = await t.data.asSystem(owner.organizationId).workspaces.list()
     expect(stored?.createdBy).toBe(owner.userId)
 
     await expect(

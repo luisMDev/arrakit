@@ -24,7 +24,7 @@ describe('top-ups', () => {
 
   const purchased = async (id = organizationId) =>
     Object.fromEntries(
-      (await t.data.forOrganization(id).usage.summary()).map((m) => [m.metric, m.purchased]),
+      (await t.data.asSystem(id).usage.summary()).map((m) => [m.metric, m.purchased]),
     )
 
   describe('billing.topUp', () => {
@@ -137,7 +137,7 @@ describe('top-ups', () => {
       const id = await newOrganization('cy@customer.io')
       await t.webhook(paid('cs_c1', { organizationId: id, customerId: 'cus_first' }))
       await t.webhook(paid('cs_c2', { organizationId: id, customerId: 'cus_second' }))
-      const organization = await t.data.forOrganization(id).organization()
+      const organization = await t.data.asSystem(id).organization()
       expect(organization).toMatchObject({ stripeCustomerId: 'cus_first', plan: 'free' })
       expect((await purchased(id)).credits).toBe(4_000)
     })
@@ -167,20 +167,20 @@ describe('top-ups', () => {
       expect((await t.webhook(reversal('re_1', 'pi_1', 1_210))).status).toBe(204)
       expect((await t.webhook(reversal('re_1', 'pi_1', 1_210))).status).toBe(204)
       expect(await purchased(id)).toEqual({ credits: 1_000, storage_gb: 100 })
-      const [topUp] = await t.data.forOrganization(id).usage.topUps()
+      const [topUp] = await t.data.asSystem(id).usage.topUps()
       expect(topUp).toMatchObject({ cents: 2_000, amounts: { credits: 2_000, storage_gb: 200 } })
     })
 
     it('never takes back more than the top-up, even for a dispute of the whole charge', async () => {
       const id = await newOrganization('dee@dispute.io')
       await t.webhook(paid('cs_dispute', { organizationId: id }))
-      await t.data.forOrganization(id).usage.consume('credits', 1_500, { idempotencyKey: 'job-1' })
+      await t.data.asSystem(id).usage.consume('credits', 1_500, { idempotencyKey: 'job-1' })
       stripe.topUpPayments.set('pi_2', { organizationId: id, cents: 2_000, total: 2_420 })
       await t.webhook(reversal('du_1', 'pi_2', 5_000))
-      const credits = (await t.data.forOrganization(id).usage.summary())[0]!
+      const credits = (await t.data.asSystem(id).usage.summary())[0]!
       expect(credits).toMatchObject({ plan: 0, purchased: 0, available: 0 })
       await t.webhook(paid('cs_after', { organizationId: id, cents: 1_000 }))
-      expect((await t.data.forOrganization(id).usage.summary())[0]).toMatchObject({
+      expect((await t.data.asSystem(id).usage.summary())[0]).toMatchObject({
         purchased: 0,
         available: 0,
       })

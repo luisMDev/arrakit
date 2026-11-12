@@ -4,6 +4,7 @@ import { TASK_EVENTS } from '../tasks/events'
 import {
   type QueuedTestData,
   type TestData,
+  insertMember,
   insertOrganization,
   insertUser,
   openTestData,
@@ -30,7 +31,8 @@ describe('organization tasks', () => {
   const organizationOf = async (tag: string) => {
     const owner = await insertUser(data, `owner@${tag}.vc`, `Owner ${tag}`)
     const organization = await insertOrganization(data, { slug: tag })
-    const scope = data.forOrganization(organization.id)
+    await insertMember(data, organization.id, owner, 'owner')
+    const scope = data.asSystem(organization.id)
     const workspace = await scope.workspaces.create({
       name: 'Deals',
       description: '',
@@ -372,7 +374,7 @@ describe('organization tasks on pg-boss', () => {
   it('queues the job in the same transaction as the task, or neither', async () => {
     const owner = await insertUser(data, 'owner@quince.vc')
     const { id: organizationId } = await insertOrganization(data, { slug: 'quince' })
-    const tasks = data.forOrganization(organizationId).tasks
+    const tasks = data.asSystem(organizationId).tasks
     await data.jobs.defineQueue('export', { retryLimit: 1, retryDelay: 1, retryBackoff: false })
     const task = {
       kind: 'workspace.export',

@@ -36,7 +36,7 @@ export function taskWatchHub(data: ScopedData, log: Logger) {
     const existing = organizations.get(organizationId)
     if (existing) return existing
     const watchers = new Set<TaskWatcher>()
-    const tasks = data.forOrganization(organizationId).tasks
+    const tasks = data.asSystem(organizationId).tasks
     // One read at a time, in the order the notices came: a slow read must not hand watchers a
     // task older than the one they already have.
     let reads = Promise.resolve()

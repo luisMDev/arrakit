@@ -24,7 +24,7 @@ export const storagePurge = defineJob({
   }),
   policy: WORKER_RETRY_POLICY,
   async handler({ organizationId, folder }, { data }) {
-    await data.forOrganization(organizationId).objects.removePrefix(folder)
+    await data.asSystem(organizationId).objects.removePrefix(folder)
   },
   logFields: purgeFields,
 })

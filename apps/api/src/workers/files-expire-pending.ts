@@ -16,7 +16,7 @@ export const filesExpirePending = defineJob({
   async handler(_payload, { data, log }) {
     const before = new Date(Date.now() - PENDING_UPLOAD_TTL_SECONDS * 1000)
     for (const organizationId of await data.organizationsWithPendingFiles(before)) {
-      const scope = data.forOrganization(organizationId)
+      const scope = data.asSystem(organizationId)
       const expired = await scope.files.expirePending(before)
       await Promise.all(expired.map((file) => removeFileObject(scope, file, log)))
     }

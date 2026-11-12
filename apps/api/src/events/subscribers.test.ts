@@ -75,7 +75,7 @@ describe('event subscribers', () => {
   it('runs the subscriber with the event of a completed upload', async () => {
     const owner = await insertUser(data, 'owner@subscriber.vc')
     const { id: organizationId } = await insertOrganization(data, { slug: 'subscriber-co' })
-    const files = data.forOrganization(organizationId).files
+    const files = data.asSystem(organizationId).files
     const file = await files.reserve({
       workspaceId: null,
       name: 'deck.pdf',
@@ -94,7 +94,7 @@ describe('event subscribers', () => {
   it('runs the subscriber with the event of a task that succeeded', async () => {
     const owner = await insertUser(data, 'owner@finisher.vc')
     const { id: organizationId } = await insertOrganization(data, { slug: 'finisher-co' })
-    const tasks = data.forOrganization(organizationId).tasks
+    const tasks = data.asSystem(organizationId).tasks
     const task = await tasks.start({
       queue: 'export',
       kind: 'workspace.export',
@@ -115,7 +115,7 @@ describe('event subscribers', () => {
   it('runs the subscriber with the event of a new artifact version', async () => {
     const owner = await insertUser(data, 'owner@reporter.vc')
     const { id: organizationId } = await insertOrganization(data, { slug: 'reporter-co' })
-    const artifacts = data.forOrganization(organizationId).artifacts
+    const artifacts = data.asSystem(organizationId).artifacts
     const { artifact } = await artifacts.create({
       workspaceId: null,
       title: 'Weekly',

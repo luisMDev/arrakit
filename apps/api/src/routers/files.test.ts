@@ -94,9 +94,7 @@ describe('files', () => {
       status: 400,
       message: UPLOAD_DIFFERS,
     })
-    expect(
-      await t.data.forOrganization(owner.organizationId).files.get(ticket.file.id),
-    ).toBeUndefined()
+    expect(await t.data.asSystem(owner.organizationId).files.get(ticket.file.id)).toBeUndefined()
     expect(t.data.storage.objects.has(`${owner.organizationId}/files/${ticket.file.id}`)).toBe(
       false,
     )
@@ -119,7 +117,7 @@ describe('files', () => {
 
   it('answers 402 when the file does not fit in the organization’s storage', async () => {
     const { owner } = await organization()
-    await t.data.forOrganization(owner.organizationId).files.reserve({
+    await t.data.asSystem(owner.organizationId).files.reserve({
       workspaceId: null,
       name: 'archive.zip',
       contentType: 'application/zip',
@@ -171,7 +169,7 @@ describe('files', () => {
     const file = await uploaded(owner, 'deal.pdf', '%PDF', workspace.id)
 
     await t.client(owner.headers).workspaces.delete({ id: workspace.id })
-    expect(await t.data.forOrganization(owner.organizationId).files.get(file.id)).toBeUndefined()
+    expect(await t.data.asSystem(owner.organizationId).files.get(file.id)).toBeUndefined()
     expect(t.data.jobs.sent.at(-1)).toMatchObject({
       name: 'storage-purge',
       data: { organizationId: owner.organizationId, folder: `workspaces/${workspace.id}/` },

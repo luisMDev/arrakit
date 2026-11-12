@@ -29,7 +29,7 @@ describe('forOrganization().usage', () => {
       createdAt: new Date(clock.getTime() - DAY),
       ...options,
     })
-    return { id, usage: data.forOrganization(id).usage }
+    return { id, usage: data.asSystem(id).usage }
   }
 
   const metric = async (

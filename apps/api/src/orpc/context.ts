@@ -2,12 +2,18 @@ import type { Auth } from '@arrakit/auth'
 import {
   type Permissions,
   allows,
+  claimsFor,
   customRoleMap,
   isStaticRole,
   permissionsOf,
   rolesOf,
 } from '@arrakit/auth/permissions'
-import { DomainError, type OrganizationRow, type OrganizationScope } from '@arrakit/db'
+import {
+  DomainError,
+  type OrganizationRow,
+  type OrganizationScope,
+  type ScopedData,
+} from '@arrakit/db'
 import { ORPCError, os } from '@orpc/server'
 import { isAPIError } from 'better-auth/api'
 
@@ -75,7 +81,10 @@ export interface MemberContext extends SessionContext {
   /** Better Auth's role string (`owner`, `admin`, `member`, custom roles, joined by `,`). */
   role: string
   permissions: Permissions
-  /** forOrganization(activeOrganization.id): the only way to reach this organization's data. */
+  /**
+   * The member's own scope, under RLS with the claims of `permissions`: the only way to reach
+   * this organization's data.
+   */
   scope: OrganizationScope
 }
 
@@ -98,9 +107,13 @@ export const requireLiveSession = sessionCheck(true)
 export const NOT_PERMITTED = "You don't have permission to do this."
 
 /** What `role` grants in the organization, reading its custom roles only when it has one. */
-export async function grantedTo(role: string, scope: OrganizationScope): Promise<Permissions> {
+export async function grantedTo(
+  role: string,
+  data: Pick<ScopedData, 'customRoles'>,
+  organizationId: string,
+): Promise<Permissions> {
   if (rolesOf(role).every(isStaticRole)) return permissionsOf(role)
-  return permissionsOf(role, customRoleMap(await scope.customRoles()))
+  return permissionsOf(role, customRoleMap(await data.customRoles(organizationId)))
 }
 
 /**
@@ -114,11 +127,14 @@ export function requireMember(wanted: Permissions = {}) {
     const membership = await data.activeMembership(context.user.id, context.session.id)
     if (!membership)
       throw new ORPCError('NOT_FOUND', { message: 'Not found in your organization.' })
-    const scope = data.forOrganization(membership.organization.id)
-    const permissions = await grantedTo(membership.role, scope)
+    const organizationId = membership.organization.id
+    const permissions = await grantedTo(membership.role, data, organizationId)
     if (!allows(permissions, wanted)) {
       throw new ORPCError('FORBIDDEN', { message: NOT_PERMITTED })
     }
+    const scope = data.forOrganization(
+      claimsFor({ userId: context.user.id, organizationId, permissions }),
+    )
     return next({
       context: {
         activeOrganization: membership.organization,

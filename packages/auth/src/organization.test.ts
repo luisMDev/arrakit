@@ -13,10 +13,8 @@ const config = loadAuthConfig({
 function hooksWith(membershipIn: AuthDeps['data']['membershipIn']) {
   const data = {
     membershipIn,
-    forOrganization: () => ({
-      customRoles: async () => [],
-      members: { seatsTaken: async () => 0 },
-    }),
+    customRoles: async () => [],
+    asSystem: () => ({ members: { seatsTaken: async () => 0 } }),
   } as unknown as AuthDeps['data']
   const deps = { config, data, organizations: testOrganizationDeps } as unknown as AuthDeps
   return organizationPlugin(deps).options.organizationHooks!

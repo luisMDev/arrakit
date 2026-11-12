@@ -31,7 +31,7 @@ describe('expiring pending uploads', () => {
   it('drops uploads never completed after an hour, with any bytes sent, and keeps the rest', async () => {
     const owner = await insertUser(data, 'owner@expire.vc')
     const { id: organizationId } = await insertOrganization(data, { slug: 'expire-co' })
-    const scope = data.forOrganization(organizationId)
+    const scope = data.asSystem(organizationId)
     const reserve = (name: string) =>
       scope.files.reserve({
         workspaceId: null,

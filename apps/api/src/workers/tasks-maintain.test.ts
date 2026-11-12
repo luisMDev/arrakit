@@ -32,7 +32,7 @@ describe('maintaining tasks', () => {
   it('fails stalled tasks with task.failed, removes old finished ones and keeps the rest', async () => {
     const owner = await insertUser(data, 'owner@maintain.vc')
     const { id: organizationId } = await insertOrganization(data, { slug: 'maintain-co' })
-    const tasks = data.forOrganization(organizationId).tasks
+    const tasks = data.asSystem(organizationId).tasks
     const start = () =>
       tasks.start({
         queue: 'export',

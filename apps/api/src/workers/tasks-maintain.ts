@@ -23,7 +23,7 @@ export const tasksMaintain = defineJob({
       queuedBefore: new Date(now - STALLED_QUEUED_MS),
     })
     for (const { organizationId, id } of stalled) {
-      await data.forOrganization(organizationId).tasks.fail(id, TASK_ERRORS.stalled)
+      await data.asSystem(organizationId).tasks.fail(id, TASK_ERRORS.stalled)
     }
     const removed = await data.removeFinishedTasks(
       new Date(now - TASK_RETENTION_DAYS * 24 * 60 * 60_000),

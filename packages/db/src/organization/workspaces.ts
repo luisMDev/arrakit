@@ -1,6 +1,6 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
 
-import type { DataContext } from '../context'
+import type { ScopeContext } from '../context'
 import { DomainError, refusingDuplicates } from '../errors'
 import type { OrganizationId } from '../organization-id'
 import { workspaces } from '../schema/index'
@@ -18,39 +18,42 @@ const nameTaken = (name: string) =>
   new DomainError('CONFLICT', `A workspace named ${name} already exists.`)
 
 export function workspacesScope(
-  ctx: DataContext,
+  ctx: ScopeContext,
   organizationId: OrganizationId,
   files: OrganizationFiles,
   artifacts: OrganizationArtifacts,
 ) {
-  const { db } = ctx
   const inOrganization = eq(workspaces.organizationId, organizationId)
   const byId = (id: string) => and(inOrganization, eq(workspaces.id, id))
 
   return {
     list: (): Promise<WorkspaceRow[]> =>
-      db
-        .select()
-        .from(workspaces)
-        .where(inOrganization)
-        .orderBy(asc(sql`lower(${workspaces.name})`), asc(workspaces.id)),
+      ctx.scoped((tx) =>
+        tx
+          .select()
+          .from(workspaces)
+          .where(inOrganization)
+          .orderBy(asc(sql`lower(${workspaces.name})`), asc(workspaces.id)),
+      ),
 
     /** Undefined when the organization has no such workspace. */
-    get: async (id: string): Promise<WorkspaceRow | undefined> => {
-      const [row] = await db.select().from(workspaces).where(byId(id))
-      return row
-    },
+    get: (id: string): Promise<WorkspaceRow | undefined> =>
+      ctx.scoped(async (tx) => {
+        const [row] = await tx.select().from(workspaces).where(byId(id))
+        return row
+      }),
 
     /** Refuses a name another workspace of the organization has, ignoring case (CONFLICT). */
     create(input: WorkspaceInput & { createdBy: string }): Promise<WorkspaceRow> {
       return refusingDuplicates(
-        async () => {
-          const [row] = await db
-            .insert(workspaces)
-            .values({ ...input, organizationId })
-            .returning()
-          return row!
-        },
+        () =>
+          ctx.scoped(async (tx) => {
+            const [row] = await tx
+              .insert(workspaces)
+              .values({ ...input, organizationId })
+              .returning()
+            return row!
+          }),
         () => nameTaken(input.name),
       )
     },
@@ -58,10 +61,11 @@ export function workspacesScope(
     /** Undefined when the organization has no such workspace; CONFLICT on a taken name. */
     update(id: string, input: WorkspaceInput): Promise<WorkspaceRow | undefined> {
       return refusingDuplicates(
-        async () => {
-          const [row] = await db.update(workspaces).set(input).where(byId(id)).returning()
-          return row
-        },
+        () =>
+          ctx.scoped(async (tx) => {
+            const [row] = await tx.update(workspaces).set(input).where(byId(id)).returning()
+            return row
+          }),
         () => nameTaken(input.name),
       )
     },

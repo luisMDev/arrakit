@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, expectTypeOf, it, vi 
 import { transaction } from './connection'
 import { WORKER_RETRY_POLICY } from './jobs/types'
 import { type Data, type ScopedData, health } from './open-data'
+import type { MemberClaims } from './organization/scoped'
 import { organizations } from './schema/index'
 import { memoryStorage } from './storage/memory'
 import type { Storage } from './storage/types'
@@ -44,9 +45,9 @@ describe('openTestData', () => {
     expect(membership?.organization.slug).toBe('acme')
     expect(membership?.role).toBe('owner')
 
-    const scope = data.forOrganization(org.id.toUpperCase())
+    const scope = data.asSystem(org.id.toUpperCase())
     expect((await scope.organization())?.name).toBe('Acme')
-    expect(() => data.forOrganization('nope')).toThrow('[data] not an organization id')
+    expect(() => data.asSystem('nope')).toThrow('[data] not an organization id')
 
     await data.db.delete(organizations).where(eq(organizations.id, org.id))
     expect(await data.memberOf(ana)).toBeNull()
@@ -54,10 +55,16 @@ describe('openTestData', () => {
 })
 
 describe('ScopedData, the type app code is given', () => {
-  it('has no raw database or bucket handle, only forOrganization()', () => {
+  it('has no raw database or bucket handle, only organization scopes', () => {
     expectTypeOf<ScopedData>().not.toHaveProperty('db')
     expectTypeOf<ScopedData>().not.toHaveProperty('storage')
     expectTypeOf<ScopedData>().toHaveProperty('forOrganization')
+    expectTypeOf<ScopedData>().toHaveProperty('asSystem')
+  })
+
+  it("builds a person's scope only from their claims, a system scope only from an id", () => {
+    expectTypeOf<ScopedData['forOrganization']>().parameter(0).toEqualTypeOf<MemberClaims>()
+    expectTypeOf<ScopedData['asSystem']>().parameter(0).toEqualTypeOf<string>()
   })
 })
 

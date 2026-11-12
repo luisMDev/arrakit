@@ -22,7 +22,7 @@ describe('organization members', () => {
     const owner = await insertUser(data, `owner@${tag}.vc`, `Owner ${tag}`)
     const organization = await insertOrganization(data, { slug: tag })
     await insertMember(data, organization.id, owner, 'owner')
-    return { id: organization.id, owner, members: data.forOrganization(organization.id).members }
+    return { id: organization.id, owner, members: data.asSystem(organization.id).members }
   }
 
   const invite = async (organizationId: string, inviterId: string, email: string, days = 7) => {

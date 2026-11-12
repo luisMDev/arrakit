@@ -5,6 +5,7 @@ import { transaction } from '../connection'
 import {
   type QueuedTestData,
   type TestData,
+  insertMember,
   insertOrganization,
   insertUser,
   openTestData,
@@ -29,7 +30,8 @@ describe('organization artifacts', () => {
   const organizationOf = async (tag: string) => {
     const owner = await insertUser(data, `owner@${tag}.vc`, `Owner ${tag}`)
     const organization = await insertOrganization(data, { slug: tag })
-    const scope = data.forOrganization(organization.id)
+    await insertMember(data, organization.id, owner, 'owner')
+    const scope = data.asSystem(organization.id)
     const workspace = await scope.workspaces.create({
       name: 'Deals',
       description: '',
@@ -222,7 +224,7 @@ describe('artifact events on pg-boss', () => {
     await data.jobs.subscribe(ARTIFACT_EVENTS.created, queue)
     const owner = await insertUser(data, 'owner@ironwood.vc')
     const organization = await insertOrganization(data, { slug: 'ironwood' })
-    const artifacts = data.forOrganization(organization.id).artifacts
+    const artifacts = data.asSystem(organization.id).artifacts
 
     await artifacts.create({ ...report('Kept'), workspaceId: null, createdBy: owner })
     expect(await queued(queue)).toBe(1)

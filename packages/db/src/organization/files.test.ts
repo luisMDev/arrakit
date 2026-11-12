@@ -7,6 +7,7 @@ import { STORAGE_PURGE_QUEUE } from '../jobs/types'
 import {
   type QueuedTestData,
   type TestData,
+  insertMember,
   insertOrganization,
   insertUser,
   openTestData,
@@ -28,7 +29,8 @@ describe('organization files', () => {
   const organizationOf = async (tag: string) => {
     const owner = await insertUser(data, `owner@${tag}.vc`, `Owner ${tag}`)
     const organization = await insertOrganization(data, { slug: tag })
-    const scope = data.forOrganization(organization.id)
+    await insertMember(data, organization.id, owner, 'owner')
+    const scope = data.asSystem(organization.id)
     const workspace = await scope.workspaces.create({
       name: 'Deals',
       description: '',
@@ -258,7 +260,7 @@ describe('file events on pg-boss', () => {
     await data.jobs.subscribe(FILE_EVENTS.uploaded, queue)
     const owner = await insertUser(data, 'owner@juniper.vc')
     const organization = await insertOrganization(data, { slug: 'juniper' })
-    const files = data.forOrganization(organization.id).files
+    const files = data.asSystem(organization.id).files
 
     const kept = await files.reserve({ ...pdf('a.pdf'), workspaceId: null, uploadedBy: owner })
     await files.complete(kept.id)

@@ -55,7 +55,7 @@ async function paying(
   const subscriptionId = `sub_${slug}`
   const lookupKey = snapshot.subscription?.lookupKey ?? null
   const plan: Plan = lookupKey?.startsWith('team') ? 'team' : 'pro'
-  await t.data.forOrganization(person.organizationId).setPlan(plan, { customerId, subscriptionId })
+  await t.data.asSystem(person.organizationId).setPlan(plan, { customerId, subscriptionId })
   stripe.bill(customerId, snapshot)
   stripe.subscribe({
     id: subscriptionId,
@@ -134,7 +134,7 @@ describe('billing procedures', () => {
 
     it('reuses the customer of an organization that paid before', async () => {
       const ana = await ownerOf(t, 'ana@banyan.vc', 'free')
-      await t.data.forOrganization(ana.organizationId).setStripeCustomer('cus_banyan')
+      await t.data.asSystem(ana.organizationId).setStripeCustomer('cus_banyan')
       await t.client(ana.headers).billing.checkout({ plan: 'team', cycle: 'monthly' })
       expect(stripe.checkouts.at(-1)?.customerId).toBe('cus_banyan')
     })
@@ -291,7 +291,7 @@ describe('billing procedures', () => {
     it('keeps the invoices and card of an organization back on Free after paying before', async () => {
       const dana = await ownerOf(t, 'dana@elm.vc', 'free')
       await t.data
-        .forOrganization(dana.organizationId)
+        .asSystem(dana.organizationId)
         .setPlan('free', { customerId: 'cus_elm', subscriptionId: null })
       stripe.bill('cus_elm', { ...proYearly(), subscription: null })
       const billing = await t.client(dana.headers).billing.get()
@@ -473,7 +473,7 @@ describe('billing procedures', () => {
       'refuses to %s for an organization on Internal with 409',
       async (procedure) => {
         const ana = await paying(t, stripe, `owner@ash${procedure}.vc`)
-        await t.data.forOrganization(ana.organizationId).setPlan('internal')
+        await t.data.asSystem(ana.organizationId).setPlan('internal')
         const before = [stripe.cancellations.length, stripe.changes.length]
         const api = t.client(ana.headers).billing
         const call =

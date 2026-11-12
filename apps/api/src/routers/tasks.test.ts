@@ -20,7 +20,7 @@ describe('tasks', () => {
     const owner = await ownerOf(t, `owner${counter}@tasks.com`, 'free', 'Olga')
     const member = await joinAs(t, owner.organizationId, `member${counter}@tasks.com`, 'member')
     const guest = await joinAs(t, owner.organizationId, `guest${counter}@tasks.com`, 'guest')
-    const scope = t.data.forOrganization(owner.organizationId)
+    const scope = t.data.asSystem(owner.organizationId)
     const workspace = await scope.workspaces.create({
       name: 'Deals',
       description: '',

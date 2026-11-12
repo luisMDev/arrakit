@@ -103,9 +103,7 @@ describe('usage', () => {
 
   it('lists top-ups newest first with their amounts', async () => {
     const { headers, organizationId } = await owner()
-    await t.data
-      .forOrganization(organizationId)
-      .usage.credit(2_500, { idempotencyKey: 'checkout:cs_a' })
+    await t.data.asSystem(organizationId).usage.credit(2_500, { idempotencyKey: 'checkout:cs_a' })
     const view = await t.client(headers).usage.get()
     expect(view.topUps).toEqual([
       {
@@ -121,7 +119,7 @@ describe('usage', () => {
 
   it('keeps showing usage after refunds and disputes take back more than a top-up bought', async () => {
     const { headers, organizationId } = await owner()
-    const usage = t.data.forOrganization(organizationId).usage
+    const usage = t.data.asSystem(organizationId).usage
     await usage.credit(1_000, { idempotencyKey: 'checkout:disputed' })
     const payment = { key: 'pi_disputed', cents: 1_000 }
     await usage.reverse(500, { idempotencyKey: 'refund:disputed', payment })
@@ -157,7 +155,7 @@ describe('usage', () => {
       data: { metric: 'credits', requested: 40, available: 20 },
     })
     expect((error as Error).message).toContain('Add credits in Settings → Billing')
-    expect((await t.data.forOrganization(organizationId).usage.check('credits')).available).toBe(20)
+    expect((await t.data.asSystem(organizationId).usage.check('credits')).available).toBe(20)
   })
 
   it('answers 402 when a consume goes past what is left, spending nothing', async () => {

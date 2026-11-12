@@ -413,8 +413,8 @@ describe('POST /api/webhooks/stripe: emails', () => {
     it('keeps the first customer of a paid top-up so Billing lists its invoices', async () => {
       const person = await ownerOf(t, 'owner@topup.vc', 'free')
       const credit = vi.fn(async () => true)
-      const realScope = t.data.forOrganization.bind(t.data)
-      vi.spyOn(t.data, 'forOrganization').mockImplementation((id: string) => {
+      const realScope = t.data.asSystem.bind(t.data)
+      vi.spyOn(t.data, 'asSystem').mockImplementation((id: string) => {
         const scope = realScope(id)
         return { ...scope, usage: { ...scope.usage, credit } }
       })
@@ -429,9 +429,9 @@ describe('POST /api/webhooks/stripe: emails', () => {
       expect((await t.webhook(body)).status).toBe(204)
       expect(credit).toHaveBeenCalledWith(2_000, { idempotencyKey: 'checkout:cs_1' })
       vi.restoreAllMocks()
-      expect(
-        (await t.data.forOrganization(person.organizationId).organization())?.stripeCustomerId,
-      ).toBe('cus_topup')
+      expect((await t.data.asSystem(person.organizationId).organization())?.stripeCustomerId).toBe(
+        'cus_topup',
+      )
     })
 
     it('waits for a delayed payment, crediting nothing', async () => {
@@ -446,7 +446,7 @@ describe('POST /api/webhooks/stripe: emails', () => {
       }
       expect((await t.webhook(body)).status).toBe(204)
       expect(
-        (await t.data.forOrganization(person.organizationId).organization())?.stripeCustomerId,
+        (await t.data.asSystem(person.organizationId).organization())?.stripeCustomerId,
       ).toBeNull()
     })
 
@@ -458,8 +458,8 @@ describe('POST /api/webhooks/stripe: emails', () => {
         total: 2_420,
       })
       const reverse = vi.fn(async () => true)
-      const realScope = t.data.forOrganization.bind(t.data)
-      vi.spyOn(t.data, 'forOrganization').mockImplementation((id: string) => {
+      const realScope = t.data.asSystem.bind(t.data)
+      vi.spyOn(t.data, 'asSystem').mockImplementation((id: string) => {
         const scope = realScope(id)
         return { ...scope, usage: { ...scope.usage, reverse } }
       })

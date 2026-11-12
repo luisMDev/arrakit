@@ -7,8 +7,8 @@ import {
   type ArtifactEvent,
   type ArtifactEventPayloads,
 } from '../artifacts/events'
-import { type Database, transaction } from '../connection'
-import type { DataContext } from '../context'
+import type { Database } from '../connection'
+import type { ScopeContext } from '../context'
 import { DomainError } from '../errors'
 import type { OrganizationId } from '../organization-id'
 import { artifactVersions, artifacts, users, workspaces } from '../schema/index'
@@ -46,8 +46,7 @@ export interface PublishedArtifact {
 const creators = alias(users, 'artifact_creators')
 const publishers = alias(users, 'artifact_publishers')
 
-export function artifactsScope(ctx: DataContext, organizationId: OrganizationId) {
-  const { db } = ctx
+export function artifactsScope(ctx: ScopeContext, organizationId: OrganizationId) {
   const inOrganization = eq(artifacts.organizationId, organizationId)
   const byId = (id: string) => and(inOrganization, eq(artifacts.id, id))
   const inScope = (workspaceId: string | null) =>
@@ -61,8 +60,8 @@ export function artifactsScope(ctx: DataContext, organizationId: OrganizationId)
       eq(artifactVersions.artifactId, artifactId),
     )
 
-  const listed = (where: SQL | undefined) =>
-    db
+  const listed = (tx: Database, where: SQL | undefined) =>
+    tx
       .select({ artifact: artifacts, creatorName: creators.name })
       .from(artifacts)
       .leftJoin(creators, eq(creators.id, artifacts.createdBy))
@@ -131,50 +130,60 @@ export function artifactsScope(ctx: DataContext, organizationId: OrganizationId)
   return {
     /** The artifacts of one scope, most recently changed first. */
     list: (workspaceId: string | null): Promise<ListedArtifact[]> =>
-      listed(inScope(workspaceId))
-        .orderBy(desc(artifacts.updatedAt), desc(artifacts.id))
-        .then((rows) => rows.map(withCreatorName)),
+      ctx.scoped(async (tx) => {
+        const rows = await listed(tx, inScope(workspaceId)).orderBy(
+          desc(artifacts.updatedAt),
+          desc(artifacts.id),
+        )
+        return rows.map(withCreatorName)
+      }),
 
     /** Undefined when the organization has no such artifact. */
-    get: async (id: string): Promise<ListedArtifact | undefined> => {
-      const [row] = await listed(byId(id))
-      return row && withCreatorName(row)
-    },
+    get: (id: string): Promise<ListedArtifact | undefined> =>
+      ctx.scoped(async (tx) => {
+        const [row] = await listed(tx, byId(id))
+        return row && withCreatorName(row)
+      }),
 
     /** One version with its content, the current one when `number` is absent. */
-    version: async (id: string, number?: number): Promise<ArtifactVersionRow | undefined> => {
-      const [row] = await db
-        .select({ version: artifactVersions })
-        .from(artifactVersions)
-        .innerJoin(artifacts, eq(artifacts.id, artifactVersions.artifactId))
-        .where(and(versionsOf(id), eq(artifactVersions.number, number ?? artifacts.currentVersion)))
-      return row?.version
-    },
+    version: (id: string, number?: number): Promise<ArtifactVersionRow | undefined> =>
+      ctx.scoped(async (tx) => {
+        const [row] = await tx
+          .select({ version: artifactVersions })
+          .from(artifactVersions)
+          .innerJoin(artifacts, eq(artifacts.id, artifactVersions.artifactId))
+          .where(
+            and(versionsOf(id), eq(artifactVersions.number, number ?? artifacts.currentVersion)),
+          )
+        return row?.version
+      }),
 
     /** Every version without its content, newest first; empty for another's artifact. */
     versions: (id: string): Promise<ListedArtifactVersion[]> =>
-      db
-        .select({
-          id: artifactVersions.id,
-          organizationId: artifactVersions.organizationId,
-          artifactId: artifactVersions.artifactId,
-          number: artifactVersions.number,
-          sizeBytes: artifactVersions.sizeBytes,
-          publishedBy: artifactVersions.publishedBy,
-          createdAt: artifactVersions.createdAt,
-          publisherName: publishers.name,
-        })
-        .from(artifactVersions)
-        .leftJoin(publishers, eq(publishers.id, artifactVersions.publishedBy))
-        .where(versionsOf(id))
-        .orderBy(desc(artifactVersions.number)),
+      ctx.scoped((tx) =>
+        tx
+          .select({
+            id: artifactVersions.id,
+            organizationId: artifactVersions.organizationId,
+            artifactId: artifactVersions.artifactId,
+            number: artifactVersions.number,
+            sizeBytes: artifactVersions.sizeBytes,
+            publishedBy: artifactVersions.publishedBy,
+            createdAt: artifactVersions.createdAt,
+            publisherName: publishers.name,
+          })
+          .from(artifactVersions)
+          .leftJoin(publishers, eq(publishers.id, artifactVersions.publishedBy))
+          .where(versionsOf(id))
+          .orderBy(desc(artifactVersions.number)),
+      ),
 
     /**
      * The artifact with its first version, and artifact.created, in one transaction.
      * NOT_FOUND for a workspace of another organization.
      */
     create: (input: NewArtifact): Promise<PublishedArtifact> =>
-      transaction(db, async (tx) => {
+      ctx.scoped(async (tx) => {
         await assertWorkspace(tx, input.workspaceId)
         const [artifact] = await tx
           .insert(artifacts)
@@ -200,7 +209,7 @@ export function artifactsScope(ctx: DataContext, organizationId: OrganizationId)
 
     /** Adds the next version and makes it current; undefined when there is no such artifact. */
     publish: (id: string, input: NewArtifactVersion): Promise<PublishedArtifact | undefined> =>
-      transaction(db, async (tx) => {
+      ctx.scoped(async (tx) => {
         const before = await lockedArtifact(tx, id)
         if (!before) return undefined
         const [artifact] = await tx
@@ -219,7 +228,7 @@ export function artifactsScope(ctx: DataContext, organizationId: OrganizationId)
 
     /** Undefined when there is no such artifact. */
     rename: (id: string, title: string): Promise<ArtifactRow | undefined> =>
-      transaction(db, async (tx) => {
+      ctx.scoped(async (tx) => {
         const before = await lockedArtifact(tx, id)
         if (!before) return undefined
         const [row] = await tx.update(artifacts).set({ title }).where(byId(id)).returning()
@@ -232,7 +241,7 @@ export function artifactsScope(ctx: DataContext, organizationId: OrganizationId)
 
     /** Deletes the artifact and its versions, and publishes artifact.deleted. */
     remove: (id: string): Promise<ArtifactRow | undefined> =>
-      transaction(db, async (tx) => {
+      ctx.scoped(async (tx) => {
         const [row] = await tx.delete(artifacts).where(byId(id)).returning()
         if (row) await publish(tx, ARTIFACT_EVENTS.deleted, eventOf(row))
         return row

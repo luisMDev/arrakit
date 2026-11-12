@@ -10,6 +10,7 @@ import { toOrganizationId } from '../organization-id'
 import { organizations } from '../schema/index'
 import { memoryStorage } from '../storage/memory'
 import { type TestDatabase, openTestDatabase } from '../test-database'
+import { scopedTo, systemClaims } from './scoped'
 import { usageScope } from './usage'
 
 /**
@@ -32,7 +33,7 @@ describe('usage row lock (emitted SQL)', () => {
       .values({ name: 'Locked', slug: `locked-${randomUUID()}`, plan: 'free' })
       .returning()
     const ctx = {
-      db: database.db,
+      scoped: scopedTo(database.db, systemClaims(org!.id)),
       jobs: memoryJobs(),
       storage: memoryStorage(),
       now: () => new Date(),
@@ -41,10 +42,12 @@ describe('usage row lock (emitted SQL)', () => {
     return usageScope(ctx, toOrganizationId(org!.id))
   }
 
+  /** The first query after the claims statement every scoped transaction opens with. */
   async function firstQueryOf(work: () => Promise<unknown>): Promise<string> {
     queries.length = 0
     await work()
-    return queries[0]!
+    expect(queries[0]).toMatch(/set_config\('request\.jwt\.claims'/)
+    return queries[1]!
   }
 
   const locksOrganizationRow = (query: string) => {
@@ -100,7 +103,7 @@ describe.skipIf(!postgresUrl)('usage under real Postgres concurrency', () => {
       .insert(organizations)
       .values({ name: 'Race', slug: `race-${randomUUID()}`, plan: 'free' })
       .returning()
-    return { id: org!.id, usage: data.forOrganization(org!.id).usage }
+    return { id: org!.id, usage: data.asSystem(org!.id).usage }
   }
 
   async function cleanup(id: string) {

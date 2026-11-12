@@ -2,12 +2,8 @@
 export { openData, type Data, type ScopedData } from './open-data'
 export { loadDataConfig } from './config'
 export { DomainError } from './errors'
-export {
-  forOrganization,
-  type OrganizationRow,
-  type OrganizationScope,
-  type StripeRefs,
-} from './organization/index'
+export type { OrganizationRow, OrganizationScope, StripeRefs } from './organization/index'
+export type { Claims, MemberClaims } from './organization/scoped'
 export { UsageLimitError, type MetricUsage, type TopUp } from './organization/usage'
 export type { WorkspaceRow } from './organization/workspaces'
 export {

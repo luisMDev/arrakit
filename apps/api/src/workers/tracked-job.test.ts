@@ -61,7 +61,7 @@ describe('tracked jobs', () => {
   const organization = async (tag: string) => {
     const owner = await insertUser(data, `owner@${tag}.vc`)
     const { id } = await insertOrganization(data, { slug: tag })
-    const scope = data.forOrganization(id)
+    const scope = data.asSystem(id)
     const start = () =>
       startTask(
         scope,

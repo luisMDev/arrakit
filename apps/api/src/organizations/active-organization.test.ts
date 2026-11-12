@@ -16,7 +16,7 @@ describe('the active organization', () => {
   it('switches what me, billing and usage read with set-active', async () => {
     const ana = await ownerOf(t, 'ana@alder.vc', 'free')
     const second = await createOrganization(t, ana.headers, 'Birch')
-    await t.data.forOrganization(second.id).setPlan('team')
+    await t.data.asSystem(second.id).setPlan('team')
     expect(await activeOf(ana.headers)).toBe(second.id)
     await expect(t.client(ana.headers).billing.get()).resolves.toMatchObject({ plan: 'team' })
 

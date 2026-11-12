@@ -49,8 +49,7 @@ export type ConnectorCaller = {
   userId: string
   organization: OrganizationRow
   role: string
-  /** Read on first use: a custom role costs a query that whoami and tools/list never need. */
-  permissions: () => Promise<Permissions>
+  permissions: Permissions
   scope: OrganizationScope
 }
 
@@ -125,7 +124,7 @@ async function allowed(
   wanted: Permissions,
   tool: (permissions: Permissions) => Promise<CallToolResult>,
 ): Promise<CallToolResult> {
-  const permissions = await caller.permissions()
+  const { permissions } = caller
   if (!allows(permissions, wanted)) return refusal(NOT_PERMITTED)
   try {
     return await tool(permissions)

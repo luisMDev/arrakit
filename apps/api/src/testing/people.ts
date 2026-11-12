@@ -67,7 +67,7 @@ export async function createOrganization(
 export async function ownerOf(t: TestApp, email: string, plan: Plan = 'team', name = '') {
   const person = await t.signIn({ email, name })
   const organization = await createOrganization(t, person.headers)
-  if (plan !== 'free') await t.data.forOrganization(organization.id).setPlan(plan)
+  if (plan !== 'free') await t.data.asSystem(organization.id).setPlan(plan)
   return { ...person, email, organization, organizationId: organization.id }
 }
 

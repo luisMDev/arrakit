@@ -17,7 +17,7 @@ test('an owner creates, edits and deletes workspaces; a member sees them and add
   await workspaceMenu.click()
   await page.getByRole('menuitem', { name: 'All workspaces' }).click()
   await expect(page).toHaveURL(/\/app\/workspaces$/)
-  await expect(page.getByText('No workspaces yet.')).toBeVisible()
+  await expect(page.getByRole('main').getByText('No workspaces yet.')).toBeVisible()
 
   await page.getByRole('button', { name: 'New workspace' }).click()
   const create = page.getByRole('dialog', { name: 'New workspace' })

@@ -12,7 +12,7 @@ function fakeData() {
   const stops: string[] = []
   const get = vi.fn(async (id: string) => ({ id }) as ListedTask)
   const data = {
-    forOrganization: () => ({ tasks: { get } }),
+    asSystem: () => ({ tasks: { get } }),
     taskFeed: {
       subscribe: vi.fn(async (organizationId: string, listener: TaskFeedListener) => {
         feeds.set(organizationId, listener)

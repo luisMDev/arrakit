@@ -5,7 +5,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { DomainError } from '../errors'
 import { users } from '../schema/index'
-import { type TestData, insertOrganization, insertUser, openTestData } from '../testing'
+import {
+  type TestData,
+  insertMember,
+  insertOrganization,
+  insertUser,
+  openTestData,
+} from '../testing'
 
 describe('organization workspaces', () => {
   let data: TestData
@@ -18,7 +24,8 @@ describe('organization workspaces', () => {
   const organizationOf = async (tag: string) => {
     const owner = await insertUser(data, `owner@${tag}.vc`, `Owner ${tag}`)
     const organization = await insertOrganization(data, { slug: tag })
-    return { owner, workspaces: data.forOrganization(organization.id).workspaces }
+    await insertMember(data, organization.id, owner, 'owner')
+    return { owner, workspaces: data.asSystem(organization.id).workspaces }
   }
 
   it('creates workspaces and lists them by name, ignoring case', async () => {

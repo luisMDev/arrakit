@@ -38,7 +38,7 @@ async function organization(initial: Partial<OrganizationRow> = {}): Promise<Org
   return row!
 }
 
-const read = async (id: string) => (await data.forOrganization(id).organization())!
+const read = async (id: string) => (await data.asSystem(id).organization())!
 
 function stripeWith(organizationId: string | null, state: Partial<SubscriptionState> = {}) {
   const stripe = fakeStripe()

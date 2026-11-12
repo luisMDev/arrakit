@@ -112,7 +112,7 @@ export function trackedJob(
     async handler(job, context) {
       const { taskId, organizationId, input } = job
       const { data, log, attempt } = context
-      const tasks = data.forOrganization(organizationId).tasks
+      const tasks = data.asSystem(organizationId).tasks
       const parsed = tracked.schema.safeParse(input)
       if (!parsed.success) {
         log.error(

@@ -35,7 +35,7 @@ export const meRouter = {
       organization,
       role: membership?.role ?? null,
       permissions: membership
-        ? await grantedTo(membership.role, data.forOrganization(membership.organization.id))
+        ? await grantedTo(membership.role, data, membership.organization.id)
         : {},
       plan: organization?.plan ?? null,
       seats: organization ? PLAN_OFFERS[organization.plan].seats : null,

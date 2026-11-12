@@ -36,7 +36,7 @@ describe('members (Better Auth organization plugin)', () => {
 
   const roles = async (organizationId: string) =>
     Object.fromEntries(
-      (await t.data.forOrganization(organizationId).members.list()).map((m) => [m.email, m.role]),
+      (await t.data.asSystem(organizationId).members.list()).map((m) => [m.email, m.role]),
     )
 
   it('lets the owner promote, demote and remove admins', async () => {
