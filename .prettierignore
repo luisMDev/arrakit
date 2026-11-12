@@ -4,3 +4,7 @@ pnpm-lock.yaml
 .output
 dist
 .astro
+.claude/skills
+supabase/.temp
+supabase/.branches
+supabase/signing_keys.json
