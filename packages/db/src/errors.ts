@@ -13,14 +13,24 @@ export class DomainError extends Error {
 }
 
 const UNIQUE_VIOLATION = '23505'
+const INSUFFICIENT_PRIVILEGE = '42501'
 
 /** Postgres and PGlite report the code on the error; Drizzle wraps it as the cause. */
-export function isUniqueViolation(err: unknown): boolean {
+function hasPostgresCode(err: unknown, code: string): boolean {
   for (let current = err; current && typeof current === 'object';) {
-    if ((current as { code?: unknown }).code === UNIQUE_VIOLATION) return true
+    if ((current as { code?: unknown }).code === code) return true
     current = (current as { cause?: unknown }).cause
   }
   return false
+}
+
+export function isUniqueViolation(err: unknown): boolean {
+  return hasPostgresCode(err, UNIQUE_VIOLATION)
+}
+
+/** A refused policy check or a missing grant. */
+export function isInsufficientPrivilege(err: unknown): boolean {
+  return hasPostgresCode(err, INSUFFICIENT_PRIVILEGE)
 }
 
 /** Runs `write`, turning a unique violation into `refusal()`. */

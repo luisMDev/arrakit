@@ -8,10 +8,19 @@ import { type MemoryJobs, memoryJobs } from './jobs/memory'
 import { pgBossJobs } from './jobs/pg-boss'
 import { type Data, type OpenDataOptions, openDataOn } from './open-data'
 import type { OrganizationRow } from './organization/index'
+import type { MemberClaims } from './organization/scoped'
 import { members, organizations, users } from './schema/index'
 import { type MemoryStorage, memoryStorage } from './storage/memory'
 import { pgliteTaskFeed } from './tasks/feed'
 import { openTestDatabase } from './test-database'
+
+export {
+  type Claims,
+  type MemberClaims,
+  type Scoped,
+  scopedTo,
+  systemClaims,
+} from './organization/scoped'
 
 /** Data with the recording jobs fake and the in-memory storage. */
 export type TestData = Data & { jobs: MemoryJobs; storage: MemoryStorage }
@@ -90,4 +99,13 @@ interface RawClient {
 export function rawSql(data: Data) {
   const client = (data.db as unknown as { $client: RawClient }).$client
   return (text: string, params: unknown[] = []) => client.query(text, params)
+}
+
+/** The claims of a person acting in `organizationId` with `permissions` (`resource:action`). */
+export function memberClaims(
+  organizationId: string,
+  userId: string,
+  permissions: readonly string[] = [],
+): MemberClaims {
+  return { sub: userId, role: 'authenticated', org_id: organizationId, permissions, actor: 'user' }
 }

@@ -4,6 +4,7 @@ import { bigint, check, index, pgTable, text, uniqueIndex, uuid } from 'drizzle-
 import { users } from './auth'
 import { createdAt, updatedAt } from './columns'
 import { organizations } from './organizations'
+import { either, holds, inOrganization, isActor, tenantPolicies } from './policies'
 import { workspaces } from './workspaces'
 
 const FILE_STATUSES = ['pending', 'ready'] as const
@@ -39,5 +40,10 @@ export const files = pgTable(
     index('files_pending_created_at_index')
       .on(t.createdAt)
       .where(sql`${t.status} = 'pending'`),
+    ...tenantPolicies('files', inOrganization(t.organizationId), {
+      insert: holds('file:upload'),
+      update: either(isActor(t.uploadedBy), holds('file:update')),
+      delete: either(isActor(t.uploadedBy), holds('file:delete')),
+    }),
   ],
 )

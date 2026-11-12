@@ -2,10 +2,22 @@ import { randomUUID } from 'node:crypto'
 
 import type { Plan } from '@arrakit/plans'
 import { sql } from 'drizzle-orm'
-import { boolean, check, index, integer, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core'
+import {
+  boolean,
+  check,
+  index,
+  integer,
+  pgPolicy,
+  pgTable,
+  text,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core'
+import { authenticatedRole } from 'drizzle-orm/supabase'
 
 import { users } from './auth'
 import { at, createdAt } from './columns'
+import { holds, inOrganization, isSystem, tenantPolicies } from './policies'
 
 export const organizations = pgTable(
   'organizations',
@@ -21,7 +33,21 @@ export const organizations = pgTable(
     usageAnchor: at('usage_anchor'),
     createdAt: createdAt(),
   },
-  (t) => [check('organizations_plan_check', sql`${t.plan} in ('free', 'pro', 'team', 'internal')`)],
+  (t) => [
+    check('organizations_plan_check', sql`${t.plan} in ('free', 'pro', 'team', 'internal')`),
+    pgPolicy('organizations_tenant_select', {
+      for: 'select',
+      to: authenticatedRole,
+      using: inOrganization(t.id),
+    }),
+    // USING stays tenant-only: the usage lock every member's upload takes needs it.
+    pgPolicy('organizations_tenant_update', {
+      for: 'update',
+      to: authenticatedRole,
+      using: inOrganization(t.id),
+      withCheck: sql`${inOrganization(t.id)} and ${holds('billing:manage')}`,
+    }),
+  ],
 )
 
 export const members = pgTable(
@@ -43,6 +69,7 @@ export const members = pgTable(
   (t) => [
     unique('members_organization_id_user_id_unique').on(t.organizationId, t.userId),
     index('members_user_id_idx').on(t.userId),
+    ...tenantPolicies('members', inOrganization(t.organizationId)),
   ],
 )
 
@@ -69,6 +96,7 @@ export const invitations = pgTable(
   (t) => [
     index('invitations_organization_id_idx').on(t.organizationId),
     index('invitations_email_idx').on(t.email),
+    ...tenantPolicies('invitations', inOrganization(t.organizationId), { update: isSystem }),
   ],
 )
 
@@ -86,7 +114,10 @@ export const teams = pgTable(
     createdAt: createdAt(),
     updatedAt: at('updated_at'),
   },
-  (t) => [index('teams_organization_id_idx').on(t.organizationId)],
+  (t) => [
+    index('teams_organization_id_idx').on(t.organizationId),
+    ...tenantPolicies('teams', inOrganization(t.organizationId)),
+  ],
 )
 
 /** Reached through teams.organization_id (a tenancy exception). */
@@ -108,6 +139,10 @@ export const teamMembers = pgTable(
   (t) => [
     index('team_members_team_id_idx').on(t.teamId),
     index('team_members_user_id_idx').on(t.userId),
+    ...tenantPolicies(
+      'team_members',
+      sql`${t.teamId} in (select id from public.teams where organization_id = (select app.org_id()))`,
+    ),
   ],
 )
 
@@ -126,5 +161,8 @@ export const organizationRoles = pgTable(
     createdAt: createdAt(),
     updatedAt: at('updated_at'),
   },
-  (t) => [unique('organization_roles_organization_id_role_unique').on(t.organizationId, t.role)],
+  (t) => [
+    unique('organization_roles_organization_id_role_unique').on(t.organizationId, t.role),
+    ...tenantPolicies('organization_roles', inOrganization(t.organizationId)),
+  ],
 )

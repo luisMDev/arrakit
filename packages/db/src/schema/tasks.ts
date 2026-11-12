@@ -4,6 +4,7 @@ import { check, index, integer, jsonb, pgTable, text, uuid } from 'drizzle-orm/p
 import { users } from './auth'
 import { at, createdAt, updatedAt } from './columns'
 import { organizations } from './organizations'
+import { inOrganization, isSystem, tenantPolicies } from './policies'
 import { workspaces } from './workspaces'
 
 export const TASK_STATUSES = ['queued', 'running', 'succeeded', 'failed'] as const
@@ -55,5 +56,9 @@ export const tasks = pgTable(
     index('tasks_finished_at_index')
       .on(t.finishedAt)
       .where(sql`${t.status} in ('succeeded', 'failed')`),
+    ...tenantPolicies('tasks', inOrganization(t.organizationId), {
+      insert: true,
+      update: isSystem,
+    }),
   ],
 )

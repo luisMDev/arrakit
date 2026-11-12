@@ -24,6 +24,9 @@ const SUPABASE_PRELUDE = `
     )::jsonb
   $$;
   grant usage on schema auth to anon, authenticated, service_role;
+
+  alter default privileges in schema public
+    grant truncate, references, trigger, maintain on tables to anon, authenticated, service_role;
 `
 
 export interface TestDatabase {

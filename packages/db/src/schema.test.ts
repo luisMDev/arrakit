@@ -1,5 +1,6 @@
-import { getTableColumns, getTableName, isTable } from 'drizzle-orm'
-import { type PgTable, getTableConfig } from 'drizzle-orm/pg-core'
+import { type SQL, getTableColumns, getTableName, isTable } from 'drizzle-orm'
+import { PgDialect, type PgTable, getTableConfig } from 'drizzle-orm/pg-core'
+import { authenticatedRole } from 'drizzle-orm/supabase'
 import { describe, expect, it } from 'vitest'
 
 import * as schema from './schema/index'
@@ -55,5 +56,58 @@ describe('schema tenancy rule', () => {
     for (const name of ['jwks', 'oauth_clients', 'oauth_access_tokens', 'oauth_consents']) {
       expect(names).toContain(name)
     }
+  })
+})
+
+describe('schema row level security', () => {
+  const dialect = new PgDialect()
+  const render = (expression: SQL) => dialect.sqlToQuery(expression).sql
+  const tenantTables = tables.filter((table) => !exceptions.includes(getTableName(table)))
+
+  it('turns RLS on for every table', () => {
+    const offenders = tables
+      .filter((table) => {
+        const config = getTableConfig(table)
+        return !config.enableRLS && config.policies.length === 0
+      })
+      .map(getTableName)
+    expect(tables).toHaveLength(25)
+    expect(offenders).toEqual([])
+  })
+
+  it('gives every tenant table a tenant select policy', () => {
+    const offenders = tenantTables
+      .filter((table) => {
+        const name = getTableName(table)
+        return !getTableConfig(table).policies.some(
+          (policy) => policy.name === `${name}_tenant_select`,
+        )
+      })
+      .map(getTableName)
+    expect(offenders).toEqual([])
+  })
+
+  it('starts every policy of a tenant table with the tenant predicate, for authenticated only', () => {
+    for (const table of tenantTables) {
+      const name = getTableName(table)
+      for (const policy of getTableConfig(table).policies) {
+        expect(policy.to, policy.name).toBe(authenticatedRole)
+        const expressions = [policy.using, policy.withCheck].filter((e): e is SQL => !!e)
+        expect(expressions.length, policy.name).toBeGreaterThan(0)
+        for (const expression of expressions) {
+          expect(render(expression), policy.name).toMatch(
+            new RegExp(`^"${name}"\\."organization_id" = \\(select app\\.org_id\\(\\)\\)`),
+          )
+        }
+      }
+    }
+  })
+
+  it('gives a policy to users alone among the better_auth tables', () => {
+    const withPolicies = tables
+      .filter((table) => getTableConfig(table).schema === 'better_auth')
+      .filter((table) => getTableConfig(table).policies.length > 0)
+      .map(getTableName)
+    expect(withPolicies).toEqual(['users'])
   })
 })

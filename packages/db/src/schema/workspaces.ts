@@ -4,6 +4,7 @@ import { pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { users } from './auth'
 import { createdAt, updatedAt } from './columns'
 import { organizations } from './organizations'
+import { holds, inOrganization, tenantPolicies } from './policies'
 
 export const workspaces = pgTable(
   'workspaces',
@@ -23,5 +24,10 @@ export const workspaces = pgTable(
       t.organizationId,
       sql`lower(${t.name})`,
     ),
+    ...tenantPolicies('workspaces', inOrganization(t.organizationId), {
+      insert: holds('workspace:create'),
+      update: holds('workspace:update'),
+      delete: holds('workspace:delete'),
+    }),
   ],
 )

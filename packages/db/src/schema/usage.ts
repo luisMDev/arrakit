@@ -13,6 +13,7 @@ import {
 
 import { at, createdAt } from './columns'
 import { organizations } from './organizations'
+import { either, inOrganization, isSystem, tenantPolicies } from './policies'
 
 export const CREDIT_BUCKETS = ['plan', 'purchased'] as const
 export type CreditBucket = (typeof CREDIT_BUCKETS)[number]
@@ -48,6 +49,10 @@ export const creditLedger = pgTable(
       t.idempotencyKey,
     ),
     index('credit_ledger_organization_metric_idx').on(t.organizationId, t.metric),
+    // A person may spend credits; only the system mints or reverses them.
+    ...tenantPolicies('credit_ledger', inOrganization(t.organizationId), {
+      insert: either(sql`${t.reason} = 'consumption'`, isSystem),
+    }),
   ],
 )
 
@@ -61,5 +66,11 @@ export const usageLevels = pgTable(
     value: bigint('value', { mode: 'number' }).notNull(),
     updatedAt: at('updated_at').notNull().defaultNow(),
   },
-  (t) => [primaryKey({ name: 'usage_levels_pkey', columns: [t.organizationId, t.metric] })],
+  (t) => [
+    primaryKey({ name: 'usage_levels_pkey', columns: [t.organizationId, t.metric] }),
+    ...tenantPolicies('usage_levels', inOrganization(t.organizationId), {
+      insert: true,
+      update: true,
+    }),
+  ],
 )
