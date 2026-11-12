@@ -25,7 +25,7 @@ describe('loadDataConfig', () => {
     expect(() => loadDataConfig({})).toThrow('[data] missing env: DATABASE_URL')
     expect(() => loadDataConfig({ DATABASE_URL: '' })).toThrow('[data] missing env: DATABASE_URL')
     expect(() => loadDataConfig({ NODE_ENV: 'production' })).toThrow(
-      '[data] missing env: DATABASE_URL',
+      '[data] missing env: DATABASE_URL, SUPABASE_URL, SUPABASE_SECRET_KEY',
     )
   })
 
@@ -42,15 +42,20 @@ describe('loadDataConfig', () => {
     )
   })
 
-  it('treats storage the same way in production', () => {
+  it('requires the bucket in production, where files must never be kept in memory', () => {
     const production = { NODE_ENV: 'production', DATABASE_URL: 'postgres://db/a' }
-    expect(loadDataConfig(production).storage).toBeUndefined()
-    expect(loadDataConfig({ ...production, SUPABASE_URL: 'https://x.supabase.co' }).storage).toBe(
-      undefined,
+    expect(() => loadDataConfig(production)).toThrow(
+      '[data] missing env: SUPABASE_URL, SUPABASE_SECRET_KEY',
     )
-    expect(loadDataConfig({ ...SUPABASE, ...production }).storage).toBeDefined()
+    expect(() => loadDataConfig({ ...production, SUPABASE_URL: 'https://x.supabase.co' })).toThrow(
+      '[data] missing env: SUPABASE_SECRET_KEY',
+    )
     expect(() => loadDataConfig({ ...production, SUPABASE_SECRET_KEY: 'sb_secret_x' })).toThrow(
       '[data] missing env: SUPABASE_URL',
     )
+    expect(loadDataConfig({ ...SUPABASE, ...production }).storage).toEqual({
+      url: SUPABASE.SUPABASE_URL,
+      secretKey: SUPABASE.SUPABASE_SECRET_KEY,
+    })
   })
 })

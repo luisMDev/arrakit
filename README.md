@@ -107,7 +107,7 @@ recreates its database (restart the API after a reset: pg-boss creates its schem
 Starting the stack also writes the git-ignored `apps/api/.env.stack`: a Better Auth signing key
 made for this clone (`BETTER_AUTH_JWT_KEY`), where the stack's Realtime and Storage answer
 (`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`) and the server-only `SUPABASE_SECRET_KEY` for the
-`files` bucket (without it uploads are kept in memory). The key's public half is listed in the git-ignored
+`files` bucket (without it uploads are kept in memory, which the API refuses in production). The key's public half is listed in the git-ignored
 `supabase/signing_keys.json`, so the stack trusts the tokens the API signs; when that file
 changes (the first start, or after deleting it) the stack is stopped and started once. `pnpm dev`
 loads `.env` and then `.env.stack`, and the e2e API loads `.env.stack` too; the key does not live
@@ -175,7 +175,8 @@ list. Dashboard names are the ones Supabase's documentation uses today.
    `BETTER_AUTH_URL`/`WEB_URL` (the https web origin), `RESEND_API_KEY`, `MAIL_FROM` and the
    `STRIPE_*` keys. `NODE_ENV` defaults to `development`, which logs through `pino-pretty` (a dev
    dependency) and skips the production guards: the refusal of `STRIPE_FAKE=1`, the required
-   `RESEND_API_KEY` and the placeholder `BETTER_AUTH_SECRET` check. Logs are JSON whenever
+   `RESEND_API_KEY`, the required files bucket (`SUPABASE_URL` and `SUPABASE_SECRET_KEY`) and the
+   placeholder `BETTER_AUTH_SECRET` check. Logs are JSON whenever
    `NODE_ENV` is not `development`, unless `LOG_FORMAT` says otherwise. Leave `BETTER_AUTH_JWT_KEY`
    unset, so Better Auth mints and stores its own ES256 key. The web server runs with
    `NODE_ENV=production` too and reads `API_ORIGIN`, `VITE_APP_NAME` and `VITE_SITE_URL`.
