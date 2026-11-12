@@ -43,6 +43,13 @@
       "when": 1794497207700,
       "tag": "20261112152647_advisor_fixes",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794502663164,
+      "tag": "20261112165743_server_only_policies",
+      "breakpoints": true
     }
   ]
 }

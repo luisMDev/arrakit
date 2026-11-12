@@ -42,6 +42,10 @@ export const creditLedger = pgTable(
       'credit_ledger_reason_check',
       sql`${t.reason} in ('plan_grant', 'purchase', 'consumption', 'adjustment')`,
     ),
+    check(
+      'credit_ledger_consumption_spends_check',
+      sql`${t.reason} <> 'consumption' or ${t.amount} < 0`,
+    ),
     unique('credit_ledger_idempotency_unique').on(
       t.organizationId,
       t.metric,

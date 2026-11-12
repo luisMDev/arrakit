@@ -5,7 +5,7 @@ import { authenticatedRole } from 'drizzle-orm/supabase'
 
 import { at, createdAt, updatedAt } from './columns'
 import { organizations, teams } from './organizations'
-import { noAccess } from './policies'
+import { noAccess, serverOnly } from './policies'
 
 export { ACCOUNT_LANGUAGES, type AccountLanguage } from '@arrakit/address'
 
@@ -33,6 +33,7 @@ export const users = betterAuthSchema.table(
   },
   (t) => [
     check('users_language_check', sql`${t.language} in ('en', 'es')`),
+    serverOnly('users'),
     pgPolicy('users_same_organization_select', {
       for: 'select',
       to: authenticatedRole,

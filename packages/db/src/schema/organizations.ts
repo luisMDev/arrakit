@@ -17,7 +17,7 @@ import { authenticatedRole } from 'drizzle-orm/supabase'
 
 import { users } from './auth'
 import { at, createdAt } from './columns'
-import { holds, inOrganization, isSystem, tenantPolicies } from './policies'
+import { holds, inOrganization, isSystem, serverOnly, tenantPolicies } from './policies'
 
 export const organizations = pgTable(
   'organizations',
@@ -35,6 +35,7 @@ export const organizations = pgTable(
   },
   (t) => [
     check('organizations_plan_check', sql`${t.plan} in ('free', 'pro', 'team', 'internal')`),
+    serverOnly('organizations'),
     pgPolicy('organizations_tenant_select', {
       for: 'select',
       to: authenticatedRole,

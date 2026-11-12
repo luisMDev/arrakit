@@ -30,9 +30,9 @@ describe('scopedTo', () => {
   afterAll(() => data.close())
 
   const session = async () => {
-    const row = await first<{ role: string; claims: string | null }>(
+    const row = await first<{ role: string; claims: string | null; via: string | null }>(
       data.db,
-      sql`select current_setting('role') as role, current_setting('request.jwt.claims', true) as claims`,
+      sql`select current_setting('role') as role, current_setting('request.jwt.claims', true) as claims, current_setting('app.via', true) as via`,
     )
     return row!
   }
@@ -43,15 +43,16 @@ describe('scopedTo', () => {
       data.db,
       claims,
     )(async (tx) => {
-      return first<{ role: string; jwt: unknown }>(
+      return first<{ role: string; jwt: unknown; via: string }>(
         tx,
-        sql`select current_setting('role') as role, auth.jwt() as jwt`,
+        sql`select current_setting('role') as role, auth.jwt() as jwt, current_setting('app.via', true) as via`,
       )
     })
-    expect(seen).toEqual({ role: 'authenticated', jwt: claims })
+    expect(seen).toEqual({ role: 'authenticated', jwt: claims, via: 'server' })
     const after = await session()
     expect(after.role).toBe('none')
     expect(after.claims ?? '').toBe('')
+    expect(after.via ?? '').toBe('')
   })
 
   it('returns the result of the work', async () => {

@@ -4,7 +4,7 @@ import { type SQL, and, eq, getTableName, isTable, sql } from 'drizzle-orm'
 import { type PgTable, getTableConfig } from 'drizzle-orm/pg-core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import type { Database } from './connection'
+import { type Database, transaction } from './connection'
 import { isInsufficientPrivilege } from './errors'
 import * as schema from './schema/index'
 import {
@@ -231,9 +231,10 @@ describe('row level security', () => {
       )
       expect(rows.map((row) => row.policyname)).toEqual(declared)
       for (const row of rows) {
-        const rejection = String(row.policyname).endsWith('_no_access')
-        expect({ roles: row.roles, permissive: row.permissive }, String(row.policyname)).toEqual(
-          rejection
+        const name = String(row.policyname)
+        const restriction = name.endsWith('_no_access') || name.endsWith('_server_only')
+        expect({ roles: row.roles, permissive: row.permissive }, name).toEqual(
+          restriction
             ? { roles: '{public}', permissive: 'RESTRICTIVE' }
             : { roles: '{authenticated}', permissive: 'PERMISSIVE' },
         )
@@ -788,6 +789,117 @@ describe('row level security', () => {
 
     it('refuses truncate', async () => {
       await refused(system(), (tx) => rowsOf(tx, sql`truncate ${workspaces}`))
+    })
+
+    it('refuses a consumption that gives credits back, even from the server path', async () => {
+      const failure = await failureOf(() =>
+        run(system(), (tx) =>
+          tx.insert(creditLedger).values({
+            organizationId: org,
+            metric: 'ai_credits',
+            bucket: 'plan',
+            reason: 'consumption',
+            amount: 1_000,
+            idempotencyKey: randomUUID(),
+          }),
+        ),
+      )
+      expect((failure as { cause?: { code?: string } })?.cause?.code).toBe('23514')
+    })
+  })
+
+  describe('a token outside the server path', () => {
+    let org: string
+    let owner: string
+    const everything = (userId: string) => memberClaims(org, userId, ALL_PERMISSIONS)
+
+    /** What the Data API, Realtime and Storage do with a token: claims and role, nothing more. */
+    const withToken = <R>(claims: Claims, work: (tx: Database) => Promise<R>) =>
+      transaction(data.db, async (tx) => {
+        await tx.execute(
+          sql`select set_config('request.jwt.claims', ${JSON.stringify(claims)}, true), set_config('role', 'authenticated', true)`,
+        )
+        return work(tx)
+      })
+    const refusedToken = async (claims: Claims, work: (tx: Database) => Promise<unknown>) =>
+      expect(isInsufficientPrivilege(await failureOf(() => withToken(claims, work)))).toBe(true)
+
+    beforeAll(async () => {
+      org = (await insertOrganization(data, { slug: 'token' })).id
+      owner = await insertUser(data, 'owner@token.test', 'Owner')
+      await insertMember(data, org, owner, 'owner')
+      await data.db
+        .insert(usageLevels)
+        .values({ organizationId: org, metric: 'storage_gb', value: 7 })
+    })
+
+    it('reads no row of any table people may reach, even with every permission', async () => {
+      const reachable = [...publicTables, users]
+      for (const table of reachable) {
+        const rows = await withToken(everything(owner), (tx) =>
+          rowsOf(tx, sql`select 1 from ${table}`),
+        )
+        expect(rows, getTableName(table)).toEqual([])
+      }
+      expect(reachable).toHaveLength(14)
+    })
+
+    it('cannot change the plan or the Stripe ids, even as a billing manager', async () => {
+      const changed = await withToken(everything(owner), (tx) =>
+        tx
+          .update(organizations)
+          .set({ plan: 'team', stripeCustomerId: 'cus_forged', stripeSubscriptionId: 'sub_forged' })
+          .where(eq(organizations.id, org))
+          .returning({ id: organizations.id }),
+      )
+      expect(changed).toEqual([])
+      const [row] = await data.db
+        .select({ plan: organizations.plan, customer: organizations.stripeCustomerId })
+        .from(organizations)
+        .where(eq(organizations.id, org))
+      expect(row).toEqual({ plan: 'free', customer: null })
+    })
+
+    it('cannot write usage levels', async () => {
+      await refusedToken(everything(owner), (tx) =>
+        tx.insert(usageLevels).values({ organizationId: org, metric: 'ai_credits', value: 0 }),
+      )
+      const reset = await withToken(everything(owner), (tx) =>
+        tx
+          .update(usageLevels)
+          .set({ value: 0 })
+          .where(eq(usageLevels.organizationId, org))
+          .returning({ metric: usageLevels.metric }),
+      )
+      expect(reset).toEqual([])
+      const [level] = await data.db
+        .select({ value: usageLevels.value })
+        .from(usageLevels)
+        .where(eq(usageLevels.organizationId, org))
+      expect(level).toEqual({ value: 7 })
+    })
+
+    it('cannot write the credit ledger, not even a consumption', async () => {
+      await refusedToken(everything(owner), (tx) =>
+        tx.insert(creditLedger).values({
+          organizationId: org,
+          metric: 'ai_credits',
+          bucket: 'plan',
+          reason: 'consumption',
+          amount: -1,
+          idempotencyKey: randomUUID(),
+        }),
+      )
+    })
+
+    it('cannot insert into any tenant table that accepts the same row from the server path', async () => {
+      const tenant: Tenant = { organizationId: org, userId: owner, workspaceId: '', artifactId: '' }
+      await refusedToken(everything(owner), (tx) =>
+        tx.insert(workspaces).values(fixtures.workspaces!.row(tenant) as never),
+      )
+      await run(everything(owner), (tx) =>
+        tx.insert(workspaces).values(fixtures.workspaces!.row(tenant) as never),
+      )
     })
   })
 })

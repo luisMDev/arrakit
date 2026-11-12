@@ -4,6 +4,7 @@ import { authenticatedRole } from 'drizzle-orm/supabase'
 import { describe, expect, it } from 'vitest'
 
 import * as schema from './schema/index'
+import { viaServer } from './schema/policies'
 
 const tables = Object.values(schema as Record<string, unknown>).filter((value): value is PgTable =>
   isTable(value),
@@ -87,10 +88,10 @@ describe('schema row level security', () => {
     expect(offenders).toEqual([])
   })
 
-  it('starts every policy of a tenant table with the tenant predicate, for authenticated only', () => {
+  it('starts every grant of a tenant table with the tenant predicate, for authenticated only', () => {
     for (const table of tenantTables) {
       const name = getTableName(table)
-      for (const policy of getTableConfig(table).policies) {
+      for (const policy of getTableConfig(table).policies.filter((p) => p.as !== 'restrictive')) {
         expect(policy.to, policy.name).toBe(authenticatedRole)
         const expressions = [policy.using, policy.withCheck].filter((e): e is SQL => !!e)
         expect(expressions.length, policy.name).toBeGreaterThan(0)
@@ -103,6 +104,35 @@ describe('schema row level security', () => {
     }
   })
 
+  it('keeps every table people may reach to the server path, whatever the token carries', () => {
+    const reachable = tables.filter(
+      (table) => getTableConfig(table).schema === undefined || getTableName(table) === 'users',
+    )
+    for (const table of reachable) {
+      const name = getTableName(table)
+      const restrictive = getTableConfig(table).policies.filter((p) => p.as === 'restrictive')
+      expect(
+        restrictive.map((policy) => ({
+          name: policy.name,
+          for: policy.for,
+          to: policy.to,
+          using: policy.using && render(policy.using),
+          withCheck: policy.withCheck && render(policy.withCheck),
+        })),
+        name,
+      ).toEqual([
+        {
+          name: `${name}_server_only`,
+          for: 'all',
+          to: 'public',
+          using: render(viaServer),
+          withCheck: render(viaServer),
+        },
+      ])
+    }
+    expect(reachable).toHaveLength(14)
+  })
+
   it('lets people read users alone among the better_auth tables and rejects everything else', () => {
     const betterAuthTables = tables.filter(
       (table) => getTableConfig(table).schema === 'better_auth',
@@ -111,7 +141,10 @@ describe('schema row level security', () => {
       const name = getTableName(table)
       const policies = getTableConfig(table).policies
       if (name === 'users') {
-        expect(policies.map((policy) => policy.name)).toEqual(['users_same_organization_select'])
+        expect(policies.map((policy) => policy.name).sort()).toEqual([
+          'users_same_organization_select',
+          'users_server_only',
+        ])
         continue
       }
       expect(policies, name).toHaveLength(1)
