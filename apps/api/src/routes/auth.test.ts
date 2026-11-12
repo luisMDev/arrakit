@@ -70,6 +70,28 @@ describe('Better Auth routes on Hono', () => {
     expect(((await res.json()) as { issuer: string }).issuer).toBe(`${WEB}/api/auth`)
   })
 
+  it('serves the OpenID discovery document a hosted Supabase project reads the signing keys from', async () => {
+    const discovery = await t.app.request('/api/auth/.well-known/openid-configuration')
+    expect(discovery.status).toBe(200)
+    expect(await discovery.json()).toMatchObject({
+      issuer: `${WEB}/api/auth`,
+      jwks_uri: `${WEB}/api/auth/jwks`,
+      id_token_signing_alg_values_supported: ['ES256'],
+    })
+
+    const jwks = await t.app.request('/api/auth/jwks')
+    expect(jwks.status).toBe(200)
+    const { keys } = (await jwks.json()) as { keys: Record<string, unknown>[] }
+    expect(keys).toHaveLength(1)
+    expect(keys[0]).toMatchObject({
+      kty: 'EC',
+      crv: 'P-256',
+      alg: 'ES256',
+      kid: expect.any(String),
+    })
+    expect(keys[0]).not.toHaveProperty('d')
+  })
+
   describe('requireSession', () => {
     it('lets a live session through', async () => {
       expect((await me({ cookie: await signedInCookie('live@acme.com') })).status).toBe(200)

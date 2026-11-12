@@ -16,6 +16,23 @@ test('serves the OAuth authorization server metadata through the web origin', as
   expect(await direct.json()).toEqual(body)
 })
 
+test('serves the OpenID discovery document and the signing keys through the web origin', async ({
+  request,
+}) => {
+  const res = await request.get(`${WEB_ORIGIN}/api/auth/.well-known/openid-configuration`)
+  expect(res.status()).toBe(200)
+  const discovery = (await res.json()) as { issuer: string; jwks_uri: string }
+  expect(discovery.issuer).toBe(`${WEB_ORIGIN}/api/auth`)
+  expect(discovery.jwks_uri).toBe(`${WEB_ORIGIN}/api/auth/jwks`)
+
+  const jwks = await request.get(discovery.jwks_uri)
+  expect(jwks.status()).toBe(200)
+  const { keys } = (await jwks.json()) as { keys: Record<string, unknown>[] }
+  expect(keys).toHaveLength(1)
+  expect(keys[0]).toMatchObject({ kty: 'EC', crv: 'P-256', kid: expect.any(String) })
+  expect(keys[0]).not.toHaveProperty('d')
+})
+
 test('serves the MCP protected resource metadata through the web origin', async ({ request }) => {
   const res = await request.get(`${WEB_ORIGIN}/.well-known/oauth-protected-resource/api/mcp`)
   expect(res.status()).toBe(200)
