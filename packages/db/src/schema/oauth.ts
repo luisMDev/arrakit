@@ -2,17 +2,22 @@ import { boolean, index, integer, jsonb, text, uniqueIndex } from 'drizzle-orm/p
 
 import { betterAuthSchema, sessions, users } from './auth'
 import { at } from './columns'
+import { noAccess } from './policies'
 
 export const jwks = betterAuthSchema
-  .table('jwks', {
-    id: text('id').primaryKey(),
-    publicKey: text('public_key').notNull(),
-    privateKey: text('private_key').notNull(),
-    createdAt: at('created_at').notNull(),
-    expiresAt: at('expires_at'),
-    alg: text('alg'),
-    crv: text('crv'),
-  })
+  .table(
+    'jwks',
+    {
+      id: text('id').primaryKey(),
+      publicKey: text('public_key').notNull(),
+      privateKey: text('private_key').notNull(),
+      createdAt: at('created_at').notNull(),
+      expiresAt: at('expires_at'),
+      alg: text('alg'),
+      crv: text('crv'),
+    },
+    () => [noAccess('jwks')],
+  )
   .enableRLS()
 
 export const oauthClients = betterAuthSchema
@@ -56,28 +61,32 @@ export const oauthClients = betterAuthSchema
       referenceId: text('reference_id'),
       metadata: jsonb('metadata'),
     },
-    (t) => [index('oauth_clients_user_id_idx').on(t.userId)],
+    (t) => [index('oauth_clients_user_id_idx').on(t.userId), noAccess('oauth_clients')],
   )
   .enableRLS()
 
 export const oauthResources = betterAuthSchema
-  .table('oauth_resources', {
-    id: text('id').primaryKey(),
-    identifier: text('identifier').notNull().unique('oauth_resources_identifier_unique'),
-    name: text('name').notNull(),
-    accessTokenTtl: integer('access_token_ttl'),
-    refreshTokenTtl: integer('refresh_token_ttl'),
-    signingAlgorithm: text('signing_algorithm'),
-    signingKeyId: text('signing_key_id'),
-    allowedScopes: text('allowed_scopes').array(),
-    customClaims: jsonb('custom_claims'),
-    dpopBoundAccessTokensRequired: boolean('dpop_bound_access_tokens_required').default(false),
-    disabled: boolean('disabled').default(false),
-    createdAt: at('created_at'),
-    updatedAt: at('updated_at'),
-    policyVersion: integer('policy_version').default(1),
-    metadata: jsonb('metadata'),
-  })
+  .table(
+    'oauth_resources',
+    {
+      id: text('id').primaryKey(),
+      identifier: text('identifier').notNull().unique('oauth_resources_identifier_unique'),
+      name: text('name').notNull(),
+      accessTokenTtl: integer('access_token_ttl'),
+      refreshTokenTtl: integer('refresh_token_ttl'),
+      signingAlgorithm: text('signing_algorithm'),
+      signingKeyId: text('signing_key_id'),
+      allowedScopes: text('allowed_scopes').array(),
+      customClaims: jsonb('custom_claims'),
+      dpopBoundAccessTokensRequired: boolean('dpop_bound_access_tokens_required').default(false),
+      disabled: boolean('disabled').default(false),
+      createdAt: at('created_at'),
+      updatedAt: at('updated_at'),
+      policyVersion: integer('policy_version').default(1),
+      metadata: jsonb('metadata'),
+    },
+    () => [noAccess('oauth_resources')],
+  )
   .enableRLS()
 
 export const oauthClientResources = betterAuthSchema
@@ -101,6 +110,7 @@ export const oauthClientResources = betterAuthSchema
       ),
       index('oauth_client_resources_client_id_idx').on(t.clientId),
       index('oauth_client_resources_resource_id_idx').on(t.resourceId),
+      noAccess('oauth_client_resources'),
     ],
   )
   .enableRLS()
@@ -137,6 +147,7 @@ export const oauthRefreshTokens = betterAuthSchema
       index('oauth_refresh_tokens_session_id_idx').on(t.sessionId),
       index('oauth_refresh_tokens_user_id_idx').on(t.userId),
       index('oauth_refresh_tokens_authorization_code_id_idx').on(t.authorizationCodeId),
+      noAccess('oauth_refresh_tokens'),
     ],
   )
   .enableRLS()
@@ -171,6 +182,7 @@ export const oauthAccessTokens = betterAuthSchema
       index('oauth_access_tokens_user_id_idx').on(t.userId),
       index('oauth_access_tokens_authorization_code_id_idx').on(t.authorizationCodeId),
       index('oauth_access_tokens_refresh_id_idx').on(t.refreshId),
+      noAccess('oauth_access_tokens'),
     ],
   )
   .enableRLS()
@@ -194,13 +206,18 @@ export const oauthConsents = betterAuthSchema
     (t) => [
       index('oauth_consents_client_id_idx').on(t.clientId),
       index('oauth_consents_user_id_idx').on(t.userId),
+      noAccess('oauth_consents'),
     ],
   )
   .enableRLS()
 
 export const oauthClientAssertions = betterAuthSchema
-  .table('oauth_client_assertions', {
-    id: text('id').primaryKey(),
-    expiresAt: at('expires_at').notNull(),
-  })
+  .table(
+    'oauth_client_assertions',
+    {
+      id: text('id').primaryKey(),
+      expiresAt: at('expires_at').notNull(),
+    },
+    () => [noAccess('oauth_client_assertions')],
+  )
   .enableRLS()

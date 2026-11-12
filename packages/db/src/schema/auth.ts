@@ -5,13 +5,15 @@ import { authenticatedRole } from 'drizzle-orm/supabase'
 
 import { at, createdAt, updatedAt } from './columns'
 import { organizations, teams } from './organizations'
+import { noAccess } from './policies'
 
 export { ACCOUNT_LANGUAGES, type AccountLanguage } from '@arrakit/address'
 
 /**
- * Better Auth's identity and OAuth tables: never exposed through the Data API, RLS on and no
- * policy, so only the privileged connection reaches them. `users` is the one exception: member and
- * team lists read the names of people who share the caller's organization.
+ * Better Auth's identity and OAuth tables: never exposed through the Data API, RLS on and a
+ * restrictive policy that lets nothing pass, so only the privileged connection reaches them.
+ * `users` is the one exception: member and team lists read the names of people who share the
+ * caller's organization.
  */
 export const betterAuthSchema = pgSchema('better_auth')
 
@@ -58,7 +60,12 @@ export const sessions = betterAuthSchema
       }),
       activeTeamId: text('active_team_id').references(() => teams.id, { onDelete: 'set null' }),
     },
-    (t) => [index('sessions_user_id_idx').on(t.userId)],
+    (t) => [
+      index('sessions_user_id_idx').on(t.userId),
+      index('sessions_active_organization_id_idx').on(t.activeOrganizationId),
+      index('sessions_active_team_id_idx').on(t.activeTeamId),
+      noAccess('sessions'),
+    ],
   )
   .enableRLS()
 
@@ -82,7 +89,7 @@ export const accounts = betterAuthSchema
       createdAt: createdAt(),
       updatedAt: updatedAt(),
     },
-    (t) => [index('accounts_user_id_idx').on(t.userId)],
+    (t) => [index('accounts_user_id_idx').on(t.userId), noAccess('accounts')],
   )
   .enableRLS()
 
@@ -97,6 +104,6 @@ export const verifications = betterAuthSchema
       createdAt: createdAt(),
       updatedAt: updatedAt(),
     },
-    (t) => [index('verifications_identifier_idx').on(t.identifier)],
+    (t) => [index('verifications_identifier_idx').on(t.identifier), noAccess('verifications')],
   )
   .enableRLS()

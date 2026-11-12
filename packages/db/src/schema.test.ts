@@ -103,11 +103,38 @@ describe('schema row level security', () => {
     }
   })
 
-  it('gives a policy to users alone among the better_auth tables', () => {
-    const withPolicies = tables
-      .filter((table) => getTableConfig(table).schema === 'better_auth')
-      .filter((table) => getTableConfig(table).policies.length > 0)
-      .map(getTableName)
-    expect(withPolicies).toEqual(['users'])
+  it('lets people read users alone among the better_auth tables and rejects everything else', () => {
+    const betterAuthTables = tables.filter(
+      (table) => getTableConfig(table).schema === 'better_auth',
+    )
+    for (const table of betterAuthTables) {
+      const name = getTableName(table)
+      const policies = getTableConfig(table).policies
+      if (name === 'users') {
+        expect(policies.map((policy) => policy.name)).toEqual(['users_same_organization_select'])
+        continue
+      }
+      expect(policies, name).toHaveLength(1)
+      const [policy] = policies
+      expect(
+        {
+          name: policy?.name,
+          as: policy?.as,
+          for: policy?.for,
+          to: policy?.to,
+          using: policy?.using && render(policy.using),
+          withCheck: policy?.withCheck && render(policy.withCheck),
+        },
+        name,
+      ).toEqual({
+        name: `${name}_no_access`,
+        as: 'restrictive',
+        for: 'all',
+        to: 'public',
+        using: 'false',
+        withCheck: 'false',
+      })
+    }
+    expect(betterAuthTables).toHaveLength(12)
   })
 })

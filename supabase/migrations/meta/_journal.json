@@ -36,6 +36,13 @@
       "when": 1794488029617,
       "tag": "20261112125349_realtime",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794497207700,
+      "tag": "20261112152647_advisor_fixes",
+      "breakpoints": true
     }
   ]
 }

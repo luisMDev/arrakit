@@ -31,6 +31,8 @@ export const artifacts = pgTable(
     check('artifacts_format_check', sql`${t.format} in ('html', 'markdown')`),
     check('artifacts_current_version_check', sql`${t.currentVersion} >= 1`),
     index('artifacts_organization_id_workspace_id_index').on(t.organizationId, t.workspaceId),
+    index('artifacts_workspace_id_index').on(t.workspaceId),
+    index('artifacts_created_by_index').on(t.createdBy),
     ...tenantPolicies('artifacts', inOrganization(t.organizationId), {
       insert: holds('artifact:create'),
       update: either(isActor(t.createdBy), holds('artifact:update')),
@@ -59,6 +61,8 @@ export const artifactVersions = pgTable(
     check('artifact_versions_number_check', sql`${t.number} >= 1`),
     check('artifact_versions_size_bytes_check', sql`${t.sizeBytes} >= 0`),
     uniqueIndex('artifact_versions_artifact_id_number_unique').on(t.artifactId, t.number),
+    index('artifact_versions_organization_id_index').on(t.organizationId),
+    index('artifact_versions_published_by_index').on(t.publishedBy),
     // A version may be added to an artifact the caller may update.
     ...tenantPolicies('artifact_versions', inOrganization(t.organizationId), {
       insert: sql`exists (select 1 from public.artifacts a where a.id = ${t.artifactId} and (a.created_by = (select app.user_id()) or ${holds('artifact:update')}))`,

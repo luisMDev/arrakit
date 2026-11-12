@@ -96,6 +96,7 @@ export const invitations = pgTable(
   (t) => [
     index('invitations_organization_id_idx').on(t.organizationId),
     index('invitations_email_idx').on(t.email),
+    index('invitations_inviter_id_idx').on(t.inviterId),
     ...tenantPolicies('invitations', inOrganization(t.organizationId), { update: isSystem }),
   ],
 )

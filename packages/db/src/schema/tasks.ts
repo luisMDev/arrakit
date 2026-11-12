@@ -50,6 +50,8 @@ export const tasks = pgTable(
     ),
     check('tasks_subject_check', sql`(${t.subjectType} is null) = (${t.subjectId} is null)`),
     index('tasks_organization_id_created_at_index').on(t.organizationId, t.createdAt, t.id),
+    index('tasks_workspace_id_index').on(t.workspaceId),
+    index('tasks_requested_by_index').on(t.requestedBy),
     index('tasks_active_updated_at_index')
       .on(t.updatedAt)
       .where(sql`${t.status} in ('queued', 'running')`),

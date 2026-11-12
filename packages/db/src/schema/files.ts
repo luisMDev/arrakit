@@ -37,6 +37,8 @@ export const files = pgTable(
       )
       .where(sql`${t.status} = 'ready'`),
     index('files_organization_id_workspace_id_index').on(t.organizationId, t.workspaceId),
+    index('files_workspace_id_index').on(t.workspaceId),
+    index('files_uploaded_by_index').on(t.uploadedBy),
     index('files_pending_created_at_index')
       .on(t.createdAt)
       .where(sql`${t.status} = 'pending'`),

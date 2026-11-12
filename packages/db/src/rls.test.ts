@@ -221,16 +221,39 @@ describe('row level security', () => {
       expect(rows).toEqual([])
     })
 
-    it('holds exactly the policies the schema declares, all for authenticated', async () => {
+    it('holds exactly the policies the schema declares: grants for authenticated, rejections for public', async () => {
       const declared = tables
         .flatMap((table) => getTableConfig(table).policies.map((policy) => policy.name))
         .sort()
       const { rows } = await raw(
-        `select policyname, roles::text as roles from pg_policies
+        `select policyname, roles::text as roles, permissive from pg_policies
          where schemaname in ('public', 'better_auth') order by policyname`,
       )
       expect(rows.map((row) => row.policyname)).toEqual(declared)
-      expect(new Set(rows.map((row) => row.roles))).toEqual(new Set(['{authenticated}']))
+      for (const row of rows) {
+        const rejection = String(row.policyname).endsWith('_no_access')
+        expect({ roles: row.roles, permissive: row.permissive }, String(row.policyname)).toEqual(
+          rejection
+            ? { roles: '{public}', permissive: 'RESTRICTIVE' }
+            : { roles: '{authenticated}', permissive: 'PERMISSIVE' },
+        )
+      }
+    })
+
+    it('indexes every foreign key of public and better_auth', async () => {
+      const { rows } = await raw(
+        `select c.conrelid::regclass::text as "table", c.conname as "key"
+         from pg_constraint c
+         join pg_namespace n on n.oid = c.connamespace
+         where c.contype = 'f' and n.nspname in ('public', 'better_auth')
+           and not exists (
+             select 1 from pg_index i
+             where i.indrelid = c.conrelid and i.indisvalid
+               and (string_to_array(i.indkey::text, ' ')::smallint[])[1:array_length(c.conkey, 1)] = c.conkey
+           )
+         order by 1, 2`,
+      )
+      expect(rows).toEqual([])
     })
 
     const tablePrivileges = async (role: string) => {

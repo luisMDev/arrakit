@@ -27,6 +27,17 @@ export function either(...conditions: SQL[]): SQL {
   return sql`(${sql.join(conditions, sql` or `)})`
 }
 
+/** Nothing passes: only the privileged connection, which bypasses RLS, reaches the table. */
+export function noAccess(table: string): PgPolicy {
+  return pgPolicy(`${table}_no_access`, {
+    as: 'restrictive',
+    for: 'all',
+    to: 'public',
+    using: sql`false`,
+    withCheck: sql`false`,
+  })
+}
+
 type Gate = SQL | true
 
 /**

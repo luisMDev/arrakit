@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { index, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 import { users } from './auth'
 import { createdAt, updatedAt } from './columns'
@@ -24,6 +24,7 @@ export const workspaces = pgTable(
       t.organizationId,
       sql`lower(${t.name})`,
     ),
+    index('workspaces_created_by_index').on(t.createdBy),
     ...tenantPolicies('workspaces', inOrganization(t.organizationId), {
       insert: holds('workspace:create'),
       update: holds('workspace:update'),
