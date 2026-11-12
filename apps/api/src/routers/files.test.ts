@@ -1,16 +1,22 @@
 import { randomUUID } from 'node:crypto'
 
 import type { UploadTicket } from '@arrakit/contract'
-import { objectPathOf } from '@arrakit/db'
+import { LATE_UPLOAD_SECONDS, objectPathOf } from '@arrakit/db'
+import { rawSql } from '@arrakit/db/testing'
 import { BYTES_PER_GB as GB, filePolicyFor } from '@arrakit/plans'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { NOT_UPLOADED, UPLOAD_DIFFERS } from '../files/files'
+import { noErrorReporter } from '../observability/error-reporter'
+import { recordingLogger } from '../observability/logger'
 import { type TestApp, createTestApp } from '../testing/app'
 import { joinAs, orgApi, ownerOf } from '../testing/people'
+import { registerJobs } from '../workers/job'
+import { storagePurge } from '../workers/storage-purge'
 
 describe('files', () => {
   let t: TestApp
+  const { log } = recordingLogger()
   let counter = 0
 
   beforeAll(async () => {
@@ -26,12 +32,17 @@ describe('files', () => {
   }
 
   /** What the browser does with the presigned URL, in the in-memory bucket. */
-  const send = (organizationId: string, ticket: UploadTicket, bytes: Uint8Array) =>
+  const send = (
+    organizationId: string,
+    ticket: UploadTicket,
+    bytes: Uint8Array,
+    contentType = ticket.upload.headers['content-type'],
+  ) =>
     t.data.storage.put(
       organizationId,
       objectPathOf({ id: ticket.file.id, workspaceId: ticket.file.workspaceId }),
       bytes,
-      ticket.upload.headers['content-type'],
+      contentType,
     )
 
   const uploaded = async (
@@ -57,6 +68,9 @@ describe('files', () => {
       headers: { 'content-type': 'application/pdf' },
       expiresAt: expect.any(String),
     })
+    const lifetimeMinutes = (Date.parse(ticket.upload.expiresAt) - Date.now()) / 60_000
+    expect(lifetimeMinutes).toBeGreaterThan(119)
+    expect(lifetimeMinutes).toBeLessThanOrEqual(120)
     await expect(api.list({})).resolves.toEqual([])
 
     await expect(api.completeUpload({ id: ticket.file.id })).rejects.toMatchObject({
@@ -84,9 +98,10 @@ describe('files', () => {
     })
   })
 
-  it('throws away an upload whose bytes differ from the announced ones', async () => {
+  it('throws away bytes that differ from the announced ones and keeps the reservation', async () => {
     const { owner } = await organization()
     const api = t.client(owner.headers).files
+    const scope = t.data.asSystem(owner.organizationId)
     const ticket = await api.requestUpload({ name: 'a.txt', sizeBytes: 3 })
     send(owner.organizationId, ticket, new TextEncoder().encode('longer'))
 
@@ -94,10 +109,101 @@ describe('files', () => {
       status: 400,
       message: UPLOAD_DIFFERS,
     })
-    expect(await t.data.asSystem(owner.organizationId).files.get(ticket.file.id)).toBeUndefined()
+    expect(await scope.files.get(ticket.file.id)).toMatchObject({ status: 'pending' })
     expect(t.data.storage.objects.has(`${owner.organizationId}/files/${ticket.file.id}`)).toBe(
       false,
     )
+    send(owner.organizationId, ticket, new TextEncoder().encode('abc'))
+    await expect(api.completeUpload({ id: ticket.file.id })).resolves.toMatchObject({
+      name: 'a.txt',
+      sizeBytes: 3,
+    })
+
+    const html = await api.requestUpload({ name: 'b.txt', sizeBytes: 3 })
+    send(owner.organizationId, html, new TextEncoder().encode('<a>'), 'text/html')
+    await expect(api.completeUpload({ id: html.file.id })).rejects.toMatchObject({
+      status: 400,
+      message: UPLOAD_DIFFERS,
+    })
+    expect(await scope.files.get(html.file.id)).toMatchObject({ status: 'pending' })
+    expect(t.data.storage.objects.has(`${owner.organizationId}/files/${html.file.id}`)).toBe(false)
+  })
+
+  it('keeps a mismatched upload counted against storage until it expires', async () => {
+    const { owner } = await organization()
+    const api = t.client(owner.headers).files
+    await t.data.asSystem(owner.organizationId).files.reserve({
+      workspaceId: null,
+      name: 'archive.zip',
+      contentType: 'application/zip',
+      sizeBytes: 10 * GB - 3,
+      uploadedBy: owner.userId,
+    })
+    const ticket = await api.requestUpload({ name: 'a.txt', sizeBytes: 3 })
+    send(owner.organizationId, ticket, new TextEncoder().encode('tiny'))
+    await expect(api.completeUpload({ id: ticket.file.id })).rejects.toMatchObject({
+      message: UPLOAD_DIFFERS,
+    })
+
+    await expect(api.requestUpload({ name: 'one-more.pdf', sizeBytes: 1 })).rejects.toMatchObject({
+      status: 402,
+    })
+  })
+
+  it('purges again, once its upload link lapses, the object of a file deleted while the link works', async () => {
+    const { owner } = await organization()
+    await registerJobs([storagePurge], { data: t.data, log, errors: noErrorReporter })
+    const bytes = new TextEncoder().encode('hello')
+    const api = t.client(owner.headers).files
+    const ticket = await api.requestUpload({ name: 'late.txt', sizeBytes: bytes.byteLength })
+    send(owner.organizationId, ticket, bytes)
+    await api.completeUpload({ id: ticket.file.id })
+    const key = `${owner.organizationId}/files/${ticket.file.id}`
+
+    await api.delete({ id: ticket.file.id })
+    expect(t.data.storage.objects.has(key)).toBe(false)
+    const purge = t.data.jobs.sent.at(-1)!
+    expect(purge).toMatchObject({
+      name: 'storage-purge',
+      data: { organizationId: owner.organizationId, path: `files/${ticket.file.id}` },
+    })
+    const startAfter = purge.options.startAfter as Date
+    const reservedAt = Date.now() - 1000
+    expect(startAfter.getTime()).toBeGreaterThan(reservedAt + LATE_UPLOAD_SECONDS * 1000)
+    expect(startAfter.getTime()).toBeLessThanOrEqual(Date.now() + LATE_UPLOAD_SECONDS * 1000)
+
+    send(owner.organizationId, ticket, new Uint8Array(1000))
+    await t.data.jobs.run('storage-purge')
+    expect(t.data.storage.objects.has(key)).toBe(false)
+  })
+
+  it('frees the reservation when the upload link cannot be signed', async () => {
+    const { owner } = await organization()
+    const api = t.client(owner.headers).files
+    const forOrganization = t.data.storage.forOrganization.bind(t.data.storage)
+    const spy = vi.spyOn(t.data.storage, 'forOrganization').mockImplementation((id) => {
+      const objects = forOrganization(id)
+      return {
+        ...objects,
+        presignPut: () => Promise.reject(new Error('storage unavailable')),
+      }
+    })
+    try {
+      await expect(api.requestUpload({ name: 'a.pdf', sizeBytes: 4 })).rejects.toMatchObject({
+        status: 500,
+      })
+    } finally {
+      spy.mockRestore()
+    }
+
+    const { rows } = await rawSql(t.data)(
+      'select count(*)::int as count from files where organization_id = $1',
+      [owner.organizationId],
+    )
+    expect(rows[0]?.count).toBe(0)
+    await expect(api.requestUpload({ name: 'a.pdf', sizeBytes: 4 })).resolves.toMatchObject({
+      file: { name: 'a.pdf' },
+    })
   })
 
   it('refuses what the plan’s policy does not allow, with a 400', async () => {
@@ -170,10 +276,14 @@ describe('files', () => {
 
     await t.client(owner.headers).workspaces.delete({ id: workspace.id })
     expect(await t.data.asSystem(owner.organizationId).files.get(file.id)).toBeUndefined()
-    expect(t.data.jobs.sent.at(-1)).toMatchObject({
+    const purge = {
       name: 'storage-purge',
       data: { organizationId: owner.organizationId, folder: `workspaces/${workspace.id}/` },
-    })
+    }
+    const [now, later] = t.data.jobs.sent.slice(-2)
+    expect(now).toMatchObject(purge)
+    expect(now!.options.startAfter).toBeUndefined()
+    expect(later).toMatchObject({ ...purge, options: { startAfter: expect.any(Date) } })
   })
 
   it('links a download named after the file, and renames keeping the type', async () => {
@@ -182,7 +292,7 @@ describe('files', () => {
     const api = t.client(owner.headers).files
 
     const link = await api.downloadUrl({ id: file.id })
-    expect(decodeURIComponent(link.url)).toContain('filename="Q3 report.pdf"')
+    expect(new URL(link.url).searchParams.get('download')).toBe('Q3 report.pdf')
 
     await expect(api.rename({ id: file.id, name: 'Q4 report.pdf' })).resolves.toMatchObject({
       id: file.id,

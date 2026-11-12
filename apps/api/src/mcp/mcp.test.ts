@@ -649,10 +649,12 @@ describe('the MCP endpoint', () => {
     expect(deleted?.content).toEqual([
       { type: 'text', text: 'Deleted the workspace and its files.' },
     ])
-    expect(t.data.jobs.sent.at(-1)).toMatchObject({
-      name: 'storage-purge',
-      data: { organizationId: organization.id, folder: `workspaces/${id}/` },
-    })
+    expect(t.data.jobs.sent).toContainEqual(
+      expect.objectContaining({
+        name: 'storage-purge',
+        data: { organizationId: organization.id, folder: `workspaces/${id}/` },
+      }),
+    )
     expect(await t.data.asSystem(organization.id).workspaces.list()).toMatchObject([
       { name: 'Ops' },
     ])

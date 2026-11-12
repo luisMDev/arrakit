@@ -19,7 +19,6 @@ import { dayOf } from '../day'
 import type { Logger } from '../observability/logger'
 import { NOT_PERMITTED } from '../orpc/context'
 
-export const UPLOAD_URL_SECONDS = 15 * 60
 export const DOWNLOAD_URL_SECONDS = 5 * 60
 
 export const NO_SUCH_FILE = 'No such file in your organization.'
@@ -140,11 +139,15 @@ export function fileService(actor: FileActor) {
       sizeBytes: number
     }): Promise<UploadTicket> {
       const row = await reserve(input)
-      const upload = await scope.objects.presignPut(objectPathOf(row), {
-        contentType: row.contentType,
-        contentLength: row.sizeBytes,
-        expiresInSeconds: UPLOAD_URL_SECONDS,
-      })
+      let upload
+      try {
+        upload = await scope.objects.presignPut(objectPathOf(row), {
+          contentType: row.contentType,
+        })
+      } catch (err) {
+        await scope.files.remove(row.id)
+        throw err
+      }
       return { file: view(row), upload: { ...upload, expiresAt: upload.expiresAt.toISOString() } }
     },
 
@@ -156,7 +159,7 @@ export function fileService(actor: FileActor) {
       const stored = await scope.objects.head(objectPathOf(row))
       if (!stored) throw new DomainError('BAD_REQUEST', NOT_UPLOADED)
       if (stored.size !== row.sizeBytes || stored.contentType !== row.contentType) {
-        await scope.files.remove(id)
+        // The row stays pending and counted: its link uploads again once the object is gone.
         await removeFileObject(scope, row, log)
         throw new DomainError('BAD_REQUEST', UPLOAD_DIFFERS)
       }

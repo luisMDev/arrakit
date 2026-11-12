@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { transaction } from '../connection'
 import { FILE_EVENTS } from '../files/events'
 import { STORAGE_PURGE_QUEUE } from '../jobs/types'
+import { uploadsSettleAt } from '../storage/folder'
 import {
   type QueuedTestData,
   type TestData,
@@ -222,12 +223,42 @@ describe('organization files', () => {
     expect(await f.files.get(file.id)).toBeUndefined()
     expect(await storageLevel(f)).toBe(0)
     expect(data.jobs.published.slice(start).map((e) => e.event)).toEqual([FILE_EVENTS.deleted])
-    expect(data.jobs.sent.at(-1)).toMatchObject({
+    const purge = {
       name: STORAGE_PURGE_QUEUE,
       data: { organizationId: f.organizationId, folder: workspaceFolderOf(f.workspace.id) },
-      options: { tx: expect.anything() },
+    }
+    const [now, later] = data.jobs.sent.slice(-2)
+    expect(now).toMatchObject({ ...purge, options: { tx: expect.anything() } })
+    expect(now!.options.startAfter).toBeUndefined()
+    expect(later).toMatchObject({
+      ...purge,
+      options: { tx: expect.anything(), startAfter: uploadsSettleAt(file.createdAt) },
     })
     expect(await f.scope.workspaces.remove(f.workspace.id)).toBe(false)
+  })
+
+  it('removing a file queues a purge of its object for when its upload link lapses, while it can still store bytes', async () => {
+    const f = await organizationOf('juniper')
+    const fresh = await f.files.reserve({
+      ...pdf('fresh.pdf'),
+      workspaceId: null,
+      uploadedBy: f.owner,
+    })
+    const old = await f.files.reserve({ ...pdf('old.pdf'), workspaceId: null, uploadedBy: f.owner })
+    await rawSql(data)("update files set created_at = now() - interval '4 hours' where id = $1", [
+      old.id,
+    ])
+    const start = data.jobs.sent.length
+
+    await f.files.remove(fresh.id)
+    await f.files.remove(old.id)
+    expect(data.jobs.sent.slice(start)).toEqual([
+      expect.objectContaining({
+        name: STORAGE_PURGE_QUEUE,
+        data: { organizationId: f.organizationId, path: objectPathOf(fresh) },
+        options: { tx: expect.anything(), startAfter: uploadsSettleAt(fresh.createdAt) },
+      }),
+    ])
   })
 
   it('keeps bytes under a per-scope path that a rename never changes', () => {

@@ -39,14 +39,13 @@ const DRIVERS = [
   "import { drizzle } from 'drizzle-orm/node-postgres'",
   "import Client from 'pg/lib/client'",
   "import { PGlite } from '@electric-sql/pglite'",
-  "import { S3Client } from '@aws-sdk/client-s3'",
-  "import { x } from '@aws-sdk/lib-storage'",
+  "import { StorageClient } from '@supabase/storage-js'",
   "export { Pool } from 'pg'",
   "import pg = require('pg')",
   "const pg = require('pg')",
   "require('drizzle-orm/node-postgres')",
   "await import('pg-boss')",
-  'await import(`@aws-sdk/client-s3`)',
+  "await import('@supabase/storage-js')",
 ]
 
 const DB_INTERNALS = [
@@ -64,7 +63,7 @@ const ALLOWED = [
   "import x from 'pgvector'",
   "import x from 'pg-format'",
   "import x from 'drizzle-zod'",
-  "import x from '@aws-sdkx/foo'",
+  "import x from '@supabase/storage-js-next'",
   "import x from '@arrakit/database'",
   "const label = 'pg'",
   "console.log('drizzle-orm failed')",

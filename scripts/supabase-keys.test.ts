@@ -98,16 +98,21 @@ describe('ensureSigningKeys', () => {
 })
 
 describe('writeStackEnv', () => {
-  it('records the stack’s URL and publishable key and keeps Better Auth’s key', () => {
+  it('records the stack’s URL and keys and keeps Better Auth’s key', () => {
     ensureSigningKeys(repo)
     const key = readEnv().BETTER_AUTH_JWT_KEY
 
-    writeStackEnv(repo, { API_URL: 'http://127.0.0.1:54321', PUBLISHABLE_KEY: 'sb_publishable_x' })
+    writeStackEnv(repo, {
+      API_URL: 'http://127.0.0.1:54321',
+      PUBLISHABLE_KEY: 'sb_publishable_x',
+      SECRET_KEY: 'sb_secret_x',
+    })
 
     expect(readEnv()).toEqual({
       BETTER_AUTH_JWT_KEY: key,
       SUPABASE_URL: 'http://127.0.0.1:54321',
       SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_x',
+      SUPABASE_SECRET_KEY: 'sb_secret_x',
     })
     expect(readFileSync(envFile(), 'utf8')).toMatch(/^# Generated/)
     expect(statSync(envFile()).mode & 0o777).toBe(0o600)

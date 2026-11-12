@@ -33,11 +33,19 @@ export function objectKey(organizationId: string, path: string): string {
   return key
 }
 
-/** `Content-Disposition: attachment` for any file name (RFC 6266 / RFC 5987). */
-export function attachmentDisposition(fileName: string): string {
-  const fallback = fileName.replace(/[^\x20-\x7e]|["\\]/g, '_')
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
-}
+/** Supabase Storage fixes how long a signed upload URL lasts; it is not a setting. */
+export const UPLOAD_URL_SECONDS = 2 * 60 * 60
+
+/**
+ * How long after a file is reserved its upload link may still store bytes: the link cannot be
+ * revoked and uploads again once its object is removed, so this is its lifetime plus an hour for
+ * a transfer that started just in time.
+ */
+export const LATE_UPLOAD_SECONDS = UPLOAD_URL_SECONDS + 60 * 60
+
+/** When the upload link of a file reserved at `reservedAt` can no longer store bytes. */
+export const uploadsSettleAt = (reservedAt: Date): Date =>
+  new Date(reservedAt.getTime() + LATE_UPLOAD_SECONDS * 1000)
 
 /** `seconds` from now, when a presigned URL stops working. */
 export const expiryIn = (seconds: number): Date => new Date(Date.now() + seconds * 1000)

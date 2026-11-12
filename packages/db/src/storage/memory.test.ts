@@ -45,17 +45,15 @@ describe('memoryStorage', () => {
 
   it('presigns URLs for the object key, the download named as asked', async () => {
     const a = memoryStorage().forOrganization(ORG_A)
-    const upload = await a.presignPut('files/1', {
-      contentType: 'application/pdf',
-      contentLength: 3,
-      expiresInSeconds: 60,
-    })
+    const upload = await a.presignPut('files/1', { contentType: 'application/pdf' })
     expect(upload.url).toBe(`memory://${ORG_A}/files/1`)
     expect(upload.headers).toEqual({ 'content-type': 'application/pdf' })
-    expect(upload.expiresAt.getTime()).toBeGreaterThan(Date.now())
+    const lifetime = upload.expiresAt.getTime() - Date.now()
+    expect(lifetime).toBeGreaterThan(2 * 60 * 60 * 1000 - 60_000)
+    expect(lifetime).toBeLessThanOrEqual(2 * 60 * 60 * 1000)
 
     const download = await a.presignGet('files/1', { downloadName: 'a.pdf', expiresInSeconds: 60 })
-    expect(decodeURIComponent(download.url)).toContain('attachment; filename="a.pdf"')
+    expect(new URL(download.url).searchParams.get('download')).toBe('a.pdf')
   })
 
   it('refuses unusable object paths', async () => {

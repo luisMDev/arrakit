@@ -1,11 +1,14 @@
-import { WORKER_RETRY_POLICY } from '@arrakit/db'
+import { LATE_UPLOAD_SECONDS, WORKER_RETRY_POLICY } from '@arrakit/db'
 import { z } from 'zod'
 
-import { UPLOAD_URL_SECONDS, removeFileObject } from '../files/files'
+import { removeFileObject } from '../files/files'
 import { defineJob } from './job'
 
-/** Long enough for any upload URL to have expired. */
-export const PENDING_UPLOAD_TTL_SECONDS = 4 * UPLOAD_URL_SECONDS
+/**
+ * An upload link cannot be revoked, so a pending file must outlive its link: otherwise a late
+ * upload would leave bytes with no row.
+ */
+export const PENDING_UPLOAD_TTL_SECONDS = LATE_UPLOAD_SECONDS
 
 /** Drops uploads never completed, freeing their storage quota and removing any bytes sent. */
 export const filesExpirePending = defineJob({

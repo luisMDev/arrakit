@@ -1,5 +1,5 @@
 import type { OrganizationDeps } from '@arrakit/auth'
-import type { ScopedData } from '@arrakit/db'
+import { LATE_UPLOAD_SECONDS, type ScopedData } from '@arrakit/db'
 import { PLAN_OFFERS, type Plan, seatLimitMessage } from '@arrakit/plans'
 import { APIError } from 'better-auth/api'
 
@@ -26,7 +26,10 @@ export function organizationDeps(
     },
     async afterDelete(organizationId) {
       await data.revokeGrants(organizationId)
-      await queueStoragePurge(data.jobs, { organizationId, folder: '' }, log)
+      const everything = { organizationId, folder: '' }
+      // Upload links signed before the deletion still store bytes until they lapse.
+      await queueStoragePurge(data.jobs, everything, log)
+      await queueStoragePurge(data.jobs, everything, log, { startAfter: LATE_UPLOAD_SECONDS })
     },
     log,
   }

@@ -4,20 +4,21 @@ import { loadDataConfig } from './config'
 
 const DATABASE = { DATABASE_URL: 'postgres://localhost/arrakit' }
 
-const R2 = {
+const SUPABASE = {
   ...DATABASE,
-  R2_ENDPOINT: 'https://r2.example.com',
-  R2_BUCKET: 'arrakit',
-  R2_ACCESS_KEY_ID: 'key',
-  R2_SECRET_ACCESS_KEY: 'secret',
+  SUPABASE_URL: 'http://127.0.0.1:54321',
+  SUPABASE_SECRET_KEY: 'sb_secret_x',
 }
 
 describe('loadDataConfig', () => {
-  it('reads Postgres, with in-memory storage when no bucket is set', () => {
+  it('reads Postgres, with in-memory storage when no secret key is set', () => {
     expect(loadDataConfig(DATABASE)).toEqual({
       databaseUrl: 'postgres://localhost/arrakit',
-      s3: undefined,
+      storage: undefined,
     })
+    expect(loadDataConfig({ ...DATABASE, SUPABASE_URL: SUPABASE.SUPABASE_URL }).storage).toBe(
+      undefined,
+    )
   })
 
   it('requires the database in every environment', () => {
@@ -28,31 +29,28 @@ describe('loadDataConfig', () => {
     )
   })
 
-  it('reads a complete R2 set, region defaulting to auto', () => {
-    expect(loadDataConfig(R2).s3).toEqual({
-      endpoint: R2.R2_ENDPOINT,
-      bucket: R2.R2_BUCKET,
-      region: 'auto',
-      accessKeyId: R2.R2_ACCESS_KEY_ID,
-      secretAccessKey: R2.R2_SECRET_ACCESS_KEY,
-      localBucket: false,
+  it('reads Supabase Storage when the secret key and the URL are set', () => {
+    expect(loadDataConfig(SUPABASE).storage).toEqual({
+      url: SUPABASE.SUPABASE_URL,
+      secretKey: SUPABASE.SUPABASE_SECRET_KEY,
     })
-    expect(loadDataConfig({ ...R2, R2_REGION: 'eu' }).s3?.region).toBe('eu')
-    expect(loadDataConfig({ ...R2, R2_LOCAL_BUCKET: '1' }).s3?.localBucket).toBe(true)
   })
 
   it('names every missing variable in one error; an empty one counts as missing', () => {
-    expect(() => loadDataConfig({ R2_ENDPOINT: 'https://r2', R2_BUCKET: '' })).toThrow(
-      '[data] missing env: DATABASE_URL, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY',
+    expect(() => loadDataConfig({ SUPABASE_SECRET_KEY: 'sb_secret_x', SUPABASE_URL: '' })).toThrow(
+      '[data] missing env: DATABASE_URL, SUPABASE_URL',
     )
   })
 
-  it('takes the bucket all or none in production too', () => {
+  it('treats storage the same way in production', () => {
     const production = { NODE_ENV: 'production', DATABASE_URL: 'postgres://db/a' }
-    expect(loadDataConfig(production).s3).toBeUndefined()
-    expect(loadDataConfig({ ...production, ...R2 }).s3).toBeDefined()
-    expect(() => loadDataConfig({ ...production, R2_BUCKET: 'arrakit' })).toThrow(
-      '[data] missing env: R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY',
+    expect(loadDataConfig(production).storage).toBeUndefined()
+    expect(loadDataConfig({ ...production, SUPABASE_URL: 'https://x.supabase.co' }).storage).toBe(
+      undefined,
+    )
+    expect(loadDataConfig({ ...SUPABASE, ...production }).storage).toBeDefined()
+    expect(() => loadDataConfig({ ...production, SUPABASE_SECRET_KEY: 'sb_secret_x' })).toThrow(
+      '[data] missing env: SUPABASE_URL',
     )
   })
 })

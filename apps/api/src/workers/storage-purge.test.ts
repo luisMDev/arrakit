@@ -44,6 +44,20 @@ describe('storage purge worker', () => {
     expect(await paths()).toEqual([])
   })
 
+  it('removes one object through the queue, leaving its neighbours', async () => {
+    for (const path of ['files/f1', 'files/f10', 'keep.txt']) data.storage.put(orgId, path)
+
+    await queueStoragePurge(data.jobs, { organizationId: orgId, path: 'files/f1' }, log, {
+      startAfter: 60,
+    })
+    expect(data.jobs.sent.at(-1)?.options).toEqual({ startAfter: 60 })
+    await data.jobs.run(storagePurge.name)
+    expect(await paths()).toEqual(['files/f10', 'keep.txt'])
+
+    await queueStoragePurge(data.jobs, { organizationId: orgId, folder: '' }, log)
+    await data.jobs.run(storagePurge.name)
+  })
+
   it('names the organization and folder when a purge fails', async () => {
     const worker = data.jobs.workers.get(storagePurge.name)!
     await expect(worker({ organizationId: orgId, folder: '../escape/' })).rejects.toThrow(
@@ -56,6 +70,11 @@ describe('storage purge worker', () => {
       target: 'folder "../escape/"',
       err: { message: expect.stringContaining('not a usable folder') },
     })
+
+    await expect(worker({ organizationId: orgId, path: '../escape' })).rejects.toThrow(
+      'not a usable object path',
+    )
+    expect(errors()[1]).toMatchObject({ organizationId: orgId, target: 'object "../escape"' })
   })
 
   it('names the folder or the whole organization when a purge is not queued', async () => {

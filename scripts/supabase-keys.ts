@@ -92,30 +92,34 @@ export function ensureSigningKeys(cwd: string): boolean {
   return true
 }
 
+export interface StackStatus {
+  API_URL: string
+  PUBLISHABLE_KEY: string
+  SECRET_KEY: string
+}
+
 /** Records where the running stack answers, next to the key Better Auth signs with. */
-export function writeStackEnv(cwd: string, stack: { API_URL: string; PUBLISHABLE_KEY: string }) {
+export function writeStackEnv(cwd: string, stack: StackStatus) {
   writeStackEnvFile(cwd, {
     ...readStackEnv(cwd),
     SUPABASE_URL: stack.API_URL,
     SUPABASE_PUBLISHABLE_KEY: stack.PUBLISHABLE_KEY,
+    SUPABASE_SECRET_KEY: stack.SECRET_KEY,
   })
 }
 
-function stackStatus(): { API_URL: string; PUBLISHABLE_KEY: string } {
+const STATUS_FIELDS = ['API_URL', 'PUBLISHABLE_KEY', 'SECRET_KEY'] as const
+
+function stackStatus(): StackStatus {
   const output = execFileSync('pnpm', ['exec', 'supabase', 'status', '-o', 'json'], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'inherit'],
   })
   const status = JSON.parse(output) as Record<string, unknown>
-  const { API_URL, PUBLISHABLE_KEY } = status
-  if (
-    typeof API_URL !== 'string' ||
-    typeof PUBLISHABLE_KEY !== 'string' ||
-    !API_URL ||
-    !PUBLISHABLE_KEY
-  )
-    throw new Error('supabase status did not report API_URL and PUBLISHABLE_KEY')
-  return { API_URL, PUBLISHABLE_KEY }
+  if (!STATUS_FIELDS.every((field) => typeof status[field] === 'string' && status[field] !== ''))
+    throw new Error('supabase status did not report API_URL, PUBLISHABLE_KEY and SECRET_KEY')
+  const { API_URL, PUBLISHABLE_KEY, SECRET_KEY } = status as unknown as StackStatus
+  return { API_URL, PUBLISHABLE_KEY, SECRET_KEY }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {

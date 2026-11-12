@@ -4,7 +4,7 @@ export interface PresignedPut {
 }
 
 /**
- * PUTs `file` straight to storage with the signed headers, reporting progress from 0 to 1.
+ * PUTs `file` straight to storage with the ticket's headers, reporting progress from 0 to 1.
  * XMLHttpRequest, because fetch() cannot report upload progress.
  */
 export function putFile(

@@ -15,7 +15,7 @@ import { assertMigrated } from './migrations'
 import { forOrganization } from './organization/index'
 import { type MemberClaims, systemClaims } from './organization/scoped'
 import { memoryStorage } from './storage/memory'
-import { s3Storage } from './storage/s3'
+import { supabaseStorage } from './storage/supabase'
 import type { Storage } from './storage/types'
 
 export interface OpenDataOptions {
@@ -127,22 +127,17 @@ export async function openData(config: DataConfig, options: OpenDataOptions = {}
 /** The data layer over an open, migrated database. */
 export async function openDataOn(
   connection: Connection,
-  config: Pick<DataConfig, 's3'>,
+  config: Pick<DataConfig, 'storage'>,
   options: OpenDataOptions = {},
 ): Promise<Data> {
   const log = options.log ?? consoleLog
 
-  const bucket = !options.storage && config.s3 ? s3Storage(config.s3) : undefined
-  const storage = options.storage ?? bucket ?? memoryStorage()
-  if (!options.storage && !config.s3) {
-    log.info('file storage is not configured (no R2_*): uploads are kept in memory only')
-  }
-  try {
-    if (config.s3?.localBucket) await bucket?.prepareLocalBucket()
-  } catch (err) {
-    await storage.close()
-    await connection.close()
-    throw err
+  const storage =
+    options.storage ?? (config.storage ? supabaseStorage(config.storage) : memoryStorage())
+  if (!options.storage && !config.storage) {
+    log.info(
+      'file storage is not configured (no SUPABASE_SECRET_KEY): uploads are kept in memory only',
+    )
   }
 
   let jobs: JobsRuntime

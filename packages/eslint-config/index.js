@@ -6,10 +6,18 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import tseslint from 'typescript-eslint'
 
 /**
- * Modules that only packages/db may import (and every `@aws-sdk/*`). Everything else (apps/api
- * included) must go through `openData()` / `forOrganization(id)` from `@arrakit/db`.
+ * Database, queue and storage drivers that only packages/db may import.
+ * Everything else (apps/api included) must go through `openData()` / `forOrganization(id)` from
+ * `@arrakit/db`.
  */
-const DATA_ONLY_MODULES = ['pg', 'pg-boss', 'drizzle-orm', 'drizzle-kit', '@electric-sql/pglite']
+const DATA_ONLY_MODULES = [
+  'pg',
+  'pg-boss',
+  'drizzle-orm',
+  'drizzle-kit',
+  '@electric-sql/pglite',
+  '@supabase/storage-js',
+]
 
 const DRIVER_MESSAGE =
   'Only @arrakit/db may import data drivers. Use openData() / forOrganization().'
@@ -20,12 +28,12 @@ const escapeSpecifier = (name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').re
 
 /**
  * The modules or a subpath of them, as a `require()` / `import()` regex: `pg`, `pg/lib/client`,
- * `drizzle-orm/node-postgres`, `@aws-sdk/...`, but not `pg-format` or `pgvector`. esquery regexes
+ * `drizzle-orm/node-postgres`, but not `pg-format` or `pgvector`. esquery regexes
  * cannot contain `/`, so `.` stands for it and `[^\\w-]` for the subpath separator.
  */
 const moduleSpecifier = (names) => `^(${names.map(escapeSpecifier).join('|')})([^\\w-].*)?$`
 
-const DRIVER_SPECIFIER = moduleSpecifier([...DATA_ONLY_MODULES, '@aws-sdk'])
+const DRIVER_SPECIFIER = moduleSpecifier(DATA_ONLY_MODULES)
 /** Any @arrakit/db subpath: `/schema`, `/testing`, `/src/...`. */
 const INTERNALS_SPECIFIER = '^@arrakit.db.+$'
 
@@ -50,7 +58,7 @@ const guard = ({ internals, paths = [] }) => ({
         ],
         patterns: [
           {
-            group: [...DATA_ONLY_MODULES.map((name) => `${name}/*`), '@aws-sdk/*'],
+            group: DATA_ONLY_MODULES.map((name) => `${name}/*`),
             message: DRIVER_MESSAGE,
           },
           ...(internals ? [{ group: ['@arrakit/db/*'], message: INTERNALS_MESSAGE }] : []),

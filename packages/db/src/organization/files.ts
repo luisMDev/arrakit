@@ -8,6 +8,7 @@ import { FILE_EVENTS, type FileEvent, type FileEventPayloads } from '../files/ev
 import { STORAGE_PURGE_QUEUE } from '../jobs/types'
 import type { OrganizationId } from '../organization-id'
 import { files, users, workspaces } from '../schema/index'
+import { uploadsSettleAt } from '../storage/folder'
 import type { OrganizationUsage } from './usage'
 
 export type FileRow = typeof files.$inferSelect
@@ -104,6 +105,22 @@ export function filesScope(
       return { level: await storedLevel(tx), result }
     })
 
+  /**
+   * Queues, inside `tx`, a purge for when the upload links of `reserved` can no longer store
+   * bytes; nothing when they already cannot. It removes what a link stores after its row is gone.
+   */
+  async function purgeLateUploads(
+    tx: Database,
+    target: { folder: string } | { path: string },
+    reserved: readonly Pick<FileRow, 'createdAt'>[],
+  ) {
+    if (reserved.length === 0) return
+    const latest = Math.max(...reserved.map((file) => file.createdAt.getTime()))
+    const startAfter = uploadsSettleAt(new Date(latest))
+    if (startAfter <= ctx.now()) return
+    await ctx.jobs.send(STORAGE_PURGE_QUEUE, { organizationId, ...target }, { tx, startAfter })
+  }
+
   async function assertWorkspace(tx: Database, workspaceId: string | null) {
     if (!workspaceId) return
     const [found] = await tx
@@ -185,11 +202,17 @@ export function filesScope(
         () => nameTaken(name),
       ),
 
-    /** Deletes the row (any status); publishes file.deleted for an uploaded one. */
+    /**
+     * Deletes the row (any status); publishes file.deleted for an uploaded one. Removing its object
+     * is the caller's; while its upload link may still store bytes, it also queues a later purge
+     * of that object.
+     */
     remove: (id: string): Promise<FileRow | undefined> =>
       changingStorage(async (tx) => {
         const [row] = await tx.delete(files).where(byId(id)).returning()
-        if (row?.status === 'ready') await publish(tx, FILE_EVENTS.deleted, eventOf(row))
+        if (!row) return undefined
+        if (row.status === 'ready') await publish(tx, FILE_EVENTS.deleted, eventOf(row))
+        await purgeLateUploads(tx, { path: objectPathOf(row) }, [row])
         return row
       }),
 
@@ -204,22 +227,22 @@ export function filesScope(
 
     /**
      * Runs `removeWorkspace`; when it removes the workspace, publishes file.deleted for each of its
-     * uploaded files, frees their storage and queues the purge of its objects. The rows go by
-     * cascade.
+     * uploaded files, frees their storage and queues the purge of its objects, again once its
+     * upload links can no longer store bytes. The rows go by cascade.
      */
     removingWorkspace: (
       workspaceId: string,
       removeWorkspace: (tx: Database) => Promise<boolean>,
     ): Promise<boolean> =>
       changingStorage(async (tx) => {
-        const uploaded = await tx
-          .select()
-          .from(files)
-          .where(and(inScope(workspaceId), eq(files.status, 'ready')))
+        const held = await tx.select().from(files).where(inScope(workspaceId))
         if (!(await removeWorkspace(tx))) return false
-        for (const file of uploaded) await publish(tx, FILE_EVENTS.deleted, eventOf(file))
+        for (const file of held) {
+          if (file.status === 'ready') await publish(tx, FILE_EVENTS.deleted, eventOf(file))
+        }
         const folder = workspaceFolderOf(workspaceId)
         await ctx.jobs.send(STORAGE_PURGE_QUEUE, { organizationId, folder }, { tx })
+        await purgeLateUploads(tx, { folder }, held)
         return true
       }),
   }

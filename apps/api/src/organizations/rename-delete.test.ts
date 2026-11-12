@@ -1,4 +1,4 @@
-import type { Data } from '@arrakit/db'
+import { type Data, LATE_UPLOAD_SECONDS } from '@arrakit/db'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { StripeGateway } from '../billing/stripe-gateway'
@@ -102,11 +102,13 @@ describe('organization rename and delete (Better Auth organization plugin)', () 
       expect((await remove(owner.headers, owner.organizationId)).status).toBe(200)
 
       expect(revoke).toHaveBeenCalledWith(owner.organizationId)
+      const purge = {
+        name: 'storage-purge',
+        data: { organizationId: owner.organizationId, folder: '' },
+      }
       expect(t.data.jobs.sent).toEqual([
-        expect.objectContaining({
-          name: 'storage-purge',
-          data: { organizationId: owner.organizationId, folder: '' },
-        }),
+        expect.objectContaining({ ...purge, options: {} }),
+        expect.objectContaining({ ...purge, options: { startAfter: LATE_UPLOAD_SECONDS } }),
       ])
       await expect(t.client(member.headers).me.get()).resolves.toMatchObject({
         organization: null,

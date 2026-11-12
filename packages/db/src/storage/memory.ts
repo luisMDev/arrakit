@@ -1,4 +1,4 @@
-import { attachmentDisposition, expiryIn, folderPrefix, objectKey } from './folder'
+import { UPLOAD_URL_SECONDS, expiryIn, folderPrefix, objectKey } from './folder'
 import type { ObjectHead, OrganizationObjects, Storage } from './types'
 
 export interface MemoryObject extends ObjectHead {
@@ -33,17 +33,16 @@ export function memoryStorage(): MemoryStorage {
         const prefix = folderPrefix(organizationId, '')
         return own(folder).map((key) => ({ path: key.slice(prefix.length) }))
       },
-      async presignPut(path, { contentType, expiresInSeconds }) {
+      async presignPut(path, { contentType }) {
         return {
           url: `memory://${keyOf(path)}`,
           headers: { 'content-type': contentType },
-          expiresAt: expiryIn(expiresInSeconds),
+          expiresAt: expiryIn(UPLOAD_URL_SECONDS),
         }
       },
       async presignGet(path, { downloadName, expiresInSeconds }) {
-        const disposition = encodeURIComponent(attachmentDisposition(downloadName))
         return {
-          url: `memory://${keyOf(path)}?response-content-disposition=${disposition}`,
+          url: `memory://${keyOf(path)}?download=${encodeURIComponent(downloadName)}`,
           expiresAt: expiryIn(expiresInSeconds),
         }
       },

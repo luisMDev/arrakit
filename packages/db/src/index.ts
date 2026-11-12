@@ -1,4 +1,4 @@
-// @arrakit/db: the only workspace allowed to import drizzle-orm, pg, pg-boss, PGlite and the S3 SDK.
+// @arrakit/db: the only workspace allowed to import drizzle-orm, pg, pg-boss, PGlite and the Supabase Storage client.
 export { openData, type Data, type ScopedData } from './open-data'
 export { loadDataConfig } from './config'
 export { DomainError } from './errors'
@@ -64,4 +64,5 @@ export {
   type ScheduleOptions,
   type SendOptions,
 } from './jobs/types'
+export { LATE_UPLOAD_SECONDS, UPLOAD_URL_SECONDS, uploadsSettleAt } from './storage/folder'
 export type { Storage } from './storage/types'

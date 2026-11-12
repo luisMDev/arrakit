@@ -10,7 +10,10 @@ export interface ObjectHead {
 
 export interface PresignedUpload {
   url: string
-  /** Headers the upload must send unchanged; they are part of the signature. */
+  /**
+   * Headers the upload must send; Storage records from them the content type that completing the
+   * upload checks.
+   */
   headers: Record<string, string>
   expiresAt: Date
 }
@@ -20,10 +23,9 @@ export interface PresignedDownload {
   expiresAt: Date
 }
 
+/** A signed upload URL binds neither size nor lifetime. */
 export interface PresignPutOptions {
   contentType: string
-  contentLength: number
-  expiresInSeconds: number
 }
 
 export interface PresignGetOptions {
@@ -48,7 +50,7 @@ export interface OrganizationObjects {
 
 export interface Storage {
   forOrganization(organizationId: string): OrganizationObjects
-  /** HeadBucket on S3; throws when storage is down. */
+  /** Throws when the bucket cannot be read. */
   probe(signal?: AbortSignal): Promise<void>
   close(): Promise<void>
 }
