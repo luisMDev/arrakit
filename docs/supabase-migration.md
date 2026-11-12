@@ -58,8 +58,8 @@ So the integration has two halves that share one claims object:
 
 ### Unifying permissions
 
-Today tenancy is a convention (every query filters by `organization_id`; `docs/next-steps.md`
-lists this as a known gap) and permissions are checked only in the API. The unified model:
+Before phase 1 tenancy was a convention (every query filtered by `organization_id`) and
+permissions were checked only in the API. The unified model:
 
 - Claims: `{ sub, role: 'authenticated', org_id, permissions: ['file:read', ...], actor }`, built by
   one function from the existing `permissionsOf(role, customRoles)`. Static roles and the
@@ -185,32 +185,46 @@ differently from the plan and matter to the next phases:
 
 ### Phase 1. Tenancy and permissions in the database
 
-Outcome: no query can cross an organization, enforced by Postgres and proven by a generic test.
+Landed. Every table in `public` and `better_auth` has RLS on; the tenant policies and their
+permission, ownership and actor gates live in the Drizzle schema, and the `app` helpers, revokes,
+grants and default privileges in a custom migration. Every organization operation runs in a
+transaction under the `authenticated` role with the caller's claims, and a generic test proves
+isolation for every tenant table. Points that turned out differently from the plan and matter to
+the next phases:
 
-- Custom migration: the `app` schema and its helpers; revoke what `anon` and `authenticated` hold
-  on the existing `public` tables; `alter default privileges` so tables created
-  in `public` by migrations grant `select, insert, update, delete` to `authenticated` and nothing
-  to `anon`. `better_auth` gets no grant except the column-level `select` on `users`.
-- Schema: `enableRLS()` on every table. A Drizzle helper adds the tenant policies; per-resource
-  helpers add permission gates that mirror the statement (`file:upload` on insert, and so on),
-  including the existing ownership rules (the uploader may rename their own file).
-- Claims: one `claimsFor(...)` in `@arrakit/auth` next to `permissionsOf`. A `system` actor exists
-  for workers acting inside an organization; only server code can produce it.
-- Data layer: `forOrganization(id, actor)` builds a scoped executor that opens the transaction,
-  sets claims and role, and runs the work; nested transactions become savepoints. All seven scope
-  modules use it. Membership and custom-role lookups move to the privileged path so the scope can
-  be built with the permissions already known. Cross-organization helpers (`stalledTasks`,
-  `organizationsWithPendingFiles`, the Better Auth adapter) stay privileged and are named as such.
-- Jobs: `send` and `publish` with a transaction go through an adapter that resets the role for
-  pg-boss's own statement and restores `authenticated` after it, so a scoped transaction still
-  enqueues atomically. `authenticated` gets no grant on the `pgboss` schema.
-- API: `requireMember`, the MCP caller and the workers pass their actor.
-
-Tests: extend the schema test (RLS on everywhere; a tenant policy on every non-exception table);
-a generic test that, for every tenant table, reads and writes across two organizations through the
-scoped executor; a test that a token-shaped claim set without `org_id` sees nothing; a test that a
-job sent from a scoped transaction exists only after commit and that RLS still applies after the
-send. Remove the "tenancy by convention" entry from `docs/next-steps.md`.
+- The scope API is `forOrganization(claims)` for a person and `asSystem(organizationId)` for server
+  work (workers, the Stripe webhook, the task watch hub, the auth hooks), not
+  `forOrganization(id, actor)`: the organization comes from the claims' `org_id`, so the two cannot
+  disagree. `claimsFor` in `@arrakit/auth/permissions` returns
+  `{ sub, role: 'authenticated', org_id, permissions, actor: 'user' }`, the object phase 2 signs.
+  System claims can only be built inside `packages/db`, so the signer cannot produce one.
+- A fourth helper, `app.is_system()`, gates writes that no permission names (task moves, credit
+  purchases and reversals, invitation email state), and `app.has_permission` is true for the
+  system actor, so system claims carry no permission list.
+- Reads are tenant-only; gates apply to writes. Internal reads (storage level, workspace delete,
+  the watch hub) must see every row of the organization whatever the caller may read.
+- Per-schema default privileges cannot take `EXECUTE` away from `PUBLIC` (they only add to the
+  global defaults). The migration revokes execute on the existing `app` functions; a function
+  added later, such as `app.broadcast` in phase 2, needs its own `revoke ... from public` and an
+  explicit `grant ... to authenticated`.
+- `better_auth.users` is readable only for people who share the caller's organization (column
+  grant on id, name, email and image), so the names of people who left answer null
+  (`uploaderName`, `creatorName`, `requesterName`, `publisherName`).
+- The jobs adapter reads the current role, resets it for pg-boss's own statements only when it is
+  not `none`, and restores the role it found; it is the only place that resets the role.
+- A policy refusal is not mapped to a 403: reaching one means a missing middleware check, so it is
+  an unexpected error. USING failures are silent (zero rows); WITH CHECK failures raise 42501.
+- Custom roles are read on the privileged path before the scope is built; the MCP caller's
+  permissions are computed eagerly (one indexed query per request for a custom role).
+- Policies key on the `org_id` claim and there is no `iss` restriction yet; the server path sets
+  claims without an issuer. Phase 2 or 4 decides whether policies check the issuer once Better
+  Auth's tokens reach Supabase.
+- PGlite runs a newer Postgres major (18) than the stack (17), and its user is a superuser while
+  the stack's `postgres` is not. The pooler-backed concurrency suite and e2e cover the stack.
+- Database advisors on the local stack report nothing caused by this phase's policies or
+  functions. Left for phase 4: `function_search_path_mutable` on six `pgboss` functions (owned by
+  pg-boss), unindexed foreign keys and unused indexes (informational), and
+  `rls_enabled_no_policy` on the `better_auth` tables, which is intended.
 
 ### Phase 2. Realtime instead of SSE
 

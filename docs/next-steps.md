@@ -26,9 +26,6 @@ Starting a new product
 
 Backend
 
-- Tenancy by convention: there is no generic guard. `forOrganization()`
-  (`packages/db/src/organization/index.ts`) exposes hand-written methods per domain, and isolation
-  between organizations depends on every query filtering by `organizationId`.
 - A new module touches many places (schema, scope, contract, router, permissions, MCP tools,
   screen, navigation, i18n, tests). Workspaces is the reference module to copy; nothing generates
   the pieces.

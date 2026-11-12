@@ -114,12 +114,27 @@ Run from the repo root; the scripts in `package.json` are the full list.
 - **Migrations**: drizzle-kit writes them into `supabase/migrations` from the Drizzle schema and
   the Supabase CLI applies them (`pnpm db:migrate`), never the API: it refuses to start on a
   database that is behind. Hand-written SQL goes in a `db:generate --custom` migration, so it
-  enters the journal the API reads.
+  enters the journal the API reads. In a hand-written migration every statement ends with a
+  `--> statement-breakpoint` line (the PGlite migrator fails otherwise). Never edit an applied
+  migration; write a new one.
 - **Better Auth's identity and OAuth tables** live in the `better_auth` schema (a test enforces
   which); raw SQL names them with the schema.
-- **Tenancy**: every table, except the named exceptions in the schema (a test enforces it), has
-  `organization_id uuid not null references organizations(id) on delete cascade`, and
-  organization data is only reached through `forOrganization(orgId)`.
+- **Tenancy**: every table, except the named exceptions in the schema, has
+  `organization_id uuid not null references organizations(id) on delete cascade`. Every table has
+  row level security on, and tenant tables declare their policies with the schema's policy
+  helper (tests enforce both). Organization data is reached through `forOrganization(claims)` for
+  a person and `asSystem(organizationId)` for server work with no person behind it (workers,
+  webhooks, auth hooks); each operation of either scope runs in its own transaction as the
+  `authenticated` role with those claims. The other functions of the data layer are privileged
+  and cross organizations by design. Explicit organization filters stay in every query: RLS is
+  the guard underneath, not a replacement.
+- **Permissions**: the access-control matrix in `@arrakit/auth/permissions` is the single source.
+  `claimsFor` turns a member's permissions into the claims; the API middleware answers 403/404
+  and the policies are the guard underneath (a policy refusal is a missing middleware check, not
+  a 403). A new gated table names its `resource:action` in its schema policies.
+- **Jobs inside organization operations**: a job or event queued from an organization operation
+  passes that operation's transaction (`{ tx }`), so it commits with the change. Inside a scoped
+  operation nothing may query outside its transaction (on PGlite's single connection it hangs).
 - **i18n**: no hard-coded user-facing strings in the web app. Keys live in per-module locale files
   for `en` and `es`, deep-merged into one namespace; both languages keep identical key sets and no
   key is defined twice (tests).
@@ -157,8 +172,9 @@ Run from the repo root; the scripts in `package.json` are the full list.
 
 - **Vitest** everywhere: node environment for packages and api, jsdom for web.
 - **Database**: in-memory PGlite per test file, through `@arrakit/db/testing`, which first creates
-  what a Supabase database already has and then applies the same migrations. Unit and integration
-  tests need no Docker; `pnpm dev` and `pnpm test:e2e` do, for the local Supabase stack.
+  what a Supabase database already has and then applies the same migrations. RLS, roles and
+  pg-boss are the real thing there. Unit and integration tests need no Docker; `pnpm dev` and
+  `pnpm test:e2e` do, for the local Supabase stack.
 - **Auth**: Better Auth's `testUtils` plugin, enabled only in tests. (`@better-auth/test-utils` on
   npm is for adapter conformance, not for this.)
 - **Shared kits**: the API, the web and the e2e suite each have a testing kit (in-process app,
@@ -175,8 +191,8 @@ Run from the repo root; the scripts in `package.json` are the full list.
   Stripe prices. Then locale texts and the icons in each app's `public/`.
 - Plans and prices: `packages/plans`, then the API's Stripe prices script.
 - A new product module: follow the `workspaces` module end to end. Tables in the `packages/db`
-  schema (with `organization_id`, reached only through `forOrganization()`), a permission resource
-  in `@arrakit/auth/permissions`, procedures in `packages/contract`, a router in apps/api, MCP
+  schema (with `organization_id` and tenant policies, reached only through the organization
+  scope), a permission resource in `@arrakit/auth/permissions`, procedures in `packages/contract`, a router in apps/api, MCP
   tools in the API's MCP server, screens in apps/web with an entry in the app's navigation list,
   and tests at every layer.
 - Reacting to files (indexing, emails, previews): add a file subscriber to the API's subscriber

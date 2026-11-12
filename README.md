@@ -35,8 +35,12 @@ billing, prepaid credits, transactional email and an MCP server, in a pnpm + Tur
 - **Jobs** with pg-boss on the same Postgres.
   Tracked jobs are **tasks** people follow in each workspace and in Settings: status, retries and progress, streamed to
   the web as they change, with `task.succeeded` and `task.failed` events to react to.
-- **Tenancy**: every organization query and file key goes through `forOrganization(id)` in
-  `@arrakit/db`; ESLint refuses the database and storage drivers anywhere else.
+- **Tenancy** enforced by Postgres: every table has row level security on, and every
+  organization query and file key goes through `forOrganization(claims)` (a member, with the
+  claims `claimsFor` builds from their permissions) or `asSystem(organizationId)` (server work) in
+  `@arrakit/db`. The API connects as a privileged role and switches to `authenticated` with the
+  caller's claims for each organization operation; the Supabase Data API stays off. ESLint
+  refuses the database and storage drivers anywhere else.
 
 ## Credits and usage
 
@@ -54,7 +58,8 @@ reports the level, like `storage_gb`), and `perCurrencyUnit` says how much of it
   on a procedure, or call the `UsageService` (`apps/api/src/usage/usage-service.ts`). `can()` and
   `check()` ask, `consume(org, metric, qty, idempotencyKey)` spends, `set(org, metric, level)`
   reports a capacity level; a refusal is 402 with a message pointing to Add credits. Below the API
-  it is `forOrganization(id).usage` in `@arrakit/db`.
+  it is the `usage` module of the organization scope in `@arrakit/db`
+  (`forOrganization(claims).usage`, or `asSystem(id).usage` for server work).
 
 How it holds together: an append-only `credit_ledger` (grants, purchases, uses, adjustments, each
 idempotent by key) and `usage_levels`. A plan's grant for the month is written on the first read or
@@ -135,6 +140,6 @@ pnpm format:check
   `pnpm --filter @arrakit/api stripe:prices`.
 - The product itself: its procedures in a contract file under `packages/contract/src` and a router
   under `apps/api/src/routers`, its tables in `packages/db/src/schema` (each with
-  `organization_id`, reached through `forOrganization()`), its screens under
+  `organization_id` and tenant policies, reached through the organization scope), its screens under
   `apps/web/src/components/<module>` with thin routes in `apps/web/src/routes/app`, and its MCP
   tools in `apps/api/src/mcp/server.ts`.
