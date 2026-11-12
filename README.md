@@ -123,8 +123,7 @@ stack (`pnpm supabase:stop`, then `pnpm supabase:start`). Buckets are the except
 `pnpm exec supabase seed buckets` applies their limits to a running stack.
 
 With real Stripe keys, create the products and prices once:
-`pnpm --filter @arrakit/api stripe:prices`. The OpenAPI document of the API is written by
-`pnpm --filter @arrakit/api openapi:export <file>`.
+`pnpm --filter @arrakit/api stripe:prices`.
 
 ## Check it
 
